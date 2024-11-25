@@ -1,0 +1,493 @@
+from datetime import datetime
+import csv
+import pandas as pd
+import json
+import os , sys
+import hashlib
+import queue
+import threading
+import numpy as np
+import requests
+import asyncio
+
+# +----------------------------------------------------------------
+# + my module imports
+# +----------------------------------------------------------------
+import playwright_mainditect_v2 as playwright_mainditect
+from mail import send_email
+from text_struct import text_struct
+
+# +----------------------------------------------------------------
+# + Constant definition
+# +----------------------------------------------------------------
+SCRIPT_PATH = os.path.dirname(os.path.abspath(__file__))
+SAVE_CSV_DIR_PATH = "./data/cheacker_url.csv"
+SAVE_JSON_DIR_PATH  = "./data/json/"
+USER_DIR_PATH = "./user"
+
+
+MAX_COLUMN = 5 
+CSV_HEADER = ["url", # scraping url
+              "updated_datetime", # updated datetime
+              "run_code", # datetime for code of the run for 
+              "result_vl" , # value of the url elements
+              "modify_datetime", # modify datetime 
+]
+
+CL_URL = 0
+CL_RUN_CODE = 1
+CL_RESULT_VL = 2
+CL_UPDATED_DATETIME = 3
+CL_MODIFY_DATETIME = 4 
+
+WORKER_THREADS_NUM = 2
+
+import sys
+# カレントディレクトリをpythonパスに追加する
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# pandas option 
+# 表示オプションを変更して、すべての行と列を表示する
+pd.set_option('display.max_rows', None)
+pd.set_option('display.max_columns', None)
+
+# +----------------------------------------------------------------
+# logging settings
+# +----------------------------------------------------------------
+import logging
+
+INFO = logging.INFO
+DEBUG = logging.DEBUG
+
+def setup_logging(log_level=INFO):
+    # ロガーを作成
+    logger = logging.getLogger()
+    logger.setLevel(log_level)
+
+    # フォーマッターを作成
+    # formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s - Line %(lineno)d')
+    formatter = logging.Formatter('%(message)s - [%(filename)s] [%(lineno)d Line]')
+    # コンソールハンドラーを作成し、フォーマッターを設定
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+
+    # ロガーにハンドラーを追加
+    logger.addHandler(console_handler)
+
+    return logger
+
+# set up logging
+log_print = setup_logging()
+
+
+# +----------------------------------------------------------------
+# file edit faction
+# +----------------------------------------------------------------
+
+def find_or_create(path, custom_name=None):
+    """
+    指定されたパスに対して、次の操作を行う:
+    - パスに拡張子がある場合: ファイルを作成または取得する
+    - パスに拡張子がなく、カスタム名が指定されている場合: カスタム名でファイルを作成する
+    - パスに拡張子がなく、カスタム名が指定されていない場合: ディレクトリを作成する
+
+    Args:
+        path (str): ファイルまたはディレクトリのパス
+        custom_name (str, optional): ファイルのカスタム名
+
+    Returns:
+        str: 見つかったまたは作成されたファイルまたはディレクトリのパス
+    """
+    directory, filename = os.path.split(path)
+    extension = os.path.splitext(filename)[-1]
+    
+    # パスに拡張子がある場合: ファイルを作成または取得する
+    if extension:
+        file_path = path
+        if os.path.isfile(file_path):
+            # ファイルが存在する場合は何もせずにパスを返す
+            return file_path
+        else:
+            try:
+                # ディレクトリが存在しない場合は作成する
+                os.makedirs(directory, exist_ok=True)
+
+                with open(file_path, 'w') as file:
+                    file.write('')
+                print(f"ファイル '{file_path}' を作成しました。")
+                # ファイル作成後、パーミッションを変更する
+                os.chmod(file_path, 0o755)  # 例: 読み取りと実行の権限を追加
+                return file_path
+            except IOError as e:
+                print(f"ファイル '{file_path}' を作成できませんでした: {e.strerror}")
+                return None
+
+    # パスに拡張子がなく、カスタム名が指定されている場合: カスタム名でファイルを作成する
+    elif custom_name:
+        file_path = os.path.join(directory, custom_name)
+        if os.path.isfile(file_path):
+            return file_path
+        else:
+            try:
+                with open(file_path, 'w') as file:
+                    file.write('')
+                print(f"ファイル '{file_path}' を作成しました。")
+                os.chmod(file_path, 0o755)  # パーミッションを設定する
+                return file_path
+            except IOError as e:
+                print(f"ファイル '{file_path}' を作成できませんでした: {e.strerror}")
+                return None
+
+    # パスに拡張子がなく、カスタム名が指定されていない場合: ディレクトリを作成する
+    else:
+        dir_path = path
+        if os.path.isdir(dir_path):
+            print(f"ディレクトリ '{dir_path}' はすでに存在します。")
+            return dir_path
+        else:
+            try:
+                os.makedirs(dir_path)
+                print(f"ディレクトリ '{dir_path}' を作成しました。")
+                os.chmod(dir_path, 0o755)  # パーミッションを設定する
+                return dir_path
+            except OSError as e:
+                print(f"ディレクトリ '{dir_path}' を作成できませんでした: {e.strerror}")
+                return None
+
+# +----------------------------------------------------------------
+# + User class 
+# +----------------------------------------------------------------
+import yaml
+
+class User:
+    def __init__(self, directory):
+        find_or_create("./users/")
+
+        self.directory = os.path.join("./users",directory)
+
+        self.csv_file_path = os.path.join(self.directory, "cheacker_url.csv")
+        self.json_dir_path = os.path.join(self.directory, "json/")
+
+        find_or_create(self.csv_file_path)
+        find_or_create(self.json_dir_path)
+
+        self.load_mail_settings()
+
+    # mail settings
+    def load_mail_settings(self):
+        config_pass = os.path.join(self.directory,"mail.yaml")
+        log_print.info(config_pass)
+
+        with open(config_pass)as f :
+            self.yaml_file = yaml.safe_load(f)
+
+    def send_resultmail(self, body):
+        if self.yaml_file is not None:
+            send_email(
+                self.yaml_file,
+                self.yaml_file["gmail"]["receiver_mail"],
+                body=body,
+            )
+
+        else : log_print("not send mail")
+
+
+# user = User("./find/")
+
+# +----------------------------------------------------------------
+# + get domain name
+# +----------------------------------------------------------------
+from urllib.parse import urlparse
+
+def get_domain(url):
+    parsed_url = urlparse(url)
+    domain = parsed_url.netloc
+    return domain
+
+
+# +----------------------------------------------------------------
+# + json function
+# +----------------------------------------------------------------
+def save_json(data, url, directory=SAVE_JSON_DIR_PATH):
+    """
+    辞書型のデータをJSONファイルとして保存する
+    
+    Args:
+        data (dict): 保存するデータ
+        url (str): データに対応するURL
+        directory (str): JSONファイルを保存するディレクトリのパス
+    Retrun: 
+        None
+    """
+    domain = get_domain(url)
+    file_path = os.path.join(directory, f"{domain}.json")
+    find_or_create(file_path)  # ファイルを作成または取得する
+     
+    # URLをデータに追加
+    data['url'] = url
+    
+    with open(file_path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
+
+# +----------------------------------------------------------------
+# datetime edit function 
+# +----------------------------------------------------------------
+
+def get_datetime():
+    nowtime = datetime.now()
+    formatted_now = nowtime.strftime("%Y%m%d")
+
+    return formatted_now
+
+def create_datetime(date_string : str) -> datetime :
+    return datetime.strptime(date_string, "%Y%m%d")
+
+def test_datetime():    
+    date_string = "20240326"
+
+    print(create_datetime(date_string))
+    print(get_datetime())
+
+
+# +----------------------------------------------------------------
+#   Last-Modified function
+# +----------------------------------------------------------------
+
+def get_last_modified(url):
+    try:
+        response = requests.head(url)
+        last_modified = response.headers.get('Last-Modified')
+        if last_modified:
+
+            last_modified_datetime = datetime.strptime(last_modified, '%a, %d %b %Y %H:%M:%S %Z')
+            formatted_last_modified = last_modified_datetime.strftime("%Y%m%d")
+            
+            log_print.debug(formatted_last_modified, type(formatted_last_modified))
+            return formatted_last_modified
+    except Exception as e:
+        log_print.warning(e)
+
+# + ----------------------------------------------------------------
+#  remove encoded chars
+# + ----------------------------------------------------------------
+import re
+
+def remove_encoded_chars(url):
+    encoded_pattern = r'%[0-9A-F]{2}'
+    cleaned_url = re.sub(encoded_pattern, '', url)
+    return cleaned_url
+
+
+# +----------------------------------------------------------------
+# csv function 
+# +----------------------------------------------------------------
+from urllib.parse import unquote
+import unicodedata
+
+def read_csv_with_padding(file_path, max_column):
+    """
+    Read a CSV file and pad missing columns with None values.
+
+    Args:
+        file_path (str): Path to the CSV file.
+        num_columns (int): Number of columns expected in the CSV file.
+
+    Returns:
+        pandas.DataFrame: DataFrame containing the CSV data with padded columns.
+    """
+    try:
+        # CSVファイルを読み込む
+        df = pd.read_csv(file_path, header=None, encoding='utf-8')
+        
+        # カラム数がnum_columnsに足りない場合、補完する
+        if len(df.columns) < max_column:
+            log_print.debug("column is too short and add column")
+
+            padding_needed = max_column - len(df.columns)
+            padding = [[ 0 ] * padding_needed for _ in range(len(df))]
+            df = pd.concat([df, pd.DataFrame(padding, columns=range(len(df.columns), max_column))], axis=1)
+        
+        # URLカラムからエンコーディングされた文字列を削除する
+        df[CL_URL] = df[CL_URL].apply(lambda x: unicodedata.normalize('NFKD', x) if isinstance(x, str) else x)
+
+        # dateframeの値に欠損値（NaN)を０に置換
+        df = df.fillna(0)
+
+        return df
+    except pd.errors.EmptyDataError:
+        print("指定されたファイルが空です。空ファイル内に空のデータを追加します。")
+        empty_data = [[ 0 ] * max_column]
+        pd.DataFrame(empty_data).to_csv(file_path, index=False, header=False)  # 空ファイル内に空のデータを追加
+        return pd.DataFrame(empty_data)
+
+def write_csv_updateDate( path : str, csv_df : pd.DataFrame):
+    csv_df.iloc[:, CL_RUN_CODE] = get_datetime()
+
+    csv_df.to_csv( path, index=False, header=False)
+
+def write_csv_updateValues( content_hashTxt , csv_df : pd.DataFrame, index_num : int):
+    csv_df.at[index_num , CL_UPDATED_DATETIME] = get_datetime()
+    csv_df.at[index_num , CL_RESULT_VL ] = content_hashTxt
+    log_print.info(f" ## update ## - index : {index_num} - {content_hashTxt}")
+
+
+# csv function end ---------------------------------------------------------------- 
+
+def scraping_mainditect(url : str) :
+    try:
+        log_print.debug(f"scraping {url} is {type(url)}")
+        rescored_candidate = asyncio.run(playwright_mainditect.test_main(url))
+        if not rescored_candidate :
+            # debug 
+            save_json(rescored_candidate, url)
+
+        return rescored_candidate
+    except Exception as e:
+        log_print.warning(f"{e}")
+
+
+"""
+def pre_proc():
+    find_or_create(SAVE_CSV_DIR_PATH)
+
+    csv_df = read_csv_with_padding(SAVE_CSV_DIR_PATH, MAX_COLUMN)
+
+    print(csv_df)
+    
+    url_columnLst = csv_df.iloc[:, CL_URL].tolist()
+    # print(url_columnLst)
+    # print(csv_df.at[0 , 2] ,type(csv_df.at[0 , 2] ))
+    return csv_df, url_columnLst
+"""
+
+
+def worker(q, csv_df):
+    """
+    Worker function to process URLs from the queue.
+
+    Args:
+        q (queue.Queue): Queue containing URLs to process.
+        csv_df         : pandas dateframe class 
+    """
+    try :
+        while True:
+            try:
+                url = q.get(timeout=10)  # Wait up to 10 seconds to get an item from the queue
+            except queue.Empty:
+                log_print.info("Queue is empty, exiting worker")
+                break
+
+            index_num = url_column_list.index(url)  # Get the index of the URL in the list
+            if url is None:
+                break
+            
+            result_flg = False
+            
+            log_print.info(f"Processing URL: {url } , index: {index_num}")
+            
+            # last_modified = get_last_modified(url)
+            # if last_modified:
+            #     if csv_df.at[index_num, CL_RESULT_VL] != last_modified or csv_df.at[index_num, CL_RESULT_VL] is None:
+            #         log_print.info(f"{csv_df.at[index_num, CL_RESULT_VL]} is not {last_modified}) ")
+            #         write_csv_updateValues(last_modified, csv_df, index_num)
+            #         log_print.info(f"Updated URL for modified : {url}")
+            #         result_flg = True
+            
+            
+            if result_flg == False:
+                rescored_candidate = scraping_mainditect(url)
+                if rescored_candidate:
+                    log_print.info(rescored_candidate)
+                    content_hash_text = hashlib.sha256(str(rescored_candidate["links"]).encode()).hexdigest()
+                    log_print.debug(f'{url} - {index_num} - {rescored_candidate["links"]}')
+                    log_print.debug(f'{url} - {index_num} - {content_hash_text}')
+                else:
+                    log_print.info(f"rescored_candidate is None type ")
+                    q.task_done()
+
+                # Different elements
+                if (csv_df.at[index_num, CL_RESULT_VL] != content_hash_text or 
+                csv_df.at[index_num, CL_RESULT_VL] == 0.0 ):
+                    write_csv_updateValues(content_hash_text, csv_df, index_num)
+    except Exception as e:
+        log_print.error(f"Error processing URL {url}: {e}")
+    finally:
+        # Ensure the task is marked as done whether successful or failed
+        q.task_done()
+        
+
+def main():
+    """
+    Main function to run the web scraping process.
+    """
+#    if sys.argv[1] : user = User(sys.srgv)
+#  else : 
+    user = User("./jav")
+
+    find_or_create(user.csv_file_path)
+
+    # use worker
+    global url_column_list
+
+    csv_df = read_csv_with_padding(user.csv_file_path, MAX_COLUMN)
+    log_print.info(csv_df)
+    # for diff check 
+    bef_df = read_csv_with_padding(user.csv_file_path, MAX_COLUMN)
+    
+
+    url_column_list = csv_df.iloc[:, CL_URL].tolist()
+
+    # Create a queue and fill it with URLs
+    q_pool = queue.Queue()
+
+    for _, row in csv_df.iterrows():
+        url = row[CL_URL]
+        if url:
+            log_print.debug(url)
+
+            q_pool.put(url)
+
+    # Start worker threads
+    threads  = []
+    for _ in range(WORKER_THREADS_NUM):
+        thread = threading.Thread(target=worker, args=(q_pool, csv_df) )
+        thread.daemon = True
+        thread.start()
+        threads.append(thread)
+
+    # Block until all tasks are done
+    # q_pool.join()
+
+    for thread in threads:
+        thread.join()
+
+    log_print.info("Worker thread started")
+
+    # Update CSV file with the latest data
+    write_csv_updateDate(user.csv_file_path, csv_df)
+    log_print.info(csv_df)
+
+    # diff chack of dataflame
+    diff_column = csv_df.iloc[:, CL_RESULT_VL] != bef_df.iloc[:, CL_RESULT_VL]
+    
+    result = csv_df[diff_column]
+    log_print.info(result)
+
+    diff_urls = [row[CL_URL] for row in result.values.tolist()]
+
+    body = text_struct.generate_notification(diff_urls)
+    
+    user.send_resultmail(body)
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
+
+    

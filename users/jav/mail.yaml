@@ -1,0 +1,16 @@
+Settings:
+
+ # sendmail - 0 don't send
+ #          - 1 send
+ sendmail: 1
+ 
+gmail:
+
+ # user account - gmail address
+ account: xzyoi10sopmon@gmail.com
+ 
+ # password
+ password: nggv tpta smqe xjra
+
+ # reciever mail
+ receiver_mail: xzyoi10sopmon@gmail.com
