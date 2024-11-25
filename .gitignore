@@ -1,4 +1,6 @@
-/mail
+/mail/__pycache__
+/mail/mail.yaml
+/mail/test_send_mail.py:
 /web-update-cheacker.srctrlbm
 /web-update-cheacker.srctrldb
 /web-update-cheacker.srctrlprj
