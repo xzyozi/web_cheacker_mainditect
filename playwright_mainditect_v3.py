@@ -179,19 +179,25 @@ async def is_html_element(el):
         return False
 
 
-async def get_tree(page: Page, tag: Optional[str] = None, element_id: Optional[str] = None, attributes: Optional[Dict[str, str]] = None) -> Dict:
+async def get_tree(
+    page: Page,
+    selector: Optional[str] = None,
+    wait_for_load: bool = True,
+    timeout: int = 30000,
+    debug: bool = True
+) -> Dict:
     """
-    Retrieves the DOM tree of a webpage starting from the <body> element.
-    Optionally filters elements based on tag name, id, or specific attributes.
-
+    Get DOM tree starting from a specific selector or body.
+    
     Args:
-        page (Page): The Playwright page instance.
-        tag (Optional[str]): The tag name to filter elements (e.g., 'div', 'span'). Default is None (no filter).
-        element_id (Optional[str]): The id of the element to filter. Default is None (no filter).
-        attributes (Optional[Dict[str, str]]): A dictionary of attributes to filter elements. Default is None (no filter).
-
+        page: Playwright Page object
+        selector: CSS selector to start tree from (optional)
+        wait_for_load: Whether to wait for network idle
+        timeout: Timeout in milliseconds for waiting
+        debug: Whether to print debug information
+    
     Returns:
-        Dict: The hierarchical structure of the DOM.
+        Dict representing the DOM tree
     """
     root = await page.query_selector('body')
     if not root:
@@ -208,96 +214,160 @@ async def get_tree(page: Page, tag: Optional[str] = None, element_id: Optional[s
         Returns:
             Dict: The parsed representation of the element and its children.
         """
-        if not el:
+    try:
+        if debug:
+            print(f"Searching for element with selector: {selector}")
+            
+            # 現在のページ内容の確認
+            all_elements = await page.evaluate('''() => {
+                const elements = document.querySelectorAll('*[id]');
+                return Array.from(elements).map(el => ({
+                    tag: el.tagName.toLowerCase(),
+                    id: el.id,
+                    visible: el.offsetParent !== null,
+                    rect: el.getBoundingClientRect().toJSON()
+                }));
+            }''')
+            
+            print("Found elements with IDs on page:")
+            for el in all_elements:
+                print(f"- {el['tag']}#{el['id']} (visible: {el['visible']})")
+
+        if wait_for_load:
+            try:
+                print("Waiting for network idle...")
+                await page.wait_for_load_state('networkidle', timeout=timeout)
+                print("Network is idle")
+            except Exception as e:
+                print(f"Network did not become idle within {timeout}ms: {str(e)}")
+
+        # Try to find element with JavaScript first
+        if selector:
+            exists_js = await page.evaluate(f'''() => {{
+                const el = document.querySelector("{selector}");
+                if (el) {{
+                    return {{
+                        exists: true,
+                        tag: el.tagName.toLowerCase(),
+                        id: el.id,
+                        visible: el.offsetParent !== null,
+                        rect: el.getBoundingClientRect().toJSON()
+                    }};
+                }}
+                return {{ exists: false }};
+            }}''')
+            
+            if debug:
+                if exists_js.get('exists'):
+                    print(f"Element found in DOM: {json.dumps(exists_js, indent=2)}")
+                else:
+                    print(f"Element not found in DOM: {selector}")
+
+        # If selector is provided, try to find that element
+        root = None
+        if selector:
+            try:
+                print(f"Waiting for element to be visible: {selector}")
+                root = await page.wait_for_selector(selector, timeout=timeout)
+                if not root:
+                    print(f"Element not found: {selector}")
+                    return {}
+            except Exception as e:
+                print(f"Error finding element {selector}: {str(e)}")
+                
+                # Additional debug information
+                if debug:
+                    page_content = await page.content()
+                    print(f"Current page title: {await page.title()}")
+                    print(f"Current URL: {page.url}")
+                    
+                    # Check if element exists but is not visible
+                    element_handle = await page.query_selector(selector)
+                    if element_handle:
+                        is_visible = await element_handle.is_visible()
+                        print(f"Element exists but visible: {is_visible}")
+                        
+                        # Get element properties
+                        properties = await element_handle.evaluate('''el => ({
+                            offsetParent: el.offsetParent !== null,
+                            display: window.getComputedStyle(el).display,
+                            visibility: window.getComputedStyle(el).visibility,
+                            opacity: window.getComputedStyle(el).opacity
+                        })''')
+                        print(f"Element properties: {json.dumps(properties, indent=2)}")
+                
+                return {}
+        else:
+            root = await page.query_selector('body')
+
+        if not root:
             return {}
 
-        try:
-            bounding_box = await el.bounding_box()
-            if not bounding_box:
+        async def parse_element(el, current_depth=1) -> Dict:
+            if not el:
                 return {}
 
-            attributes_dict = await el.evaluate(
-                'el => Object.fromEntries(Array.from(el.attributes).map(attr => [attr.name, attr.value]))'
-            )
-            
-            # Extract element details
-            node = {
-                "tag": await el.evaluate('el => el.tagName.toLowerCase()'),
-                "id": await el.get_attribute('id'),
-                "attributes": attributes_dict,
-                "children": [],
-                "rect": {
-                    "x": bounding_box['x'],
-                    "y": bounding_box['y'],
-                    "width": bounding_box['width'],
-                    "height": bounding_box['height'],
-                },
-                "depth": current_depth,
-                "score": 0,
-            }
+            try:
+                # Ensure element is still attached to DOM
+                is_attached = await el.evaluate('el => document.body.contains(el)')
+                if not is_attached:
+                    return {}
 
-            # If the element matches filtering criteria, include its children
-            if matches_criteria(node, tag, element_id, attributes):
-                # Include text and links if it's an HTML element
-                if await is_html_element(el):
-                    node["text"] = await el.inner_text()
-                    node["links"] = await el.eval_on_selector_all('a', 'as => as.map(a => a.href).filter(Boolean).sort()')
-                else:
-                    node["text"] = ""
-                    node["links"] = []
+                try:
+                    bounding_box = await el.bounding_box()
+                    if not bounding_box:
+                        return {}
+                except Exception as e:
+                    print(f"Could not get bounding box: {str(e)}")
+                    return {}
 
-                # Recursively process child elements
+                # Get element properties
+                properties = await el.evaluate('''el => ({
+                    tag: el.tagName.toLowerCase(),
+                    id: el.id,
+                    attributes: Object.fromEntries(Array.from(el.attributes).map(attr => [attr.name, attr.value])),
+                    text: el.innerText || "",
+                    links: Array.from(el.getElementsByTagName('a')).map(a => a.href).filter(Boolean).sort()
+                })''')
+
+                node = {
+                    "tag": properties['tag'],
+                    "id": properties['id'],
+                    "attributes": properties['attributes'],
+                    "children": [],
+                    "rect": {
+                        "x": bounding_box['x'],
+                        "y": bounding_box['y'],
+                        "width": bounding_box['width'],
+                        "height": bounding_box['height'],
+                    },
+                    "depth": current_depth,
+                    "text": properties['text'],
+                    "score": 0,
+                    "links": properties['links'],
+
+                }
+
+                # Get children
                 children = await el.query_selector_all(':scope > *')
                 for child in children:
                     child_node = await parse_element(child, current_depth + 1)
                     if child_node:
                         node["children"].append(child_node)
 
-            return node if matches_criteria(node, tag, element_id, attributes) else {}
-        except Exception as e:
-            print(f"Error parsing element: {str(e)}")
-            return {}
+                return node
 
-    def matches_criteria(node: Dict, tag: Optional[str], element_id: Optional[str], attributes: Optional[Dict[str, str]]) -> bool:
-        """
-        Checks if an element matches the filtering criteria.
+            except Exception as e:
+                print(f"Error parsing element: {str(e)}")
+                return {}
 
-        Args:
-            node (Dict): The element node data.
-            tag (Optional[str]): The tag name to filter.
-            element_id (Optional[str]): The id to filter.
-            attributes (Optional[Dict[str, str]]): Attributes to filter.
+        return await parse_element(root)
 
-        Returns:
-            bool: True if the element matches the criteria, False otherwise.
-        """
-        if tag and node["tag"] != tag:
-            return False
-        if element_id and node["id"] != element_id:
-            return False
-        if attributes:
-            for key, value in attributes.items():
-                if node["attributes"].get(key) != value:
-                    return False
-        return True
+    except Exception as e:
+        print(f"Error in get_tree: {str(e)}")
+        return {}
 
-    return await parse_element(root)
-'''
-def get_subtree(node):
-    """
-    指定されたノードとその子ノードの情報を再帰的に取得する関数。
 
-    Args:
-        node (dict): 取得対象のノード。
-
-    Returns:
-        list: ノードとその子ノードの情報を含むリスト。
-    """
-    subtree = [node]
-    for child_node in node.get('children', []):
-        subtree.extend(get_subtree(child_node))
-    return subtree
-'''
 def calculate_depth_weight(max_depth : int,  
                            current_depth : int , 
                            base_weight :float =1.0 , 
@@ -861,7 +931,10 @@ def is_scraping_allowed(robots_txt, target_path):
     return robot_parser.can_fetch("*", target_path)
 
 
-async def test_main(url):            
+async def test_main(url):       
+
+    max_loop_count = 10
+
     async with async_playwright() as p:
         # Fetch robots.txt
         robots_txt = await fetch_robots_txt(url)
@@ -917,7 +990,7 @@ async def test_main(url):
                         break
 
                     loop_count += 1
-                    if loop_count == 10:
+                    if loop_count == max_loop_count:
                         print("error: loop count")
                         break
 

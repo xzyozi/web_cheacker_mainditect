@@ -13,7 +13,7 @@ import asyncio
 # +----------------------------------------------------------------
 # + my module imports
 # +----------------------------------------------------------------
-import playwright_mainditect_v2 as playwright_mainditect
+import playwright_mainditect_v3 as playwright_mainditect
 from mail import send_email
 from text_struct import text_struct
 
@@ -21,9 +21,9 @@ from text_struct import text_struct
 # + Constant definition
 # +----------------------------------------------------------------
 SCRIPT_PATH = os.path.dirname(os.path.abspath(__file__))
-SAVE_CSV_DIR_PATH = "./data/cheacker_url.csv"
-SAVE_JSON_DIR_PATH  = "./data/json/"
-USER_DIR_PATH = "./user"
+SAVE_CSV_DIR_PATH = os.path.join(SCRIPT_PATH, "./data/cheacker_url.csv")
+SAVE_JSON_DIR_PATH  = os.path.join(SCRIPT_PATH, "./data/json/")
+USER_DIR_PATH = os.path.join(SCRIPT_PATH, "./user")
 
 
 MAX_COLUMN = 5 
