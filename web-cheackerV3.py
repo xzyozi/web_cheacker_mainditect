@@ -26,12 +26,13 @@ SAVE_JSON_DIR_PATH  = os.path.join(SCRIPT_PATH, "./data/json/")
 USER_DIR_PATH = os.path.join(SCRIPT_PATH, "./user")
 
 
-MAX_COLUMN = 5 
+MAX_COLUMN = 6 
 CSV_HEADER = ["url", # scraping url
               "updated_datetime", # updated datetime
               "run_code", # datetime for code of the run for 
               "result_vl" , # value of the url elements
               "modify_datetime", # modify datetime 
+              "css_selector", # css selector 
 ]
 
 CL_URL = 0
@@ -39,6 +40,7 @@ CL_RUN_CODE = 1
 CL_RESULT_VL = 2
 CL_UPDATED_DATETIME = 3
 CL_MODIFY_DATETIME = 4 
+CL_CSS_SELECTOR = 5
 
 WORKER_THREADS_NUM = 2
 
@@ -79,7 +81,7 @@ def setup_logging(log_level=INFO):
 # set up logging
 log_print = setup_logging()
 
-
+log_print.info(SCRIPT_PATH)
 # +----------------------------------------------------------------
 # file edit faction
 # +----------------------------------------------------------------
@@ -326,9 +328,10 @@ def write_csv_updateDate( path : str, csv_df : pd.DataFrame):
 
     csv_df.to_csv( path, index=False, header=False)
 
-def write_csv_updateValues( content_hashTxt , csv_df : pd.DataFrame, index_num : int):
+def write_csv_updateValues( content_hashTxt  , csv_df : pd.DataFrame, index_num : int, css_selector : str):
     csv_df.at[index_num , CL_UPDATED_DATETIME] = get_datetime()
     csv_df.at[index_num , CL_RESULT_VL ] = content_hashTxt
+    csv_df.at[index_num , CL_CSS_SELECTOR ] = css_selector
     log_print.info(f" ## update ## - index : {index_num} - {content_hashTxt}")
 
 
@@ -338,14 +341,17 @@ def scraping_mainditect(url : str) :
     try:
         log_print.debug(f"scraping {url} is {type(url)}")
         rescored_candidate = asyncio.run(playwright_mainditect.test_main(url))
-        if not rescored_candidate :
-            # debug 
-            save_json(rescored_candidate, url)
 
         return rescored_candidate
     except Exception as e:
         log_print.warning(f"{e}")
 
+def choice_content(url : str, css_selector : str):
+    try:
+        rescored_candidate = asyncio.run(playwright_mainditect.choice_content(url,css_selector))
+        return rescored_candidate
+    except Exception as e:
+        log_print.warning(f"{e}")
 
 """
 def pre_proc():
@@ -383,6 +389,7 @@ def worker(q, csv_df):
                 break
             
             result_flg = False
+            update_flg = False
             
             log_print.info(f"Processing URL: {url } , index: {index_num}")
             
@@ -396,20 +403,37 @@ def worker(q, csv_df):
             
             
             if result_flg == False:
-                rescored_candidate = scraping_mainditect(url)
-                if rescored_candidate:
-                    log_print.info(rescored_candidate)
-                    content_hash_text = hashlib.sha256(str(rescored_candidate["links"]).encode()).hexdigest()
-                    log_print.debug(f'{url} - {index_num} - {rescored_candidate["links"]}')
-                    log_print.debug(f'{url} - {index_num} - {content_hash_text}')
-                else:
-                    log_print.info(f"rescored_candidate is None type ")
-                    q.task_done()
+                css_selector = csv_df.at[index_num, CL_CSS_SELECTOR]
+                log_print.info(f'{url} - {index_num} - {css_selector}')
+                if css_selector  :
+                    rescored_candidate = scraping_mainditect(url)
+                    if rescored_candidate:
+                        log_print.info(rescored_candidate)
+                        content_hash_text = hashlib.sha256(str(rescored_candidate["links"]).encode()).hexdigest()
+                        css_selector = rescored_candidate["css_selector"]
+
+                        update_flg = True
+                        log_print.debug(f'{url} - {index_num} - {rescored_candidate["links"]}')
+                        log_print.debug(f'{url} - {index_num} - {content_hash_text}')
+
+                    else:
+                        log_print.info(f"rescored_candidate is None type ")
+                        q.task_done()
+                else: 
+                    rescored_candidate = asyncio.run(choice_content(url,css_selector))
+                    if rescored_candidate:
+                        content_hash_text = hashlib.sha256(str(rescored_candidate["links"]).encode()).hexdigest()
+                        update_flg = True
+                    else:
+                        log_print.error(f"choice_content is None type ")
+                        q.task_done()
 
                 # Different elements
                 if (csv_df.at[index_num, CL_RESULT_VL] != content_hash_text or 
-                csv_df.at[index_num, CL_RESULT_VL] == 0.0 ):
-                    write_csv_updateValues(content_hash_text, csv_df, index_num)
+                    update_flg ):
+                    # debug 
+                    save_json(rescored_candidate, url)
+                    write_csv_updateValues(content_hash_text, csv_df, index_num, css_selector)
     except Exception as e:
         log_print.error(f"Error processing URL {url}: {e}")
     finally:
