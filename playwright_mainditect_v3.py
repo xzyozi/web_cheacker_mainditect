@@ -330,6 +330,8 @@ async def get_tree(
                     links: Array.from(el.getElementsByTagName('a')).map(a => a.href).filter(Boolean).sort()
                 })''')
 
+                css_selector = make_css_selector(properties)
+
                 node = {
                     "tag": properties['tag'],
                     "id": properties['id'],
@@ -344,8 +346,8 @@ async def get_tree(
                     "depth": current_depth,
                     "text": properties['text'],
                     "score": 0,
+                    "css_selector": css_selector,
                     "links": properties['links'],
-
                 }
 
                 # Get children
@@ -367,7 +369,54 @@ async def get_tree(
         print(f"Error in get_tree: {str(e)}")
         return {}
 
+# + ----------------------------------------------------------------
+# +  make css selector
+# + ----------------------------------------------------------------
+def make_css_selector(choice_dict : Dict) -> str:
+    """
+    Generate a CSS selector from a dictionary containing tag, id, attributes, and other properties.
 
+    Args:
+        choice_dict (dict): A dictionary with keys 'tag', 'id', 'attributes', 'text', 'links', etc.
+
+    Returns:
+        str: The generated CSS selector.
+    """
+    tag = choice_dict.get("tag", "")
+    element_id = choice_dict.get("id", "")
+    attributes = choice_dict.get("attributes", {})
+    # text = choice_dict.get("text", "").strip()
+    # links = choice_dict.get("links", [])
+
+    selector = tag
+
+    # Add ID if available
+    if element_id:
+        selector += f"#{element_id}"
+
+    # Add class or other attributes
+    class_name = attributes.get("class", "")
+    if class_name:
+        class_selector = ".".join(class_name.split())
+        selector += f".{class_selector}"
+
+    for attr, value in attributes.items():
+        if attr != "class":  # Class is handled separately
+            selector += f"[{attr}='{value}']"
+
+    # Add additional filters (if applicable)
+    # Note: These require post-processing in Playwright, as they are not valid CSS selectors.
+    # if text:
+    #     selector += f":contains('{text}')"
+    # if links:
+    #     href_filter = "[href='{0}']".format(links[0]) if links else ""
+    #     selector += href_filter
+
+    return selector
+
+# + ----------------------------------------------------------------
+# +  depth weight
+# + ----------------------------------------------------------------
 def calculate_depth_weight(max_depth : int,  
                            current_depth : int , 
                            base_weight :float =1.0 , 
@@ -633,6 +682,7 @@ def print_content(content : Dict):
         print(f"attributes: {content['attributes']}")
         print(f"Rect: {content['rect']}")
         print(f"depth: {content['depth']}")
+        print(f"css_selector: {content['css_selector']}")
         # if len(content['children']) < 50 :
         #     print(f"text attributes: {content['text']}")
         if content['links'] :
@@ -1014,7 +1064,7 @@ async def test_main(url):
         finally:
             await browser.close()
 
-async def choice_content(url: str, **kwargs):
+async def choice_content(url: str, selector: str):
     """
     Scrapes a webpage and extracts a tree structure based on provided filters.
 
@@ -1077,22 +1127,22 @@ async def choice_content(url: str, **kwargs):
                 }
             ''')
 
-            # Extract parameters from kwargs
-            tag = kwargs.get("tag")
-            element_id = kwargs.get("id")
-            attributes = kwargs.get("attributes", {})
+            # # Extract parameters from kwargs
+            # tag = kwargs.get("tag")
+            # element_id = kwargs.get("id")
+            # attributes = kwargs.get("attributes", {})
 
             # Build CSS selector
-            selectors = []
-            if tag:
-                selectors.append(tag)
-            if element_id:
-                selectors.append(f"#{element_id}")
-            if attributes:
-                for key, value in attributes.items():
-                    selectors.append(f"[{key}='{value}']")
+            # selectors = []
+            # if tag:
+            #     selectors.append(tag)
+            # if element_id:
+            #     selectors.append(f"#{element_id}")
+            # if attributes:
+            #     for key, value in attributes.items():
+            #         selectors.append(f"[{key}='{value}']")
             
-            selector = "".join(selectors) if selectors else "body"
+            # selector = "".join(selectors) if selectors else "body"
 
             # Wait for element with longer timeout
             try:
@@ -1102,7 +1152,7 @@ async def choice_content(url: str, **kwargs):
                 return {}
 
             # Get tree structure
-            tree = await get_tree(page, tag=tag, element_id=element_id, attributes=attributes)
+            tree = await get_tree(page, selector=selector)
             
             if not tree:
                 print(f"No matching elements found for selector: {selector}")
@@ -1142,7 +1192,7 @@ if __name__ == "__main__":
         "attributes": {"id": "ld_blog_article_comment_entries"}
     }
 
-    ch_tree=  asyncio.run(choice_content(url,**choice_dict))
+    ch_tree=  asyncio.run(choice_content(url,"div#list.list.ect-vertical-card-3.ect-vertical-card.ect-3-columns.front-page-type-index[id='list']"))
     print(ch_tree)
 
     import datetime
