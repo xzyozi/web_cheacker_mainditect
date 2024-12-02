@@ -26,6 +26,21 @@ SAVE_JSON_DIR_PATH  = os.path.join(SCRIPT_PATH, "./data/json/")
 USER_DIR_PATH = os.path.join(SCRIPT_PATH, "./user")
 
 
+
+
+WORKER_THREADS_NUM = 2
+
+import sys
+# カレントディレクトリをpythonパスに追加する
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# +----------------------------------------------------------------
+# pandas option 
+# +----------------------------------------------------------------
+# 表示オプションを変更して、すべての行と列を表示する
+pd.set_option('display.max_rows', None)
+pd.set_option('display.max_columns', None)
+
 MAX_COLUMN = 6 
 CSV_HEADER = ["url", # scraping url
               "updated_datetime", # updated datetime
@@ -42,16 +57,7 @@ CL_UPDATED_DATETIME = 3
 CL_MODIFY_DATETIME = 4 
 CL_CSS_SELECTOR = 5
 
-WORKER_THREADS_NUM = 2
-
-import sys
-# カレントディレクトリをpythonパスに追加する
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-# pandas option 
-# 表示オプションを変更して、すべての行と列を表示する
-pd.set_option('display.max_rows', None)
-pd.set_option('display.max_columns', None)
+TEST_CHK= 0
 
 # +----------------------------------------------------------------
 # logging settings
@@ -236,7 +242,13 @@ def save_json(data, url, directory=SAVE_JSON_DIR_PATH):
 # datetime edit function 
 # +----------------------------------------------------------------
 
-def get_datetime():
+# def get_datetime() -> str:
+#     nowtime = datetime.now()
+#     formatted_now = nowtime.strftime("%Y%m%d")
+
+#     return formatted_now
+
+def get_datetime() -> str:
     nowtime = datetime.now()
     formatted_now = nowtime.strftime("%Y%m%d")
 
@@ -368,7 +380,7 @@ def pre_proc():
 """
 
 
-def worker(q, csv_df):
+def worker(q : queue.Queue, csv_df : pd.DataFrame):
     """
     Worker function to process URLs from the queue.
 
@@ -405,7 +417,7 @@ def worker(q, csv_df):
             if result_flg == False:
                 css_selector = csv_df.at[index_num, CL_CSS_SELECTOR]
                 log_print.info(f'{url} - {index_num} - {css_selector}')
-                if css_selector  :
+                if not css_selector  :
                     rescored_candidate = scraping_mainditect(url)
                     if rescored_candidate:
                         log_print.info(rescored_candidate)
@@ -421,6 +433,7 @@ def worker(q, csv_df):
                         q.task_done()
                 else: 
                     rescored_candidate = asyncio.run(choice_content(url,css_selector))
+
                     if rescored_candidate:
                         content_hash_text = hashlib.sha256(str(rescored_candidate["links"]).encode()).hexdigest()
                         update_flg = True
@@ -429,7 +442,7 @@ def worker(q, csv_df):
                         q.task_done()
 
                 # Different elements
-                if (csv_df.at[index_num, CL_RESULT_VL] != content_hash_text or 
+                if (csv_df.at[index_num, CL_RESULT_VL] != content_hash_text and 
                     update_flg ):
                     # debug 
                     save_json(rescored_candidate, url)
@@ -494,16 +507,17 @@ def main():
 
     # diff chack of dataflame
     diff_column = csv_df.iloc[:, CL_RESULT_VL] != bef_df.iloc[:, CL_RESULT_VL]
-    
+
     result = csv_df[diff_column]
-    log_print.info(result)
+    # log_print.info(result)
 
     diff_urls = [row[CL_URL] for row in result.values.tolist()]
+    log_print.info(diff_urls)
 
-    body = text_struct.generate_notification(diff_urls)
+    if len(diff_urls) >= 1 :
+        body = text_struct.generate_notification(diff_urls)
     
-    user.send_resultmail(body)
-
+        user.send_resultmail(body)
 
 if __name__ == "__main__":
     main()
