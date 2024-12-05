@@ -171,9 +171,14 @@ class User:
     def __init__(self, directory):
         find_or_create("./users/")
 
-        self.directory = os.path.join("./users",directory)
+        self.directory = os.path.join("users",directory)
+
 
         self.csv_file_path = os.path.join(self.directory, "cheacker_url.csv")
+        self.csv_file_path = os.path.abspath(self.csv_file_path)
+        
+        self.csv_file_path = self.csv_file_path.replace(r"\\", "/")
+
         self.json_dir_path = os.path.join(self.directory, "json/")
 
         find_or_create(self.csv_file_path)
@@ -248,19 +253,21 @@ def save_json(data, url, directory=SAVE_JSON_DIR_PATH):
 
 #     return formatted_now
 
+DATEFORMAT = "%Y%m%d %H:%M"
+
 def get_datetime() -> str:
     nowtime = datetime.now()
-    formatted_now = nowtime.strftime("%Y%m%d")
+    formatted_now = nowtime.strftime(DATEFORMAT)
 
     return formatted_now
 
-def create_datetime(date_string : str) -> datetime :
-    return datetime.strptime(date_string, "%Y%m%d")
+def exchange_datetime(date_string : str) -> datetime :
+    return datetime.strptime(date_string, DATEFORMAT )
 
 def test_datetime():    
     date_string = "20240326"
 
-    print(create_datetime(date_string))
+    print(exchange_datetime(date_string))
     print(get_datetime())
 
 
@@ -274,7 +281,7 @@ def get_last_modified(url):
         last_modified = response.headers.get('Last-Modified')
         if last_modified:
 
-            last_modified_datetime = datetime.strptime(last_modified, '%a, %d %b %Y %H:%M:%S %Z')
+            last_modified_datetime = datetime.strptime(last_modified, DATEFORMAT)
             formatted_last_modified = last_modified_datetime.strftime("%Y%m%d")
             
             log_print.debug(formatted_last_modified, type(formatted_last_modified))
@@ -416,8 +423,19 @@ def worker(q : queue.Queue, csv_df : pd.DataFrame):
             
             if result_flg == False:
                 css_selector = csv_df.at[index_num, CL_CSS_SELECTOR]
+                run_codeTime = csv_df.at[index_num, CL_RUN_CODE]
+                updateTime   = csv_df.at[index_num, CL_UPDATED_DATETIME]
+
                 log_print.info(f'{url} - {index_num} - {css_selector}')
-                if not css_selector  :
+
+                log_print.debug(f"{url} - {index_num} - {run_codeTime}:{type(run_codeTime)}")
+                log_print.debug(f"{url} - {index_num} - {updateTime}: {type(updateTime)}")
+
+                diff_datetime = datetime.strptime(run_codeTime, DATEFORMAT ) - datetime.strptime(updateTime, DATEFORMAT )
+
+                log_print.info(f"day {diff_datetime.days} days - {type(diff_datetime.days)} ")
+
+                if not css_selector or diff_datetime.days >= 4 :
                     rescored_candidate = scraping_mainditect(url)
                     if rescored_candidate:
                         log_print.info(rescored_candidate)
@@ -460,7 +478,7 @@ def main():
     """
 #    if sys.argv[1] : user = User(sys.srgv)
 #  else : 
-    user = User("./jav")
+    user = User("jav")
 
     find_or_create(user.csv_file_path)
 
@@ -522,10 +540,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-
-
-
-
-
-
-    
+ 
