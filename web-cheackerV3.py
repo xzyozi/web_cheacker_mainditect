@@ -57,6 +57,16 @@ CL_UPDATED_DATETIME = 3
 CL_MODIFY_DATETIME = 4 
 CL_CSS_SELECTOR = 5
 
+CSV_COLUMN = { "url" : 0, # scraping url
+               "run_code" : 1, # datetime for code of the run for
+               "result_vl" : 2 ,  
+               "updated_datetime" : 3, 
+               "full_scan_datetime"  : 4, 
+               "css_selector" : 5,
+}
+
+DEFAULT_DATETIME = "19700101 00:00"
+
 TEST_CHK= 0
 
 # +----------------------------------------------------------------
@@ -255,7 +265,7 @@ def save_json(data, url, directory=SAVE_JSON_DIR_PATH):
 
 DATEFORMAT = "%Y%m%d %H:%M"
 
-def get_datetime() -> str:
+def get_Strdatetime() -> str:
     nowtime = datetime.now()
     formatted_now = nowtime.strftime(DATEFORMAT)
 
@@ -268,7 +278,25 @@ def test_datetime():
     date_string = "20240326"
 
     print(exchange_datetime(date_string))
-    print(get_datetime())
+    print(get_Strdatetime())
+
+def safe_parse_datetime(date_str, date_format=DATEFORMAT, default_datetime=DEFAULT_DATETIME):
+    """
+    Safely parse a datetime string. If parsing fails, use the default datetime.
+
+    Args:
+        date_str (str): The datetime string to parse.
+        date_format (str): The expected datetime format.
+        default_datetime (str): The default datetime string to use if parsing fails.
+
+    Returns:
+        datetime: A parsed datetime object.
+    """
+    try:
+        return datetime.strptime(date_str, date_format)
+    except ValueError:
+        log_print.warning(f"Invalid datetime format for '{date_str}'. Using default: {default_datetime}")
+        return datetime.strptime(default_datetime, date_format)
 
 
 # +----------------------------------------------------------------
@@ -330,10 +358,10 @@ def read_csv_with_padding(file_path, max_column):
             df = pd.concat([df, pd.DataFrame(padding, columns=range(len(df.columns), max_column))], axis=1)
         
         # URLカラムからエンコーディングされた文字列を削除する
-        df[CL_URL] = df[CL_URL].apply(lambda x: unicodedata.normalize('NFKD', x) if isinstance(x, str) else x)
+        df[CSV_COLUMN["url"]] = df[CSV_COLUMN["url"]].apply(lambda x: unicodedata.normalize('NFKD', x) if isinstance(x, str) else x)
 
-        # dateframeの値に欠損値（NaN)を０に置換
-        df = df.fillna(0)
+        # dateframeの値に欠損値（NaN)を""に置換
+        df = df.fillna("").astype(str)
 
         return df
     except pd.errors.EmptyDataError:
@@ -343,12 +371,15 @@ def read_csv_with_padding(file_path, max_column):
         return pd.DataFrame(empty_data)
 
 def write_csv_updateDate( path : str, csv_df : pd.DataFrame):
-    csv_df.iloc[:, CL_RUN_CODE] = get_datetime()
+    csv_df.iloc[:, CSV_COLUMN["run_code"]] = get_Strdatetime()
 
     csv_df.to_csv( path, index=False, header=False)
 
-def write_csv_updateValues( content_hashTxt  , csv_df : pd.DataFrame, index_num : int, css_selector : str):
-    csv_df.at[index_num , CL_UPDATED_DATETIME] = get_datetime()
+def write_csv_updateValues( content_hashTxt :str ,
+                            csv_df : pd.DataFrame,
+                            index_num : int,
+                            css_selector : str) -> None:
+    csv_df.at[index_num , CL_UPDATED_DATETIME] = get_Strdatetime()
     csv_df.at[index_num , CL_RESULT_VL ] = content_hashTxt
     csv_df.at[index_num , CL_CSS_SELECTOR ] = css_selector
     log_print.info(f" ## update ## - index : {index_num} - {content_hashTxt}")
@@ -422,16 +453,16 @@ def worker(q : queue.Queue, csv_df : pd.DataFrame):
             
             
             if result_flg == False:
-                css_selector = csv_df.at[index_num, CL_CSS_SELECTOR]
-                run_codeTime = csv_df.at[index_num, CL_RUN_CODE]
-                updateTime   = csv_df.at[index_num, CL_UPDATED_DATETIME]
+                css_selector = csv_df.at[index_num, CSV_COLUMN["css_selector"]]
+                run_codeTime = csv_df.at[index_num, CSV_COLUMN["run_code"]]
+                full_scan_dateTime   = csv_df.at[index_num, CSV_COLUMN["full_scan_datetime"]]
 
                 log_print.info(f'{url} - {index_num} - {css_selector}')
 
                 log_print.debug(f"{url} - {index_num} - {run_codeTime}:{type(run_codeTime)}")
-                log_print.debug(f"{url} - {index_num} - {updateTime}: {type(updateTime)}")
+                log_print.debug(f"{url} - {index_num} - {full_scan_dateTime}: {type(full_scan_dateTime)}")
 
-                diff_datetime = datetime.strptime(run_codeTime, DATEFORMAT ) - datetime.strptime(updateTime, DATEFORMAT )
+                diff_datetime = safe_parse_datetime(run_codeTime) - safe_parse_datetime(full_scan_dateTime )
 
                 log_print.info(f"day {diff_datetime.days} days - {type(diff_datetime.days)} ")
 
@@ -441,6 +472,9 @@ def worker(q : queue.Queue, csv_df : pd.DataFrame):
                         log_print.info(rescored_candidate)
                         content_hash_text = hashlib.sha256(str(rescored_candidate["links"]).encode()).hexdigest()
                         css_selector = rescored_candidate["css_selector"]
+
+                        # full scan datetime update 
+                        csv_df.at[index_num , CSV_COLUMN["full_scan_datetime"]] = get_Strdatetime()
 
                         update_flg = True
                         log_print.debug(f'{url} - {index_num} - {rescored_candidate["links"]}')
@@ -460,9 +494,9 @@ def worker(q : queue.Queue, csv_df : pd.DataFrame):
                         q.task_done()
 
                 # Different elements
-                if (csv_df.at[index_num, CL_RESULT_VL] != content_hash_text and 
-                    update_flg ):
-                    # debug 
+                if (csv_df.at[index_num, CSV_COLUMN["result_vl"]] != content_hash_text and update_flg ):
+                    
+                    log_print.info(f' update --- before {csv_df.at[index_num, CSV_COLUMN["result_vl"] ]} : after {content_hash_text} ')
                     save_json(rescored_candidate, url)
                     write_csv_updateValues(content_hash_text, csv_df, index_num, css_selector)
     except Exception as e:
@@ -489,7 +523,8 @@ def main():
     log_print.info(csv_df)
     # for diff check 
     bef_df = read_csv_with_padding(user.csv_file_path, MAX_COLUMN)
-    
+
+    log_print.debug(csv_df.dtypes)    
 
     url_column_list = csv_df.iloc[:, CL_URL].tolist()
 
