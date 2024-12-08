@@ -467,24 +467,31 @@ def worker(q : queue.Queue, csv_df : pd.DataFrame):
                 log_print.info(f"day {diff_datetime.days} days - {type(diff_datetime.days)} ")
 
                 if not css_selector or diff_datetime.days >= 4 :
+                    # full scan 
                     rescored_candidate = scraping_mainditect(url)
                     if rescored_candidate:
-                        log_print.info(rescored_candidate)
+                        log_print.debug(rescored_candidate)
+                        
                         content_hash_text = hashlib.sha256(str(rescored_candidate["links"]).encode()).hexdigest()
                         css_selector = rescored_candidate["css_selector"]
+                        
 
                         # full scan datetime update 
                         csv_df.at[index_num , CSV_COLUMN["full_scan_datetime"]] = get_Strdatetime()
 
                         update_flg = True
-                        log_print.debug(f'{url} - {index_num} - {rescored_candidate["links"]}')
+                        log_print.info(f'{url} - {index_num} - {rescored_candidate["links"]} --- {content_hash_text}')
                         log_print.debug(f'{url} - {index_num} - {content_hash_text}')
 
                     else:
                         log_print.info(f"rescored_candidate is None type ")
                         q.task_done()
-                else: 
-                    rescored_candidate = asyncio.run(choice_content(url,css_selector))
+                # css selector         
+                else:
+                    try : 
+                        rescored_candidate = choice_content(url,css_selector)
+
+                    except Exception as e : log_print.error(e)
 
                     if rescored_candidate:
                         content_hash_text = hashlib.sha256(str(rescored_candidate["links"]).encode()).hexdigest()

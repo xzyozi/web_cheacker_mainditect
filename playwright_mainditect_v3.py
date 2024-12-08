@@ -14,6 +14,8 @@ from urllib.parse import urlparse, urljoin
 import aiohttp
 import sys
 
+import hashlib
+
 asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 # +----------------------------------------------------------------
 # + Constant definition
@@ -1182,9 +1184,9 @@ if __name__ == "__main__":
     # 使用例
     url = "https://loopholes.site/"
     #url = " https://mangakoma01.net/manga/zhou-shu-hui-zhana004"
-    # url = "http://animesoku.com/archives/38156477.html"
+    # url = "http://animesoku.com/archives/38156477.html" # ng
     #url = "https://monoschinos2.com/anime/bleach-sennen-kessen-hen-soukoku-tan-sub-espanol"
-
+    url = "https://s1s1s1.com/top"
     # asyncio.run(test_main(url))
     choice_dict = {
         "id": "ld_blog_article_comment_entries",
@@ -1192,8 +1194,14 @@ if __name__ == "__main__":
         "attributes": {"id": "ld_blog_article_comment_entries"}
     }
 
-    ch_tree=  asyncio.run(choice_content(url,"div#list.list.ect-vertical-card-3.ect-vertical-card.ect-3-columns.front-page-type-index[id='list']"))
-    print(ch_tree)
+    ch_tree=  asyncio.run(choice_content(url,"main.home.top"))
+    print(ch_tree,type(ch_tree))
+    if ch_tree is not None :
+        content_hash_text = hashlib.sha256(str(ch_tree["links"]).encode()).hexdigest()
+    
+        print(content_hash_text)
+    
+    
 
     import datetime
     print(datetime.datetime.now())
