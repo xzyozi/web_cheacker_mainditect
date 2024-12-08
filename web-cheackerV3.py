@@ -66,7 +66,7 @@ CSV_COLUMN = { "url" : 0, # scraping url
 }
 
 DEFAULT_DATETIME = "19700101 00:00"
-
+PROC_MPL_SEC = 30
 TEST_CHK= 0
 
 # +----------------------------------------------------------------
@@ -418,7 +418,7 @@ def pre_proc():
 """
 
 
-def worker(q : queue.Queue, csv_df : pd.DataFrame):
+def worker(q : queue.Queue, csv_df : pd.DataFrame, error_list : list):
     """
     Worker function to process URLs from the queue.
 
@@ -450,7 +450,7 @@ def worker(q : queue.Queue, csv_df : pd.DataFrame):
             #         write_csv_updateValues(last_modified, csv_df, index_num)
             #         log_print.info(f"Updated URL for modified : {url}")
             #         result_flg = True
-            
+            now_sec = datetime.now()
             
             if result_flg == False:
                 css_selector = csv_df.at[index_num, CSV_COLUMN["css_selector"]]
@@ -485,11 +485,15 @@ def worker(q : queue.Queue, csv_df : pd.DataFrame):
 
                     else:
                         log_print.info(f"rescored_candidate is None type ")
+                        error_list.append([url, "full scann None"])
                         q.task_done()
                 # css selector         
                 else:
                     try : 
                         rescored_candidate = choice_content(url,css_selector)
+                        proc_time = datetime.now() - now_sec
+                        if proc_time.total_seconds() > PROC_MPL_SEC :
+                            error_list.append([url, f"processing {PROC_MPL_SEC} sec over -> {proc_time.total_seconds()} seconds"])
 
                     except Exception as e : log_print.error(e)
 
@@ -498,7 +502,10 @@ def worker(q : queue.Queue, csv_df : pd.DataFrame):
                         update_flg = True
                     else:
                         log_print.error(f"choice_content is None type ")
+                        error_list.append([url," choise content None"])
+                        csv_df.at[index_num, CSV_COLUMN["full_scan_datetime"] ] = ""
                         q.task_done()
+                        
 
                 # Different elements
                 if (csv_df.at[index_num, CSV_COLUMN["result_vl"]] != content_hash_text and update_flg ):
@@ -508,6 +515,7 @@ def worker(q : queue.Queue, csv_df : pd.DataFrame):
                     write_csv_updateValues(content_hash_text, csv_df, index_num, css_selector)
     except Exception as e:
         log_print.error(f"Error processing URL {url}: {e}")
+        error_list.append([url, e])
     finally:
         # Ensure the task is marked as done whether successful or failed
         q.task_done()
@@ -525,6 +533,7 @@ def main():
 
     # use worker
     global url_column_list
+    error_list = []
 
     csv_df = read_csv_with_padding(user.csv_file_path, MAX_COLUMN)
     log_print.info(csv_df)
@@ -548,7 +557,7 @@ def main():
     # Start worker threads
     threads  = []
     for _ in range(WORKER_THREADS_NUM):
-        thread = threading.Thread(target=worker, args=(q_pool, csv_df) )
+        thread = threading.Thread(target=worker, args=(q_pool, csv_df, error_list) )
         thread.daemon = True
         thread.start()
         threads.append(thread)
@@ -558,8 +567,6 @@ def main():
 
     for thread in threads:
         thread.join()
-
-    log_print.info("Worker thread started")
 
     # Update CSV file with the latest data
     write_csv_updateDate(user.csv_file_path, csv_df)
@@ -573,6 +580,10 @@ def main():
 
     diff_urls = [row[CL_URL] for row in result.values.tolist()]
     log_print.info(diff_urls)
+    if len(error_list) > 0:
+        log_print.info("-------- ERROR list output -----------")
+        for error_msg in error_list:
+            log_print.info(error_msg)
 
     if len(diff_urls) >= 1 :
         body = text_struct.generate_notification(diff_urls)
