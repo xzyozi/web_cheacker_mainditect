@@ -2,7 +2,7 @@ import math
 from typing import Dict, List, Any, Union , Optional
 from concurrent.futures import ThreadPoolExecutor
 from scipy import stats
-
+import os
 import asyncio
 from playwright.async_api import async_playwright, Page, TimeoutError as PlaywrightTimeoutError
 
@@ -15,6 +15,8 @@ import aiohttp
 import sys
 
 import hashlib
+
+import util_str
 
 asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 # +----------------------------------------------------------------
@@ -419,16 +421,16 @@ def make_css_selector(choice_dict : Dict) -> str:
 # + ----------------------------------------------------------------
 # +  depth weight
 # + ----------------------------------------------------------------
-def calculate_depth_weight(max_depth : int,  
-                           current_depth : int , 
+def calculate_depth_weight(current_depth : int , 
+                           max_depth : int = 8,
                            base_weight :float =1.0 , 
-                           weight_factor :float =4.0):
+                           weight_factor :float =6.0):
     """
     現在の階層レベルに基づいて depth の重みを計算する関数
 
     Args:
-        max_depth (int): 最大の階層レベル
         current_depth (int): 現在の階層レベル
+        max_depth (int): 最大の階層レベル (デフォルト: 8)
         base_weight (float): ベースの重み係数 (デフォルト: 1.0)
         weight_factor (float): 重み係数の増加率 (デフォルト: 4.0)
 
@@ -438,7 +440,6 @@ def calculate_depth_weight(max_depth : int,
     # 最大深さと現在の深さの比率を計算
     depth_ratio = current_depth / max_depth
 
-    # 比率に応じて重みを調整
     weight = base_weight * (weight_factor ** depth_ratio)
 
     return weight
@@ -546,7 +547,7 @@ class MainContentScorer:
 
         if depth_flag :
             # ネストが深いほどスコアを高く設定する
-            depth_weight = calculate_depth_weight(7, node["depth"] - self.parent_depth_diff)  # 深さに基づく重みを計算
+            depth_weight = calculate_depth_weight( node["depth"] - self.parent_depth_diff)  # 深さに基づく重みを計算
             score *= depth_weight  # スコアを計算
             # print("★  code passed to depth weight calculation " + str(depth_weight ) ) 
         
@@ -674,6 +675,34 @@ def highlight_main_content(driver, main_content, filename):
     draw.rectangle(((rect["x"], rect["y"]), (rect["x"] + rect["width"], rect["y"] + rect["height"])), outline=(126, 185, 255), width=5)
     img.save(filename)
 
+
+async def save_screenshot(url_list : list, save_dir="temp") -> list:
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
+        page = await context.new_page()
+        
+        filelist = []
+        util_str.util_handle_path(save_dir)
+        for url in url_list:
+            try:
+                # ページ移動と初期待機を簡略化
+                await page.goto(url, wait_until='load', timeout=50000)
+
+                domain = util_str.get_domain(url)
+                filename = f"{domain}.png"
+                filepath = os.path.join("temp",filename)
+
+                filelist.append(filepath)
+
+                await page.screenshot(path=filepath, full_page=True)
+
+            except Exception as e:
+                print(e)
+
+        await browser.close()
+
+    return filelist
 
 
 
@@ -1191,7 +1220,7 @@ async def choice_content(url: str, selector: str):
         try:
             # ページ移動と初期待機を簡略化
             await page.goto(url, wait_until='load', timeout=10000)
-            await page.wait_for_selector(selector, state='attached', timeout=5000)
+            await page.wait_for_selector(selector, state='attached', timeout=10000)
             
             # コンテンツ読み込みを最適化
             previous_height = None
@@ -1201,7 +1230,7 @@ async def choice_content(url: str, selector: str):
                     break
                 previous_height = current_height
                 await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                await asyncio.sleep(0.5)  # 必要最小限の待機
+                await asyncio.sleep(1)  # 必要最小限の待機
 
             # DOMツリーを取得
             tree = await get_tree(page, selector=selector)
@@ -1226,7 +1255,8 @@ if __name__ == "__main__":
     #url = " https://mangakoma01.net/manga/zhou-shu-hui-zhana004"
     # url = "http://animesoku.com/archives/38156477.html" # ng
     #url = "https://monoschinos2.com/anime/bleach-sennen-kessen-hen-soukoku-tan-sub-espanol"
-    url = "https://chinesebeauty.mixh.jp/wp/"
+    url = "https://gamewith.jp/apexlegends/"
+    url = "https://s1s1s1.com/top "
 
     import datetime
     sta_sec = datetime.datetime.now()
@@ -1243,7 +1273,7 @@ if __name__ == "__main__":
     sta_sec = datetime.datetime.now()
 
     end_sec = datetime.datetime.now()
-    ch_tree=  asyncio.run(choice_content(url,"main#main.site-main[id='main']"))
+    ch_tree=  asyncio.run(choice_content(url,"div#article-body[id='article-body']"))
     print(ch_tree,type(ch_tree))
     if ch_tree is not None :
         content_hash_text = hashlib.sha256(str(ch_tree["links"]).encode()).hexdigest()

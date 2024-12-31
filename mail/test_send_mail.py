@@ -3,8 +3,13 @@ import ssl
 import getpass
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.image import MIMEImage
 import yaml
-# from . import my_gmail_account as gmail
+import os
+# Gmail認証に必要
+# from googleapiclient.discovery import build
+# from httplib2                  import Http
+# from oauth2client              import file, client, tools
 
 
 def get_password():
@@ -13,7 +18,9 @@ def get_password():
 
 def send_email(config_file,
                receiver_email,               
-               body, 
+               body,
+               body_type = "plain", 
+               image_list = [],
                subject = "",
                smtp_server = "smtp.gmail.com",
                port = 465 # port number
@@ -25,21 +32,38 @@ def send_email(config_file,
     message["Subject"] = subject
 
     # メール本文の追加
-    message.attach(MIMEText(body, "plain"))
+    message.attach(MIMEText(body, body_type))
+
+    # 画像を添付
+    for i, image_path in enumerate(image_list):
+        file_ext = os.path.splitext(image_path)[1].lower()
+        ext = file_ext[1:]
+        with open(image_path, "rb") as img_file:
+            img = MIMEImage(img_file.read(), _subtype=f'{ext}')
+            img.add_header("Content-ID", f"<image_{i}>")
+            message.attach(img)
 
     # SMTPサーバーの設定
     smtp_server = smtp_server
     port = port
 
     # SMTPサーバーへの接続とセキュアな通信の確立
-    context = ssl.create_default_context()
-    with smtplib.SMTP_SSL(smtp_server, port, context=context) as server:
-        # ログイン
+    # context = ssl.create_default_context()
+    # with smtplib.SMTP_SSL(smtp_server, port, context=context) as server:
+    #     # ログイン
         
-        server.login(config_file["gmail"]["account"], config_file["gmail"]["password"])
+    #     server.login(config_file["gmail"]["account"], config_file["gmail"]["password"])
 
-        # メールの送信
-        server.sendmail(config_file["gmail"]["account"], receiver_email, message.as_string())
+    #     # メールの送信
+    #     server.sendmail(config_file["gmail"]["account"], receiver_email, message.as_string())
+
+    smtpobj = smtplib.SMTP('smtp.gmail.com', 587)
+    smtpobj.ehlo()
+    smtpobj.starttls()
+    smtpobj.ehlo()
+    smtpobj.login(config_file["gmail"]["account"], config_file["gmail"]["password"])
+    smtpobj.sendmail(config_file["gmail"]["account"], receiver_email, message.as_string())
+    smtpobj.close()
 
     print("メールが送信されました。")
 
