@@ -9,6 +9,9 @@ import threading
 import numpy as np
 import requests
 import asyncio
+import shutil
+
+import util_str
 
 # +----------------------------------------------------------------
 # + my module imports
@@ -42,13 +45,6 @@ pd.set_option('display.max_rows', None)
 pd.set_option('display.max_columns', None)
 
 MAX_COLUMN = 6 
-CSV_HEADER = ["url", # scraping url
-              "updated_datetime", # updated datetime
-              "run_code", # datetime for code of the run for 
-              "result_vl" , # value of the url elements
-              "modify_datetime", # modify datetime 
-              "css_selector", # css selector 
-]
 
 CL_URL = 0
 CL_RUN_CODE = 1
@@ -98,79 +94,7 @@ def setup_logging(log_level=INFO):
 log_print = setup_logging()
 
 log_print.info(SCRIPT_PATH)
-# +----------------------------------------------------------------
-# file edit faction
-# +----------------------------------------------------------------
 
-def find_or_create(path, custom_name=None):
-    """
-    指定されたパスに対して、次の操作を行う:
-    - パスに拡張子がある場合: ファイルを作成または取得する
-    - パスに拡張子がなく、カスタム名が指定されている場合: カスタム名でファイルを作成する
-    - パスに拡張子がなく、カスタム名が指定されていない場合: ディレクトリを作成する
-
-    Args:
-        path (str): ファイルまたはディレクトリのパス
-        custom_name (str, optional): ファイルのカスタム名
-
-    Returns:
-        str: 見つかったまたは作成されたファイルまたはディレクトリのパス
-    """
-    directory, filename = os.path.split(path)
-    extension = os.path.splitext(filename)[-1]
-    
-    # パスに拡張子がある場合: ファイルを作成または取得する
-    if extension:
-        file_path = path
-        if os.path.isfile(file_path):
-            # ファイルが存在する場合は何もせずにパスを返す
-            return file_path
-        else:
-            try:
-                # ディレクトリが存在しない場合は作成する
-                os.makedirs(directory, exist_ok=True)
-
-                with open(file_path, 'w') as file:
-                    file.write('')
-                print(f"ファイル '{file_path}' を作成しました。")
-                # ファイル作成後、パーミッションを変更する
-                os.chmod(file_path, 0o755)  # 例: 読み取りと実行の権限を追加
-                return file_path
-            except IOError as e:
-                print(f"ファイル '{file_path}' を作成できませんでした: {e.strerror}")
-                return None
-
-    # パスに拡張子がなく、カスタム名が指定されている場合: カスタム名でファイルを作成する
-    elif custom_name:
-        file_path = os.path.join(directory, custom_name)
-        if os.path.isfile(file_path):
-            return file_path
-        else:
-            try:
-                with open(file_path, 'w') as file:
-                    file.write('')
-                print(f"ファイル '{file_path}' を作成しました。")
-                os.chmod(file_path, 0o755)  # パーミッションを設定する
-                return file_path
-            except IOError as e:
-                print(f"ファイル '{file_path}' を作成できませんでした: {e.strerror}")
-                return None
-
-    # パスに拡張子がなく、カスタム名が指定されていない場合: ディレクトリを作成する
-    else:
-        dir_path = path
-        if os.path.isdir(dir_path):
-            print(f"ディレクトリ '{dir_path}' はすでに存在します。")
-            return dir_path
-        else:
-            try:
-                os.makedirs(dir_path)
-                print(f"ディレクトリ '{dir_path}' を作成しました。")
-                os.chmod(dir_path, 0o755)  # パーミッションを設定する
-                return dir_path
-            except OSError as e:
-                print(f"ディレクトリ '{dir_path}' を作成できませんでした: {e.strerror}")
-                return None
 
 # +----------------------------------------------------------------
 # + User class 
@@ -179,7 +103,7 @@ import yaml
 
 class User:
     def __init__(self, directory):
-        find_or_create("./users/")
+        util_str.util_handle_path("./users/")
 
         self.directory = os.path.join("users",directory)
 
@@ -191,8 +115,8 @@ class User:
 
         self.json_dir_path = os.path.join(self.directory, "json/")
 
-        find_or_create(self.csv_file_path)
-        find_or_create(self.json_dir_path)
+        util_str.util_handle_path(self.csv_file_path)
+        util_str.util_handle_path(self.json_dir_path)
 
         self.load_mail_settings()
 
@@ -204,28 +128,17 @@ class User:
         with open(config_pass)as f :
             self.yaml_file = yaml.safe_load(f)
 
-    def send_resultmail(self, body):
+    def send_resultmail(self, body, body_type, image_list=[]):
         if self.yaml_file is not None:
             send_email(
                 self.yaml_file,
                 self.yaml_file["gmail"]["receiver_mail"],
                 body=body,
+                body_type=body_type,
+                image_list=image_list
             )
 
         else : log_print("not send mail")
-
-
-# user = User("./find/")
-
-# +----------------------------------------------------------------
-# + get domain name
-# +----------------------------------------------------------------
-from urllib.parse import urlparse
-
-def get_domain(url):
-    parsed_url = urlparse(url)
-    domain = parsed_url.netloc
-    return domain
 
 
 # +----------------------------------------------------------------
@@ -242,9 +155,9 @@ def save_json(data, url, directory=SAVE_JSON_DIR_PATH):
     Retrun: 
         None
     """
-    domain = get_domain(url)
+    domain = util_str.get_domain(url)
     file_path = os.path.join(directory, f"{domain}.json")
-    find_or_create(file_path)  # ファイルを作成または取得する
+    util_str.util_handle_path(file_path)  # ファイルを作成または取得する
      
     # URLをデータに追加
     data['url'] = url
@@ -529,7 +442,7 @@ def main():
 #  else : 
     user = User("jav")
 
-    find_or_create(user.csv_file_path)
+    util_str.util_handle_path(user.csv_file_path)
 
     # use worker
     global url_column_list
@@ -580,15 +493,20 @@ def main():
 
     diff_urls = [row[CL_URL] for row in result.values.tolist()]
     log_print.info(diff_urls)
+
+    file_list = asyncio.run(playwright_mainditect.save_screenshot(diff_urls,save_dir="temp"))
+
     if len(error_list) > 0:
         log_print.info("-------- ERROR list output -----------")
         for error_msg in error_list:
             log_print.info(error_msg)
 
     if len(diff_urls) >= 1 :
-        body = text_struct.generate_notification(diff_urls)
+        body = text_struct.generate_html(diff_urls,file_list)
     
-        user.send_resultmail(body)
+        user.send_resultmail(body,body_type="html",image_list=file_list)
+
+    shutil.rmtree("temp")
 
 if __name__ == "__main__":
     main()
