@@ -80,7 +80,7 @@ def setup_logging(log_level=INFO):
 
     # フォーマッターを作成
     # formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s - Line %(lineno)d')
-    formatter = logging.Formatter('%(message)s - [%(filename)s] [%(lineno)d Line]')
+    formatter = logging.Formatter('%(message)s - [%(filename)s][%(lineno)d Line][%(asctime)s]')
     # コンソールハンドラーを作成し、フォーマッターを設定
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
@@ -440,6 +440,8 @@ def main():
     """
 #    if sys.argv[1] : user = User(sys.srgv)
 #  else : 
+    if os.path.isdir("temp"):
+        shutil.rmtree("temp")
     user = User("jav")
 
     util_str.util_handle_path(user.csv_file_path)
