@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw
 from urllib.parse import urlparse, urljoin
 import aiohttp
 import sys
-
+from urllib.parse import urlparse
 import hashlib
 
 import util_str
@@ -676,29 +676,34 @@ def highlight_main_content(driver, main_content, filename):
     img.save(filename)
 
 
-async def save_screenshot(url_list : list, save_dir="temp") -> list:
+async def save_screenshot(url_list: list, save_dir="temp") -> list:
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
         page = await context.new_page()
-        
+
         filelist = []
-        util_str.util_handle_path(save_dir)
-        for url in url_list:
+        os.makedirs(save_dir, exist_ok=True)  # フォルダを確実に作成
+
+        for url in url_list[:]:
+            # URLの検証
+            parsed_url = urlparse(url)
+            if not parsed_url.scheme or not parsed_url.netloc:
+                print(f"Invalid URL skipped: {url}")
+                continue
+
+            domain = parsed_url.netloc.replace(".", "_")  # ドメインから安全なファイル名生成
+            filename = f"{domain}.png"
+            filepath = os.path.join(save_dir, filename)
+
             try:
-                # ページ移動と初期待機を簡略化
+                # ページ移動と初期待機
                 await page.goto(url, wait_until='load', timeout=50000)
-
-                domain = util_str.get_domain(url)
-                filename = f"{domain}.png"
-                filepath = os.path.join("temp",filename)
-
-                filelist.append(filepath)
-
                 await page.screenshot(path=filepath, full_page=True)
-
+                filelist.append(filepath)  # 正常時にのみ追加
             except Exception as e:
-                print(e)
+                print(f"Failed to process {url}: {e}")
+                url_list.remove(url)  # 失敗時はリストから削除
 
         await browser.close()
 
