@@ -676,38 +676,47 @@ def highlight_main_content(driver, main_content, filename):
     img.save(filename)
 
 
-async def save_screenshot(url_list: list, save_dir="temp") -> list:
+async def save_screenshot(url_list: list, save_dir="temp", width=500, height=None) -> list:
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
         page = await context.new_page()
 
         filelist = []
-        os.makedirs(save_dir, exist_ok=True)  # フォルダを確実に作成
+        os.makedirs(save_dir, exist_ok=True)  # Ensure the folder is created
 
         for url in url_list[:]:
-            # URLの検証
+            # Validate the URL
             parsed_url = urlparse(url)
             if not parsed_url.scheme or not parsed_url.netloc:
                 print(f"Invalid URL skipped: {url}")
                 continue
 
-            domain = parsed_url.netloc.replace(".", "_")  # ドメインから安全なファイル名生成
+            domain = parsed_url.netloc.replace(".", "_")  # Generate a safe file name from the domain
             filename = f"{domain}.png"
             filepath = os.path.join(save_dir, filename)
 
             try:
-                # ページ移動と初期待機
+                # Navigate to the page and wait for it to load
                 await page.goto(url, wait_until='load', timeout=50000)
                 await page.screenshot(path=filepath, full_page=True)
-                filelist.append(filepath)  # 正常時にのみ追加
+
+                # Resize the image to the specified width and optional height
+                with Image.open(filepath) as img:
+                    aspect_ratio = img.height / img.width
+                    new_height = height if height else int(width * aspect_ratio)
+                    resized_img = img.resize((width, new_height))
+                    resized_img.save(filepath)
+
+                filelist.append(filepath)  # Add to the list only if successful
             except Exception as e:
                 print(f"Failed to process {url}: {e}")
-                url_list.remove(url)  # 失敗時はリストから削除
+                url_list.remove(url)  # Remove from the list on failure
 
         await browser.close()
 
     return filelist
+
 
 
 
