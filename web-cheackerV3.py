@@ -170,12 +170,6 @@ def save_json(data, url, directory=SAVE_JSON_DIR_PATH):
 # datetime edit function 
 # +----------------------------------------------------------------
 
-# def get_datetime() -> str:
-#     nowtime = datetime.now()
-#     formatted_now = nowtime.strftime("%Y%m%d")
-
-#     return formatted_now
-
 DATEFORMAT = "%Y%m%d %H:%M"
 
 def get_Strdatetime() -> str:
