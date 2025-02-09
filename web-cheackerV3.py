@@ -11,7 +11,6 @@ import requests
 import asyncio
 import shutil
 
-import util_str
 
 # +----------------------------------------------------------------
 # + my module imports
@@ -19,6 +18,7 @@ import util_str
 import playwright_mainditect_v3 as playwright_mainditect
 from mail import send_email
 from text_struct import text_struct
+import util_str
 
 # +----------------------------------------------------------------
 # + Constant definition
@@ -27,9 +27,6 @@ SCRIPT_PATH = os.path.dirname(os.path.abspath(__file__))
 SAVE_CSV_DIR_PATH = os.path.join(SCRIPT_PATH, "./data/cheacker_url.csv")
 SAVE_JSON_DIR_PATH  = os.path.join(SCRIPT_PATH, "./data/json/")
 USER_DIR_PATH = os.path.join(SCRIPT_PATH, "./user")
-
-
-
 
 WORKER_THREADS_NUM = 2
 
@@ -44,26 +41,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 pd.set_option('display.max_rows', None)
 pd.set_option('display.max_columns', None)
 
-MAX_COLUMN = 6 
-
-CL_URL = 0
-CL_RUN_CODE = 1
-CL_RESULT_VL = 2
-CL_UPDATED_DATETIME = 3
-CL_MODIFY_DATETIME = 4 
-CL_CSS_SELECTOR = 5
-
-CSV_COLUMN = { "url" : 0, # scraping url
-               "run_code" : 1, # datetime for code of the run for
-               "result_vl" : 2 ,  
-               "updated_datetime" : 3, 
-               "full_scan_datetime"  : 4, 
-               "css_selector" : 5,
-}
-
-DEFAULT_DATETIME = "19700101 00:00"
 PROC_MPL_SEC = 30
-TEST_CHK= 0
 
 # +----------------------------------------------------------------
 # logging settings
@@ -169,7 +147,7 @@ def save_json(data, url, directory=SAVE_JSON_DIR_PATH):
 # +----------------------------------------------------------------
 # datetime edit function 
 # +----------------------------------------------------------------
-
+DEFAULT_DATETIME = "19700101 00:00"
 DATEFORMAT = "%Y%m%d %H:%M"
 
 def get_Strdatetime() -> str:
@@ -240,6 +218,25 @@ def remove_encoded_chars(url):
 # +----------------------------------------------------------------
 from urllib.parse import unquote
 import unicodedata
+
+
+
+CL_URL = 0
+CL_RUN_CODE = 1
+CL_RESULT_VL = 2
+CL_UPDATED_DATETIME = 3
+CL_MODIFY_DATETIME = 4 
+CL_CSS_SELECTOR = 5
+
+CSV_COLUMN = { "url" : 0, # scraping url
+               "run_code" : 1, # datetime for code of the run for
+               "result_vl" : 2 ,  
+               "updated_datetime" : 3, 
+               "full_scan_datetime"  : 4, 
+               "css_selector" : 5,
+}
+
+MAX_COLUMN = len(CSV_COLUMN)
 
 def read_csv_with_padding(file_path, max_column):
     """
@@ -324,184 +321,136 @@ def pre_proc():
     return csv_df, url_columnLst
 """
 
+# Worker function to process a single URL
+def process_url(url, index_num, csv_df, error_list):
+    try:
+        log_print.info(f"Processing URL: {url}, index: {index_num}")
+        now_sec = datetime.now()
+        
+        css_selector = csv_df.at[index_num, CSV_COLUMN["css_selector"]]
+        run_code_time = csv_df.at[index_num, CSV_COLUMN["run_code"]]
+        full_scan_datetime = csv_df.at[index_num, CSV_COLUMN["full_scan_datetime"]]
+        
+        diff_days = (safe_parse_datetime(run_code_time) - safe_parse_datetime(full_scan_datetime)).days
+        
+        result_flg = False
+        update_flg = False
 
-def worker(q : queue.Queue, csv_df : pd.DataFrame, error_list : list):
-    """
-    Worker function to process URLs from the queue.
+        # last_modified = get_last_modified(url)
+        # if last_modified:
+        #     if csv_df.at[index_num, CL_RESULT_VL] != last_modified or csv_df.at[index_num, CL_RESULT_VL] is None:
+        #         log_print.info(f"{csv_df.at[index_num, CL_RESULT_VL]} is not {last_modified}) ")
+        #         write_csv_updateValues(last_modified, csv_df, index_num)
+        #         log_print.info(f"Updated URL for modified : {url}")
+        #         result_flg = True
 
-    Args:
-        q (queue.Queue): Queue containing URLs to process.
-        csv_df         : pandas dateframe class 
-    """
-    try :
-        while True:
+
+        if not css_selector or diff_days >= 4:
+            rescored_candidate = scraping_mainditect(url)
+            if rescored_candidate:
+                content_hash_text = hashlib.sha256(str(rescored_candidate["links"]).encode()).hexdigest()
+                csv_df.at[index_num, CSV_COLUMN["full_scan_datetime"]] = get_Strdatetime()
+                update_flg = True
+                result_flg = True
+            else:
+                log_print.info("Full scan returned None")
+                error_list.append([url, "Full scan returned None"])
+                return
+        else:
             try:
-                url = q.get(timeout=10)  # Wait up to 10 seconds to get an item from the queue
-            except queue.Empty:
-                log_print.info("Queue is empty, exiting worker")
-                break
+                rescored_candidate = choice_content(url, css_selector)
+                proc_time = datetime.now() - now_sec
+                if proc_time.total_seconds() > PROC_MPL_SEC:
+                    error_list.append([url, f"Processing time exceeded {PROC_MPL_SEC} sec -> {proc_time.total_seconds()} sec"])
+                update_flg = True
+            except Exception as e:
+                log_print.error(e)
+                return
 
-            index_num = url_column_list.index(url)  # Get the index of the URL in the list
-            if url is None:
-                break
-            
-            result_flg = False
-            update_flg = False
-            
-            log_print.info(f"Processing URL: {url } , index: {index_num}")
-            
-            # last_modified = get_last_modified(url)
-            # if last_modified:
-            #     if csv_df.at[index_num, CL_RESULT_VL] != last_modified or csv_df.at[index_num, CL_RESULT_VL] is None:
-            #         log_print.info(f"{csv_df.at[index_num, CL_RESULT_VL]} is not {last_modified}) ")
-            #         write_csv_updateValues(last_modified, csv_df, index_num)
-            #         log_print.info(f"Updated URL for modified : {url}")
-            #         result_flg = True
-            now_sec = datetime.now()
-            
-            if result_flg == False:
-                css_selector = csv_df.at[index_num, CSV_COLUMN["css_selector"]]
-                run_codeTime = csv_df.at[index_num, CSV_COLUMN["run_code"]]
-                full_scan_dateTime   = csv_df.at[index_num, CSV_COLUMN["full_scan_datetime"]]
-
-                log_print.info(f'{url} - {index_num} - {css_selector}')
-
-                log_print.debug(f"{url} - {index_num} - {run_codeTime}:{type(run_codeTime)}")
-                log_print.debug(f"{url} - {index_num} - {full_scan_dateTime}: {type(full_scan_dateTime)}")
-
-                diff_datetime = safe_parse_datetime(run_codeTime) - safe_parse_datetime(full_scan_dateTime )
-
-                log_print.info(f"day {diff_datetime.days} days - {type(diff_datetime.days)} ")
-
-                if not css_selector or diff_datetime.days >= 4 :
-                    # full scan 
-                    rescored_candidate = scraping_mainditect(url)
-                    if rescored_candidate:
-                        log_print.debug(rescored_candidate)
-                        
-                        content_hash_text = hashlib.sha256(str(rescored_candidate["links"]).encode()).hexdigest()
-                        css_selector = rescored_candidate["css_selector"]
-                        
-
-                        # full scan datetime update 
-                        csv_df.at[index_num , CSV_COLUMN["full_scan_datetime"]] = get_Strdatetime()
-
-                        update_flg = True
-                        log_print.info(f'{url} - {index_num} - {rescored_candidate["links"]} --- {content_hash_text}')
-                        log_print.debug(f'{url} - {index_num} - {content_hash_text}')
-
-                    else:
-                        log_print.info(f"rescored_candidate is None type ")
-                        error_list.append([url, "full scann None"])
-                        q.task_done()
-                # css selector         
-                else:
-                    try : 
-                        rescored_candidate = choice_content(url,css_selector)
-                        proc_time = datetime.now() - now_sec
-                        if proc_time.total_seconds() > PROC_MPL_SEC :
-                            error_list.append([url, f"processing {PROC_MPL_SEC} sec over -> {proc_time.total_seconds()} seconds"])
-
-                    except Exception as e : log_print.error(e)
-
-                    if rescored_candidate:
-                        content_hash_text = hashlib.sha256(str(rescored_candidate["links"]).encode()).hexdigest()
-                        update_flg = True
-                    else:
-                        log_print.error(f"choice_content is None type ")
-                        error_list.append([url," choise content None"])
-                        csv_df.at[index_num, CSV_COLUMN["full_scan_datetime"] ] = ""
-                        q.task_done()
-                        
-
-                # Different elements
-                if (csv_df.at[index_num, CSV_COLUMN["result_vl"]] != content_hash_text and update_flg ):
-                    
-                    log_print.info(f' update --- before {csv_df.at[index_num, CSV_COLUMN["result_vl"] ]} : after {content_hash_text} ')
-                    save_json(rescored_candidate, url)
-                    write_csv_updateValues(content_hash_text, csv_df, index_num, css_selector)
+        if rescored_candidate:
+            content_hash_text = hashlib.sha256(str(rescored_candidate["links"]).encode()).hexdigest()
+            if csv_df.at[index_num, CSV_COLUMN["result_vl"]] != content_hash_text:
+                log_print.info(f"Updating {url} - {content_hash_text}")
+                save_json(rescored_candidate, url)
+                write_csv_updateValues(content_hash_text, csv_df, index_num, css_selector)
+                result_flg = True
+        else:
+            log_print.error("Choice content is None")
+            error_list.append([url, "Choice content None"])
+            csv_df.at[index_num, CSV_COLUMN["full_scan_datetime"]] = ""
     except Exception as e:
         log_print.error(f"Error processing URL {url}: {e}")
         error_list.append([url, e])
-    finally:
-        # Ensure the task is marked as done whether successful or failed
-        q.task_done()
+    
+    return result_flg, update_flg
+
+
+def worker(q, csv_df, error_list):
+    while True:
+        try:
+            url = q.get(timeout=10)
+        except queue.Empty:
+            log_print.info("Queue is empty, exiting worker")
+            break
         
+        index_num = url_column_list.index(url)
+        if url is None:
+            break
 
-def main():
-    """
-    Main function to run the web scraping process.
-    """
-#    if sys.argv[1] : user = User(sys.srgv)
-#  else : 
-    if os.path.isdir("temp"):
-        shutil.rmtree("temp")
-    user = User("jav")
+        result_flg, update_flg = process_url(url, index_num, csv_df, error_list)
+        log_print.debug(f"Worker flags - Result: {result_flg}, Update: {update_flg}")
+        q.task_done()
 
-    util_str.util_handle_path(user.csv_file_path)
 
-    # use worker
-    global url_column_list
-    error_list = []
-
-    csv_df = read_csv_with_padding(user.csv_file_path, MAX_COLUMN)
-    log_print.info(csv_df)
-    # for diff check 
-    bef_df = read_csv_with_padding(user.csv_file_path, MAX_COLUMN)
-
-    log_print.debug(csv_df.dtypes)    
-
-    url_column_list = csv_df.iloc[:, CL_URL].tolist()
-
-    # Create a queue and fill it with URLs
-    q_pool = queue.Queue()
-
+def initialize_queue(csv_df):
+    q = queue.Queue()
     for _, row in csv_df.iterrows():
-        url = row[CL_URL]
-        if url:
-            log_print.debug(url)
+        if row[CL_URL]:
+            q.put(row[CL_URL])
+    return 
 
-            q_pool.put(url)
-
-    # Start worker threads
-    threads  = []
+def start_workers(q, csv_df, error_list):
+    threads = []
     for _ in range(WORKER_THREADS_NUM):
-        thread = threading.Thread(target=worker, args=(q_pool, csv_df, error_list) )
+        thread = threading.Thread(target=worker, args=(q, csv_df, error_list))
         thread.daemon = True
         thread.start()
         threads.append(thread)
-
-    # Block until all tasks are done
-    # q_pool.join()
-
     for thread in threads:
         thread.join()
 
-    # Update CSV file with the latest data
+
+def main():
+    if os.path.isdir("temp"):
+        shutil.rmtree("temp")
+    
+    user = User("jav")
+    util_str.util_handle_path(user.csv_file_path)
+    
+    error_list = []
+    csv_df = read_csv_with_padding(user.csv_file_path, MAX_COLUMN)
+    bef_df = csv_df.copy()
+    global url_column_list
+    url_column_list = csv_df.iloc[:, CL_URL].tolist()
+    
+    q = initialize_queue(csv_df)
+    start_workers(q, csv_df, error_list)
+    
     write_csv_updateDate(user.csv_file_path, csv_df)
-    log_print.info(csv_df)
-
-    # diff chack of dataflame
-    diff_column = csv_df.iloc[:, CL_RESULT_VL] != bef_df.iloc[:, CL_RESULT_VL]
-
-    result = csv_df[diff_column]
-    # log_print.info(result)
-
-    diff_urls = [row[CL_URL] for row in result.values.tolist()]
+    diff_urls = csv_df[csv_df.iloc[:, CL_RESULT_VL] != bef_df.iloc[:, CL_RESULT_VL]][CL_URL].tolist()
     log_print.info(diff_urls)
 
-    file_list = asyncio.run(playwright_mainditect.save_screenshot(diff_urls,save_dir="temp"))
-
-    if len(error_list) > 0:
+    file_list = asyncio.run(playwright_mainditect.save_screenshot(diff_urls, save_dir="temp"))
+    
+    if error_list:
         log_print.info("-------- ERROR list output -----------")
         for error_msg in error_list:
             log_print.info(error_msg)
-
-    if len(diff_urls) >= 1 :
-        body = text_struct.generate_html(diff_urls,file_list)
     
-        user.send_resultmail(body,body_type="html",image_list=file_list)
-
+    if diff_urls:
+        body = text_struct.generate_html(diff_urls, file_list)
+        user.send_resultmail(body, body_type="html", image_list=file_list)
+    
     shutil.rmtree("temp")
 
 if __name__ == "__main__":
