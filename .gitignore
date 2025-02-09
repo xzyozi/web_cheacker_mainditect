@@ -5,6 +5,10 @@
 /web-update-cheacker.srctrldb
 /web-update-cheacker.srctrlprj
 /__pycache__
-users/jav/cheacker_url.csv
-users/jav/cheacker_url.csv
 data/json/
+text_struct/__pycache__/
+web_update_cheacker2.srctrlbm
+web_update_cheacker2.srctrldb
+web_update_cheacker2.srctrlprj
+users/jav/
+data/
