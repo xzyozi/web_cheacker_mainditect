@@ -1,6 +1,7 @@
 import os
 import jinja2
 import base64
+from itertools import zip_longest
 
 def generate_notification(urls : list):
     notification = """
@@ -52,7 +53,9 @@ def generate_html(url_list, image_list):
     指定されたURLと画像リストを元にHTMLを生成する。
     """
     if len(url_list) != len(image_list):
-        print(f"url_list {len(url_list)} image_list {len(image_list)}") 
+        # print(f"url_list {len(url_list)} image_list {len(image_list)}") 
+        for url, image in zip_longest(url_list, image_list, fillvalue="None"):
+            print(f"url {url} image {image}")
         raise ValueError("URLリストと画像リストの長さが一致していません。")
 
     # 画像をBase64エンコード
@@ -93,6 +96,8 @@ def generate_html(url_list, image_list):
     # URLとContent-IDのペアをテンプレートに渡す
     html_content = template.render(items=zip(url_list, cid_list))
     return html_content
+
+
     # URLとBase64画像のペアをテンプレートに渡す
     #html_content = template.render(items=zip(url_list, images_base64))
     html_content = template.render(items=zip(url_list, [f"image_{i}" for i in range(len(image_list))]))
