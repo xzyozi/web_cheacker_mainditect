@@ -219,8 +219,6 @@ def remove_encoded_chars(url):
 from urllib.parse import unquote
 import unicodedata
 
-
-
 CL_URL = 0
 CL_RUN_CODE = 1
 CL_RESULT_VL = 2
@@ -238,55 +236,135 @@ CSV_COLUMN = { "url" : 0, # scraping url
 
 MAX_COLUMN = len(CSV_COLUMN)
 
-def read_csv_with_padding(file_path, max_column):
-    """
-    Read a CSV file and pad missing columns with None values.
+class CSVManager:
+    def __init__(self, file_path):
+        self.file_path = file_path
+        self.csv_df = self.read_csv_with_padding()
+        self.url_column_list : list = self.csv_df.iloc[:, CL_URL].tolist()
+        self.before_csv_df = self.csv_df.copy()
 
-    Args:
-        file_path (str): Path to the CSV file.
-        num_columns (int): Number of columns expected in the CSV file.
+    def read_csv_with_padding(self) -> pd.DataFrame :
+        """
+        Read a CSV file and pad missing columns with None values.
 
-    Returns:
-        pandas.DataFrame: DataFrame containing the CSV data with padded columns.
-    """
-    try:
-        # CSVファイルを読み込む
-        df = pd.read_csv(file_path, header=None, encoding='utf-8')
+        Returns:
+            pandas.DataFrame: DataFrame containing the CSV data with padded columns.
+
+        """
+        try:
+            # CSVファイルを読み込む
+            df = pd.read_csv(self.file_path, header=None, encoding='utf-8')
+            
+            # カラム数がnum_columnsに足りない場合、補完する
+            if len(df.columns) < MAX_COLUMN :
+                log_print.debug("column is too short and add column")
+
+                padding_needed = MAX_COLUMN - len(df.columns)
+                padding = [[ 0 ] * padding_needed for _ in range(len(df))]
+                df = pd.concat([df, pd.DataFrame(padding, columns=range(len(df.columns), MAX_COLUMN))], axis=1)
+            
+            # URLカラムからエンコーディングされた文字列を削除する
+            df[CSV_COLUMN["url"]] = df[CSV_COLUMN["url"]].apply(lambda x: unicodedata.normalize('NFKD', x) if isinstance(x, str) else x)
+
+            # dateframeの値に欠損値（NaN)を""に置換
+            df = df.fillna("").astype(str)
+
+            return df
+        except pd.errors.EmptyDataError:
+            log_print.warning("指定されたファイルが空です。空ファイル内に空のデータを追加します。")
+            empty_data = [[ 0 ] * MAX_COLUMN]
+            pd.DataFrame(empty_data).to_csv(self.file_path, index=False, header=False)  # 空ファイル内に空のデータを追加
+            return pd.DataFrame(empty_data)
         
-        # カラム数がnum_columnsに足りない場合、補完する
-        if len(df.columns) < max_column:
-            log_print.debug("column is too short and add column")
+    def write_csv_update_date(self) -> None:
+        self.csv_df.iloc[:, CSV_COLUMN["run_code"]] = self.get_str_datetime()
+        self.csv_df.to_csv(self.file_path, index=False, header=False)
 
-            padding_needed = max_column - len(df.columns)
-            padding = [[ 0 ] * padding_needed for _ in range(len(df))]
-            df = pd.concat([df, pd.DataFrame(padding, columns=range(len(df.columns), max_column))], axis=1)
+    def write_csv_updateValues( self ,
+                                content_hash_txt :str ,
+                                index_num : int,
+                                css_selector : str) -> None:
+        self.csv_df.at[index_num, CSV_COLUMN["updated_datetime"]] = self.get_str_datetime()
+        self.csv_df.at[index_num, CSV_COLUMN["result_vl"]] = content_hash_txt
+        self.csv_df.at[index_num, CSV_COLUMN["css_selector"]] = css_selector
+        log_print.info(f" ## update ## - index : {index_num} - {content_hash_txt}")
+
+    @staticmethod
+    def get_str_datetime() -> str:
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    def chk_diff(self) -> list:
+        # diff chack of dataflame
+        diff_column = self.csv_df.iloc[:, CSV_COLUMN["result_vl"] ] != self.before_csv_df.iloc[:, CSV_COLUMN["result_vl"] ]
+
+        result = self.csv_df[diff_column]
+
+        diff_df = [row[CSV_COLUMN["url"]] for row in result.values.tolist()]
+        log_print.info(diff_df)
+        return diff_df
+
+
+
+    def __getitem__(self, index_column):
+        index, column = index_column
+        return self.csv_df.at[index, CSV_COLUMN[column]]
+
+    def __setitem__(self, index_column, value):
+        index, column = index_column
+        self.csv_df.at[index, CSV_COLUMN[column]] = value
+
+
+
+
+# def read_csv_with_padding(file_path, max_column):
+#     """
+#     Read a CSV file and pad missing columns with None values.
+
+#     Args:
+#         file_path (str): Path to the CSV file.
+#         num_columns (int): Number of columns expected in the CSV file.
+
+#     Returns:
+#         pandas.DataFrame: DataFrame containing the CSV data with padded columns.
+#     """
+#     try:
+#         # CSVファイルを読み込む
+#         df = pd.read_csv(file_path, header=None, encoding='utf-8')
         
-        # URLカラムからエンコーディングされた文字列を削除する
-        df[CSV_COLUMN["url"]] = df[CSV_COLUMN["url"]].apply(lambda x: unicodedata.normalize('NFKD', x) if isinstance(x, str) else x)
+#         # カラム数がnum_columnsに足りない場合、補完する
+#         if len(df.columns) < max_column:
+#             log_print.debug("column is too short and add column")
 
-        # dateframeの値に欠損値（NaN)を""に置換
-        df = df.fillna("").astype(str)
+#             padding_needed = max_column - len(df.columns)
+#             padding = [[ 0 ] * padding_needed for _ in range(len(df))]
+#             df = pd.concat([df, pd.DataFrame(padding, columns=range(len(df.columns), max_column))], axis=1)
+        
+#         # URLカラムからエンコーディングされた文字列を削除する
+#         df[CSV_COLUMN["url"]] = df[CSV_COLUMN["url"]].apply(lambda x: unicodedata.normalize('NFKD', x) if isinstance(x, str) else x)
 
-        return df
-    except pd.errors.EmptyDataError:
-        print("指定されたファイルが空です。空ファイル内に空のデータを追加します。")
-        empty_data = [[ 0 ] * max_column]
-        pd.DataFrame(empty_data).to_csv(file_path, index=False, header=False)  # 空ファイル内に空のデータを追加
-        return pd.DataFrame(empty_data)
+#         # dateframeの値に欠損値（NaN)を""に置換
+#         df = df.fillna("").astype(str)
 
-def write_csv_updateDate( path : str, csv_df : pd.DataFrame):
-    csv_df.iloc[:, CSV_COLUMN["run_code"]] = get_Strdatetime()
+#         return df
+#     except pd.errors.EmptyDataError:
+#         print("指定されたファイルが空です。空ファイル内に空のデータを追加します。")
+#         empty_data = [[ 0 ] * max_column]
+#         pd.DataFrame(empty_data).to_csv(file_path, index=False, header=False)  # 空ファイル内に空のデータを追加
+#         return pd.DataFrame(empty_data)
 
-    csv_df.to_csv( path, index=False, header=False)
+# def write_csv_updateDate( path : str, csv_df : pd.DataFrame):
+#     csv_df.iloc[:, CSV_COLUMN["run_code"]] = get_Strdatetime()
 
-def write_csv_updateValues( content_hashTxt :str ,
-                            csv_df : pd.DataFrame,
-                            index_num : int,
-                            css_selector : str) -> None:
-    csv_df.at[index_num , CL_UPDATED_DATETIME] = get_Strdatetime()
-    csv_df.at[index_num , CL_RESULT_VL ] = content_hashTxt
-    csv_df.at[index_num , CL_CSS_SELECTOR ] = css_selector
-    log_print.info(f" ## update ## - index : {index_num} - {content_hashTxt}")
+#     csv_df.to_csv( path, index=False, header=False)
+
+# def write_csv_updateValues( content_hashTxt :str ,
+#                             csv_df : pd.DataFrame,
+#                             index_num : int,
+#                             css_selector : str) -> None:
+#     csv_df.at[index_num , CL_UPDATED_DATETIME] = get_Strdatetime()
+#     csv_df.at[index_num , CL_RESULT_VL ] = content_hashTxt
+#     csv_df.at[index_num , CL_CSS_SELECTOR ] = css_selector
+#     log_print.info(f" ## update ## - index : {index_num} - {content_hashTxt}")
 
 
 # csv function end ---------------------------------------------------------------- 
@@ -322,14 +400,18 @@ def pre_proc():
 """
 
 # Worker function to process a single URL
-def process_url(url, index_num, csv_df, error_list):
+def process_url(url : str, 
+                index_num : int, 
+                csv_manager : CSVManager,  
+                error_list : list
+                ):
     try:
         log_print.info(f"Processing URL: {url}, index: {index_num}")
         now_sec = datetime.now()
         
-        css_selector = csv_df.at[index_num, CSV_COLUMN["css_selector"]]
-        run_code_time = csv_df.at[index_num, CSV_COLUMN["run_code"]]
-        full_scan_datetime = csv_df.at[index_num, CSV_COLUMN["full_scan_datetime"]]
+        css_selector = csv_manager[index_num, "css_selector"]
+        run_code_time = csv_manager[index_num, "run_code"]
+        full_scan_datetime = csv_manager[index_num, "full_scan_datetime"]
         
         diff_days = (safe_parse_datetime(run_code_time) - safe_parse_datetime(full_scan_datetime)).days
         
@@ -349,7 +431,7 @@ def process_url(url, index_num, csv_df, error_list):
             rescored_candidate = scraping_mainditect(url)
             if rescored_candidate:
                 content_hash_text = hashlib.sha256(str(rescored_candidate["links"]).encode()).hexdigest()
-                csv_df.at[index_num, CSV_COLUMN["full_scan_datetime"]] = get_Strdatetime()
+                csv_manager[index_num, "full_scan_datetime"] = get_Strdatetime()
                 update_flg = True
                 result_flg = True
             else:
@@ -369,15 +451,15 @@ def process_url(url, index_num, csv_df, error_list):
 
         if rescored_candidate:
             content_hash_text = hashlib.sha256(str(rescored_candidate["links"]).encode()).hexdigest()
-            if csv_df.at[index_num, CSV_COLUMN["result_vl"]] != content_hash_text:
+            if csv_manager[index_num, "result_vl"] != content_hash_text:
                 log_print.info(f"Updating {url} - {content_hash_text}")
                 save_json(rescored_candidate, url)
-                write_csv_updateValues(content_hash_text, csv_df, index_num, css_selector)
+                csv_manager.write_csv_updateValues(content_hash_text, index_num, css_selector)
                 result_flg = True
         else:
             log_print.error("Choice content is None")
             error_list.append([url, "Choice content None"])
-            csv_df.at[index_num, CSV_COLUMN["full_scan_datetime"]] = ""
+            csv_manager[index_num, "full_scan_datetime"] = ""
     except Exception as e:
         log_print.error(f"Error processing URL {url}: {e}")
         error_list.append([url, e])
@@ -385,7 +467,10 @@ def process_url(url, index_num, csv_df, error_list):
     return result_flg, update_flg
 
 
-def worker(q, csv_df, error_list):
+def worker(q : queue.Queue,
+            csv_manager : CSVManager,
+            error_list : list
+            ):
     while True:
         try:
             url = q.get(timeout=10)
@@ -393,26 +478,22 @@ def worker(q, csv_df, error_list):
             log_print.info("Queue is empty, exiting worker")
             break
         
-        index_num = url_column_list.index(url)
+        index_num = csv_manager.url_column_list.index(url)
         if url is None:
             break
 
-        result_flg, update_flg = process_url(url, index_num, csv_df, error_list)
+        result_flg, update_flg = process_url(url, index_num, csv_manager, error_list)
         log_print.debug(f"Worker flags - Result: {result_flg}, Update: {update_flg}")
         q.task_done()
 
 
-def initialize_queue(csv_df):
-    q = queue.Queue()
-    for _, row in csv_df.iterrows():
-        if row[CL_URL]:
-            q.put(row[CL_URL])
-    return 
-
-def start_workers(q, csv_df, error_list):
+def start_workers(q : queue.Queue, 
+                  csv_manager : CSVManager, 
+                  error_list : list 
+                  ):
     threads = []
     for _ in range(WORKER_THREADS_NUM):
-        thread = threading.Thread(target=worker, args=(q, csv_df, error_list))
+        thread = threading.Thread(target=worker, args=(q, csv_manager, error_list))
         thread.daemon = True
         thread.start()
         threads.append(thread)
@@ -426,18 +507,21 @@ def main():
     
     user = User("jav")
     util_str.util_handle_path(user.csv_file_path)
+
+    csv_manager = CSVManager(user.csv_file_path)
     
     error_list = []
-    csv_df = read_csv_with_padding(user.csv_file_path, MAX_COLUMN)
-    bef_df = csv_df.copy()
-    global url_column_list
-    url_column_list = csv_df.iloc[:, CL_URL].tolist()
     
-    q = initialize_queue(csv_df)
-    start_workers(q, csv_df, error_list)
+    q_pool = queue.Queue()
+
+    for url in csv_manager.csv_df.iloc[:, CSV_COLUMN["url"]]:
+        if url:
+            q_pool.put(url)
+
+    start_workers(q_pool, csv_manager, error_list)
     
-    write_csv_updateDate(user.csv_file_path, csv_df)
-    diff_urls = csv_df[csv_df.iloc[:, CL_RESULT_VL] != bef_df.iloc[:, CL_RESULT_VL]][CL_URL].tolist()
+    csv_manager.write_csv_update_date()
+    diff_urls = csv_manager.chk_diff()
     log_print.info(diff_urls)
 
     file_list = asyncio.run(playwright_mainditect.save_screenshot(diff_urls, save_dir="temp"))
