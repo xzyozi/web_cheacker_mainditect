@@ -195,6 +195,37 @@ async def get_tree(
         return {}
     
 
+
+def get_subtree(node : Dict) -> list[Dict]:
+    """
+    指定されたノードとその子ノードの情報を再帰的に取得する関数。
+
+    Args:
+        node (dict): 取得対象のノード。
+
+    Returns:
+        list: ノードとその子ノードの情報を含む辞書のリスト。
+    """
+    subtree = []  # ノード自身をコピーして追加
+
+    # 子ノードを再帰的に処理
+    def recurse(n: Dict):
+        current_node = n.copy()
+        # Remove children from the current node to avoid infinite loops
+        current_node.pop('children', None)
+
+        # Add the current node to the subtree list
+        subtree.append(current_node)
+        
+        # Check if the node has children
+        if 'children' in n:
+            for child in n['children']:
+                recurse(child)
+    
+    recurse(node)
+    return subtree
+    
+
 # + ----------------------------------------------------------------
 # +  make css selector
 # + ----------------------------------------------------------------
