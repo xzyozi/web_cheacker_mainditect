@@ -1,13 +1,12 @@
-import math
 from typing import Dict, List, Any, Union , Optional
 from concurrent.futures import ThreadPoolExecutor
-from scipy import stats
+
 import os
 import asyncio
 from playwright.async_api import async_playwright, Page, TimeoutError as PlaywrightTimeoutError
 
 import traceback
-from scipy import stats
+
 import numpy as np
 from PIL import Image, ImageDraw
 from urllib.parse import urlparse, urljoin
@@ -19,57 +18,10 @@ import hashlib
 # my module 
 import util_str
 from get_tree import get_tree
+from scorer import MainContentScorer
 
 asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-# +----------------------------------------------------------------
-# + Constant definition
-# +----------------------------------------------------------------
 
-# 特徴量の分布を定義します
-X_DIST = stats.norm(0.5, 0.35)   # X軸の特徴量の分布
-Y_DIST = stats.norm(0.5, 0.35)  # Y軸の特徴量の分布
-WIDTH_DIST = stats.gamma(6.7, scale=0.11)  # 幅の特徴量の分布
-
-# スコアリングの重みを定義します
-WEIGHTS = {
-    "x": 1,        # X軸の重み
-    "y": 1,        # Y軸の重み
-    "width": 1,  # 幅の重み
-    "height": 1.5    # 高さの重み
-}
-
-# テキスト量のスコアリングに関する定数
-TEXT_LENGTH_WEIGHT = 1.5  # テキスト量の重みの係数
-TEXT_LENGTH_MEAN = 50    # 文字数の平均値
-TEXT_LENGTH_STD_LOW = 40     # 文字数の標準偏差（平均未満の場合）
-TEXT_LENGTH_STD_HIGH = 1000  # 文字数の標準偏差（平均以上の場合）
-
-
-def score_text_length(node: Dict) -> float:
-    """
-    要素内のテキスト量に基づいてスコアを計算する関数
-
-    Args:
-        node (Dict): 要素の情報が格納された辞書
-
-    Returns:
-        float: テキスト量に基づくスコア
-    """
-    text_length = len(node.get("text", ""))  # 要素内のテキストの文字数を取得
-    # print(f'id: {node.get("id")} text: {text_length}')    
-
-    if text_length == 0: score = 0
-    elif text_length <= TEXT_LENGTH_MEAN:
-        # 平均未満の場合、低い標準偏差を使用してスコアを計算
-        score = math.exp(-0.5 * ((text_length - TEXT_LENGTH_MEAN) / TEXT_LENGTH_STD_LOW) ** 2)
-    else:
-        # 平均以上の場合、高い標準偏差を使用してスコアを計算
-        score = math.exp(-0.5 * ((text_length - TEXT_LENGTH_MEAN) / TEXT_LENGTH_STD_HIGH) ** 2)
-
-    # スコアに重みを掛ける
-    weighted_score = score ** TEXT_LENGTH_WEIGHT
-    
-    return weighted_score
 
 # + ----------------------------------------------------------------
 # + save json file
@@ -79,347 +31,51 @@ def save_json(data, file_path="./data/json.json") :
     with open(file_path, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
-# + ----------------------------------------------------------------
-# + link count socering 
-# + ----------------------------------------------------------------
-LINK_LENGTH_WEIGHT = 1.0  # リンクの重みの係数
-LINK_LENGTH_MEAN = 6    # 文字数の平均値
-LINK_LENGTH_STD_LOW = 5     # 文字数の標準偏差
-LINK_LENGTH_STD_HIGH = 30
 
-
-def score_link_length(node: Dict) -> float:
-    """
-    要素内のlink量に基づいてスコアを計算する関数
-
-    Args:
-        node (Dict): 要素の情報が格納された辞書
-
-    Returns:
-        float: link量に基づくスコア
-    """
-    link_length = len(node.get("links", []))  # 要素内のlink数を取得
-    # リンクがない場合、スコアを0にするのではなく0.1にするようにする
-    # if text_length == 0:score = 0
-    if link_length == 0:score = 0.1
-    elif link_length <= LINK_LENGTH_MEAN:
-        # 平均未満の場合、低い標準偏差を使用してスコアを計算
-        score = math.exp(-0.5 * ((link_length - LINK_LENGTH_MEAN) / LINK_LENGTH_STD_LOW) ** 2)
-    else:
-        # 平均以上の場合、高い標準偏差を使用してスコアを計算
-        score = math.exp(-0.5 * ((link_length - LINK_LENGTH_MEAN) / LINK_LENGTH_STD_HIGH) ** 2)
-
-    # スコアに重みを掛ける
-    weighted_score = score ** LINK_LENGTH_WEIGHT
-    
-    return weighted_score
-
-
-def is_main_element(node: Dict) -> bool:
-    """
-    メインコンテンツ判定
-    """
-
-    tag = node["tag"].upper()
-    if tag == "MAIN":
-        return True
-    if "id" in node["attributes"] and "main" in node["attributes"]["id"].lower():
-        return True
-    return False
-
-def is_skippable(node: Dict) -> bool:
-    if len(node["children"]) != 1:
-        return False
-    child = node["children"][0]
-    skip_threshold = 5
-    if (
-        abs(node["rect"]["x"] - child["rect"]["x"]) < skip_threshold
-        and abs(node["rect"]["y"] - child["rect"]["y"]) < skip_threshold
-        and abs(node["rect"]["width"] - child["rect"]["width"]) < skip_threshold
-        and abs(node["rect"]["height"] - child["rect"]["height"]) < skip_threshold
-    ):
-        return True
-    return False
-
-def is_valid_element(node: Dict) -> bool:
-    tag = node["tag"].upper()
-    invalid_tags = [
-        "NAV",
-        "ASIDE",
-        "HEADER",
-        "FOOTER",
-        "H1",
-        "H2",
-        "H3",
-        "H4",
-        "H5",
-        "H6",
-        "P",
-        "BLOCKQUOTE",
-        "PRE",
-        "A",
-        "THEAD",
-        "TFOOT",
-        "TH",
-        "DD",
-        "DT",
-        "MENU",
-        "BODY",
-        "HTML",
-    ]
-    if tag in invalid_tags:
-        return False
-    
-    area = node["rect"]["width"] * node["rect"]["height"]
-    if area < 0.05:
-        return False
-    return True
-
-
-# + ----------------------------------------------------------------
-# +  get tree structure
-# + ----------------------------------------------------------------
-async def is_html_element(el):
-    try:
-        # Check if the element has a tagName property
-        tag_name = await el.evaluate('el => el.tagName')
-        return True
-    except:
-        return False
-
-
-# + ----------------------------------------------------------------
-# +  depth weight
-# + ----------------------------------------------------------------
-def calculate_depth_weight(current_depth : int , 
-                           max_depth : int = 8,
-                           base_weight :float =1.0 , 
-                           weight_factor :float =6.0):
-    """
-    現在の階層レベルに基づいて depth の重みを計算する関数
-
-    Args:
-        current_depth (int): 現在の階層レベル
-        max_depth (int): 最大の階層レベル (デフォルト: 8)
-        base_weight (float): ベースの重み係数 (デフォルト: 1.0)
-        weight_factor (float): 重み係数の増加率 (デフォルト: 4.0)
-
-    Returns:
-        float: 計算された depth の重み
-    """
-    # 最大深さと現在の深さの比率を計算
-    depth_ratio = current_depth / max_depth
-
-    weight = base_weight * (weight_factor ** depth_ratio)
-
-    return weight
-
-# メインコンテンツスコアリングクラス
-class MainContentScorer:
-    def __init__(self, tree: list[Dict], width: int, height: int):
-        if isinstance(tree, list):
-            self.tree = tree
-        else:
-            raise TypeError("tree must be a list of dicts")
-        
-
-        self.width = width
-        self.height = height
-
-        self.init_depth_flag = True
-    
-
-    def _calculate_screen_occupancy_multiplier(self, occupancy_rate: float, peak: float = 0.6, sigma: float = 0.3) -> float:
-        """
-        Calculate the score multiplier based on the screen occupancy rate using a Gaussian function.
-        :param occupancy_rate: The rate of screen occupancy (0 to 1).
-        :param peak: The peak point of the Gaussian curve (default is 0.9). 0.6 or 0.65
-        :param sigma: The standard deviation of the Gaussian curve (default is 0.1).
-        :return: The multiplier for the score.
-        """
-        exponent = -0.5 * ((occupancy_rate - peak) / sigma) ** 2
-        return math.exp(exponent)
-
-
-
-    def _score_node(self, node: Dict,
-                     pre_mode : bool = False ,
-                     depth_flag : bool = True,
-                     maintag_addscore : bool = False,
-                     ):
-        if self.init_depth_flag :
-            # 一番上のtreeを0にするために差分をとる
-            self.parent_depth_diff = node["depth"] 
-            self.init_depth_flag = False
-            # print("★ top level depth")
-            # print(f' parent depth diff : {self.parent_depth_diff}  , depth : {node["depth"]}')
-            # print_content(node)
-
-        score = 1
-        """
-        if pre_mode :
-            if is_main_element(node) :
-                score += 1
-        """
-        try:
-            link_count = len(node.get("links", []))  # リンクの数を取得
-
-            link_score = 0.2 * min(link_count, 5)
-
-            score *= link_score
-            
-        except : 
-            # print("not link")
-            pass
-
-
-            # Calculate the screen occupancy rate
-        element_area = node["rect"]["width"] * node["rect"]["height"]
-        page_area = self.width * self.height
-        occupancy_rate = element_area / page_area
-        multiplier = self._calculate_screen_occupancy_multiplier(occupancy_rate)
-    
-
-        score *= multiplier
-
-
-        x = (node["rect"]["x"] + node["rect"]["width"] / 2) / self.width  # X座標を正規化
-        if self.height != 0:
-            y = node["rect"]["y"] / self.height  # Y座標を正規化
-        else:
-            y = 0  # heightが0の場合はyを0に設定
-        w = node["rect"]["width"] / self.width  # 幅を正規化
-        if self.height != 0:
-            h = node["rect"]["height"] / self.height  # 高さを正規化
-        else:
-            h = 0  # heightが0の場合は高さを0に設定
-
-        # 正規化された座標と寸法から、各要素のスコアを計算
-        x_score = X_DIST.pdf(x) ** WEIGHTS["x"]
-        y_score = Y_DIST.pdf(y) ** WEIGHTS["y"]
-        w_score = WIDTH_DIST.pdf(w) ** WEIGHTS["width"]
-        h_score = min(h, 0.9) ** WEIGHTS["height"]
-
-        score *= x_score * y_score * w_score * h_score
-
-        link_score = 1  # リンクのスコアを初期化
-        """ before code 
-        try:
-            link_count = len(node.get("links", []))  # リンクの数を取得
-            link_score *= 0.2 * min(link_count, 5)  # リンクのスコアを計算
-        except:
-            pass
-        """
-        link_count =  score_link_length(node)
-
-        # text_score = score_text_length(node)  # テキスト量に基づくスコアを計算
-
-
-        if depth_flag :
-            # ネストが深いほどスコアを高く設定する
-            depth_weight = calculate_depth_weight( node["depth"] - self.parent_depth_diff)  # 深さに基づく重みを計算
-            score *= depth_weight  # スコアを計算
-            # print("★  code passed to depth weight calculation " + str(depth_weight ) ) 
-        
-        node["score"] = score * link_score  # * text_score  # 総合スコアを計算
-
-
-        if maintag_addscore :
-            if is_main_element(node):
-                node["score"] += 0.5
-
-
-
-        """
-        for child in node.get("children", []):  # 子要素を再帰的にスコアリング
-            self._score_node(child)
-        """
-
-
-    def find_candidates(self) -> List[Dict]:
-        # self.tree = [self.tree] # ルートノードを List[Dict] に変換
-        # if type(self.tree) == dict :
-        #     nodes = [self.tree] # ルートノードを List[Dict] に変換
-        # else : nodes = self.tree
-
-        nodes = self.tree
-        candidates = []
-        while nodes :
-            node = nodes.pop(0)
-
-            if is_valid_element(node):
-                candidates.append(node)
-
-            self._score_node(node, pre_mode=True, depth_flag=False, maintag_addscore=True) 
-            # print(f"Scored node: {node['tag']}, Score: {node['score']}, Valid: {is_valid_element(node)}")  # デバッグ用の出力
-            
-            nodes.extend(node["children"])  # 子ノードを追加
-
-        candidates.sort(key=lambda x: x["score"], reverse=True)
-        
-        return candidates
-    
-    # scoring for children nodes
-    def score_parent_and_children(self) -> list[Dict]: 
-        """
-        親ノードとその子ノードのスコアを計算する
-
-        Args:
-
-        Returns:
-            scored_nodes (list[Dict]}: 親ノードとその子ノードのスコアリング結果を含む辞書のリスト
-        """
-        scored_nodes = []
-        # self._score_node(parent_node)  # 親ノードのスコアを計算
-        # scored_nodes.append(parent_node)  # 親ノードを追加
-
-        # for child_node in parent_node.get("children", []):
-        #     self._score_node(child_node)  # 子ノードのスコアを計算
-        #     scored_nodes.append(child_node)  # 子ノードを追加
-
-        for node in self.tree:
-            self._score_node(node)
-            scored_nodes.append(node) 
-
-        scored_nodes.sort(key=lambda x: x["score"], reverse=True)
-
-        return scored_nodes
-
-
-async def is_visible_element(element, page: Page) -> bool:
-    if not element:
-        return False
-
-    tag_name = await element.evaluate('el => el.tagName.toUpperCase()')
-    if tag_name in ["META", "SCRIPT", "LINK", "STYLE", "IFRAME"]:
-        return False
-
-    is_visible = await element.is_visible()
-    if not is_visible:
-        return False
-
-    opacity = await element.evaluate('el => window.getComputedStyle(el).opacity')
-    if float(opacity) == 0:
-        return False
-
-    z_index = await element.evaluate('el => window.getComputedStyle(el).zIndex')
-    if z_index != 'auto' and int(z_index) < 0:
-        return False
-
-    bounding_box = await element.bounding_box()
-    if not bounding_box:
-        return False
-
-    viewport_size = await page.viewport_size()
-    if (
-        bounding_box['x'] + bounding_box['width'] < 0
-        or bounding_box['x'] > viewport_size['width']
-        or bounding_box['y'] + bounding_box['height'] < 0
-        or bounding_box['y'] > viewport_size['height']
-    ):
-        return False
-
-    return True
+# async def is_html_element(el) -> bool:
+#     try:
+#         # Check if the element has a tagName property
+#         tag_name = await el.evaluate('el => el.tagName')
+#         return True
+#     except:
+#         return False
+
+
+
+# async def is_visible_element(element, page: Page) -> bool:
+#     if not element:
+#         return False
+
+#     tag_name = await element.evaluate('el => el.tagName.toUpperCase()')
+#     if tag_name in ["META", "SCRIPT", "LINK", "STYLE", "IFRAME"]:
+#         return False
+
+#     is_visible = await element.is_visible()
+#     if not is_visible:
+#         return False
+
+#     opacity = await element.evaluate('el => window.getComputedStyle(el).opacity')
+#     if float(opacity) == 0:
+#         return False
+
+#     z_index = await element.evaluate('el => window.getComputedStyle(el).zIndex')
+#     if z_index != 'auto' and int(z_index) < 0:
+#         return False
+
+#     bounding_box = await element.bounding_box()
+#     if not bounding_box:
+#         return False
+
+#     viewport_size = await page.viewport_size()
+#     if (
+#         bounding_box['x'] + bounding_box['width'] < 0
+#         or bounding_box['x'] > viewport_size['width']
+#         or bounding_box['y'] + bounding_box['height'] < 0
+#         or bounding_box['y'] > viewport_size['height']
+#     ):
+#         return False
+
+#     return True
 
 
 
@@ -505,22 +161,6 @@ def print_content(content : Dict):
         else : print("no links found")
         print("----------------------------------------------------------")
 
-def remove_duplicate_ports(port_list):
-    """
-    リストから重複したポートを削除する関数
-    
-    Args:
-        port_list (list): ポート番号のリスト
-        
-    Returns:
-        list: 重複を削除したポート番号のリスト
-    """
-    # セットを使って重複を削除
-    unique_ports = set(port_list)
-    
-    # セットをリストに変換して返す
-    return list(unique_ports)
-
 
 # + ----------------------------------------------------------------
 #  remove encoded chars
@@ -557,7 +197,7 @@ def rescore_main_content(main_content : dict, driver= None):
     
     # 子ノードに対してスコアリングを行う
     scorer = MainContentScorer(child_node_dicts, main_width, main_height)
-    # scorer = MainContentScorer({"children": child_node_dicts, "rect": {"width": main_width, "height": main_height}}, main_width, main_height)
+
     scorer.score_parent_and_children(child_node_dicts)
 
     # スコアをチェック
@@ -606,36 +246,6 @@ def create_child_node_dicts(child_nodes) -> list[Dict]:
         child_node_dicts.append(child_node_dict)
     
     return child_node_dicts
-
-
-def get_subtree(node : Dict) -> list[Dict]:
-    """
-    指定されたノードとその子ノードの情報を再帰的に取得する関数。
-
-    Args:
-        node (dict): 取得対象のノード。
-
-    Returns:
-        list: ノードとその子ノードの情報を含む辞書のリスト。
-    """
-    subtree = []  # ノード自身をコピーして追加
-
-    # 子ノードを再帰的に処理
-    def recurse(n: Dict):
-        current_node = n.copy()
-        # Remove children from the current node to avoid infinite loops
-        current_node.pop('children', None)
-
-        # Add the current node to the subtree list
-        subtree.append(current_node)
-        
-        # Check if the node has children
-        if 'children' in n:
-            for child in n['children']:
-                recurse(child)
-    
-    recurse(node)
-    return subtree
 
 # + ----------------------------------------------------------------
 # + ----------------------------------------------------------------
