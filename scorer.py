@@ -22,7 +22,8 @@ class MainContentScorer:
     def _calculate_screen_occupancy_multiplier(self, 
                                                occupancy_rate: float, 
                                                peak: float = 0.6, 
-                                               sigma: float = 0.3) -> float:
+                                               sigma: float = 0.3
+                                               ) -> float:
         """
         Calculate the score multiplier based on the screen occupancy rate using a Gaussian function.
         :param occupancy_rate: The rate of screen occupancy (0 to 1).
@@ -40,7 +41,7 @@ class MainContentScorer:
                      pre_mode : bool = False ,
                      depth_flag : bool = True,
                      maintag_addscore : bool = False,
-                     ):
+                     ) -> None:
         if self.init_depth_flag :
             # 一番上のtreeを0にするために差分をとる
             self.parent_depth_diff = node["depth"] 
@@ -67,7 +68,7 @@ class MainContentScorer:
             pass
 
 
-            # Calculate the screen occupancy rate
+        # Calculate the screen occupancy rate
         element_area = node["rect"]["width"] * node["rect"]["height"]
         page_area = self.width * self.height
         occupancy_rate = element_area / page_area
