@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import os
 import asyncio
-from playwright.async_api import async_playwright, Page, TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import async_playwright, Page, Browser, TimeoutError as PlaywrightTimeoutError
 
 import traceback
 
@@ -150,59 +150,6 @@ def update_nodes_with_children(data: Union[Dict[str, Any], List[Dict[str, Any]]]
     return updated_nodes
 
 
-
-async def detect_main_content(url: str, 
-                              page: Page
-                              ) -> list:
-    try:
-        await page.goto(url, wait_until='domcontentloaded', timeout=10000)
-        
-        await page.wait_for_selector('body', state='attached', timeout=10000)
-        
-        try:
-            await page.wait_for_load_state('networkidle', timeout=30000)
-        except PlaywrightTimeoutError:
-            print("Network did not become idle within 30 seconds, continuing anyway.")
-        
-        await page.set_viewport_size({"width": 1920, "height": 1080})
-
-        dimensions = await page.evaluate('''() => {
-            return {
-                width: Math.max(document.body.scrollWidth, document.body.offsetWidth, document.documentElement.clientWidth, document.documentElement.scrollWidth, document.documentElement.offsetWidth),
-                height: Math.max(document.body.scrollHeight, document.body.offsetHeight, document.documentElement.clientHeight, document.documentElement.scrollHeight, document.documentElement.offsetHeight)
-            }
-        }''')
-
-        await page.set_viewport_size({"width": dimensions['width'], "height": dimensions['height']})
-
-        await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
-        await page.wait_for_timeout(2000)
-
-        tree = await get_tree(page)
-        
-        if not tree:
-            print("Error: Empty tree structure returned")
-            return []
-
-        tree = [tree]  # Convert tree to list[Dict]
-
-        scorer = MainContentScorer(tree, dimensions['width'], dimensions['height'])
-        candidates = scorer.find_candidates()
-
-        # save_json(candidates, f"{__file__}.json")
-
-        return candidates
-
-    except PlaywrightTimeoutError:
-        print(f"Timeout occurred while loading {url}")
-        return []
-    except Exception as e:
-        print(f"An error occurred while processing {url}: {str(e)}")
-        print("Traceback:")
-        traceback.print_exc(file=sys.stdout)
-        return []
-
-
 def rescore_main_content_with_children(main_content : Dict, driver=None) -> list[Dict]:
     if not isinstance(main_content, dict):
         raise TypeError("main_content must be a dictionary")
@@ -231,6 +178,23 @@ def rescore_main_content_with_children(main_content : Dict, driver=None) -> list
 
     return scored_nodes
 
+async def setup_page(url : str, 
+                     browser : Browser
+                     ):
+    try:
+        context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
+        page = await context.new_page()
+        await page.goto(url, wait_until='domcontentloaded', timeout=10000)
+        await page.wait_for_selector('body', state='attached', timeout=10000)
+        try:
+            await page.wait_for_load_state('networkidle', timeout=30000)
+        except PlaywrightTimeoutError:
+            print("Network did not become idle within 30 seconds, continuing anyway.")
+        return page
+    except Exception as e:
+        print(f"Error setting up page: {e}")
+        traceback.print_exc()
+        return None
 
 
 
@@ -274,18 +238,40 @@ async def test_main(url : str):
             
             if not is_scraping_allowed(robots_txt, target_path):
                 print(f"Scraping is not allowed on this URL: {url}")
-                return
+                return None
 
 
         #browser = await p.chromium.launch(headless=False, args=['--start-maximized'])
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
-        page = await context.new_page()
-        # page = await context.new_page()
-        # page = await browser.new_page()
+        page = await setup_page(url, browser)
+        if not page:
+            return None
 
         try:
-            main_contents = await detect_main_content(url, page)
+
+            dimensions = await page.evaluate('''() => {
+                return {
+                    width: Math.max(document.body.scrollWidth, document.body.offsetWidth, document.documentElement.clientWidth, document.documentElement.scrollWidth, document.documentElement.offsetWidth),
+                    height: Math.max(document.body.scrollHeight, document.body.offsetHeight, document.documentElement.clientHeight, document.documentElement.scrollHeight, document.documentElement.offsetHeight)
+                }
+            }''')
+
+            await page.set_viewport_size({"width": dimensions['width'], "height": dimensions['height']})
+
+            await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+            await page.wait_for_timeout(2000)
+
+            tree = await get_tree(page)
+            if not tree:
+                print("Error: Empty tree structure returned")
+                return None
+
+            save_json(tree)
+
+            tree = [tree]  # Convert tree to list[Dict]
+            scorer = MainContentScorer(tree, dimensions['width'], dimensions['height'])
+            main_contents = scorer.find_candidates()
+
             if not main_contents:
                 print("No main content detected.")
                 return None
@@ -297,20 +283,15 @@ async def test_main(url : str):
             if main_contents:
                 main_contents = rescore_main_content_with_children(main_contents[0])
 
-                print("pre content diff:")
-                for content in main_contents[:2]:
-                    print_content(content)
+                # print("pre content diff:")
+                # for content in main_contents[:2]:
+                #     print_content(content)
 
                 loop_count = 0
-                while True:
-                    tmp_main_content = main_contents[0] if main_contents else None
-                    if tmp_main_content is None:
-                        break
+                while main_contents:
+                    tmp_main_content = main_contents[0] 
 
                     main_contents = rescore_main_content_with_children(tmp_main_content)
-
-                    if not main_contents:
-                        break
 
                     print(f" tmp_main tag : {tmp_main_content['tag']} main tag : {main_contents[0]['tag']}")
                     print(f'tmp_candidates score : {tmp_main_content["score"]}  & main_contents {main_contents[0]["score"]}')
@@ -337,10 +318,10 @@ async def test_main(url : str):
         except Exception as e:
             print("An error occurred during test_main:")
             print_error_details(e)
-            return None
 
         finally:
             await browser.close()
+            return None
 
 
 async def choice_content(url: str, selector: str):
