@@ -1,7 +1,6 @@
-from typing import Dict, List, Any, Union , Optional
-from playwright.async_api import Page
+from typing import  Any, Union , Optional
+from playwright.async_api import Page, ElementHandle
 import json
-
 
 
 async def get_tree(
@@ -10,7 +9,7 @@ async def get_tree(
     wait_for_load: bool = True,
     timeout: int = 30000,
     debug: bool = True
-) -> Dict:
+) -> dict:
     """
     Get DOM tree starting from a specific selector or body.
     
@@ -28,7 +27,10 @@ async def get_tree(
     if not root:
         return {}
 
-    async def parse_element(el, current_depth=1) -> Dict:
+
+    async def parse_element(el : ElementHandle , 
+                            current_depth : int = 1 
+                            ) -> dict:
         """
         HTML 要素とその子要素を再帰的に解析し、関連する詳細を抽出します。
 
@@ -39,6 +41,66 @@ async def get_tree(
         Returns:
             Dict: 要素とその子ノードをパースしたもの。
         """
+        if not el:
+            return {}
+
+        try:
+            # Ensure element is still attached to DOM
+            is_attached = await el.evaluate('el => document.body.contains(el)')
+            if not is_attached:
+                return {}
+
+            try:
+                bounding_box = await el.bounding_box()
+                if not bounding_box:
+                    return {}
+            except Exception as e:
+                print(f"Could not get bounding box: {str(e)}")
+                return {}
+
+            # Get element properties
+            properties = await el.evaluate('''el => ({
+                tag: el.tagName.toLowerCase(),
+                id: el.id,
+                attributes: Object.fromEntries(Array.from(el.attributes).map(attr => [attr.name, attr.value])),
+                text: el.innerText || "",
+                links: Array.from(el.getElementsByTagName('a')).map(a => a.href).filter(Boolean).sort()
+            })''')
+
+            css_selector = make_css_selector(properties)
+
+            node = {
+                "tag": properties['tag'],
+                "id": properties['id'],
+                "attributes": properties['attributes'],
+                "children": [],
+                "rect": {
+                    "x": bounding_box['x'],
+                    "y": bounding_box['y'],
+                    "width": bounding_box['width'],
+                    "height": bounding_box['height'],
+                },
+                "depth": current_depth,
+                "text": properties['text'],
+                "score": 0,
+                "css_selector": css_selector,
+                "links": properties['links'],
+            }
+
+            # Get children
+            children = await el.query_selector_all(':scope > *')
+            for child in children:
+                child_node = await parse_element(child, current_depth + 1)
+                if child_node:
+                    node["children"].append(child_node)
+
+            return node
+
+        except Exception as e:
+            print(f"Error parsing element: {str(e)}")
+            return {}
+
+
     try:
         if debug:
             print(f"Searching for element with selector: {selector}")
@@ -128,66 +190,6 @@ async def get_tree(
         if not root:
             return {}
 
-        async def parse_element(el, current_depth=1) -> Dict:
-            if not el:
-                return {}
-
-            try:
-                # Ensure element is still attached to DOM
-                is_attached = await el.evaluate('el => document.body.contains(el)')
-                if not is_attached:
-                    return {}
-
-                try:
-                    bounding_box = await el.bounding_box()
-                    if not bounding_box:
-                        return {}
-                except Exception as e:
-                    print(f"Could not get bounding box: {str(e)}")
-                    return {}
-
-                # Get element properties
-                properties = await el.evaluate('''el => ({
-                    tag: el.tagName.toLowerCase(),
-                    id: el.id,
-                    attributes: Object.fromEntries(Array.from(el.attributes).map(attr => [attr.name, attr.value])),
-                    text: el.innerText || "",
-                    links: Array.from(el.getElementsByTagName('a')).map(a => a.href).filter(Boolean).sort()
-                })''')
-
-                css_selector = make_css_selector(properties)
-
-                node = {
-                    "tag": properties['tag'],
-                    "id": properties['id'],
-                    "attributes": properties['attributes'],
-                    "children": [],
-                    "rect": {
-                        "x": bounding_box['x'],
-                        "y": bounding_box['y'],
-                        "width": bounding_box['width'],
-                        "height": bounding_box['height'],
-                    },
-                    "depth": current_depth,
-                    "text": properties['text'],
-                    "score": 0,
-                    "css_selector": css_selector,
-                    "links": properties['links'],
-                }
-
-                # Get children
-                children = await el.query_selector_all(':scope > *')
-                for child in children:
-                    child_node = await parse_element(child, current_depth + 1)
-                    if child_node:
-                        node["children"].append(child_node)
-
-                return node
-
-            except Exception as e:
-                print(f"Error parsing element: {str(e)}")
-                return {}
-
         return await parse_element(root)
 
     except Exception as e:
@@ -196,7 +198,7 @@ async def get_tree(
     
 
 
-def get_subtree(node : Dict) -> list[Dict]:
+def get_subtree(node : dict) -> list[dict]:
     """
     指定されたノードとその子ノードの情報を再帰的に取得する関数。
 
@@ -209,7 +211,7 @@ def get_subtree(node : Dict) -> list[Dict]:
     subtree = []  # ノード自身をコピーして追加
 
     # 子ノードを再帰的に処理
-    def recurse(n: Dict):
+    def recurse(n: dict):
         current_node = n.copy()
         # Remove children from the current node to avoid infinite loops
         current_node.pop('children', None)
@@ -229,7 +231,7 @@ def get_subtree(node : Dict) -> list[Dict]:
 # + ----------------------------------------------------------------
 # +  make css selector
 # + ----------------------------------------------------------------
-def make_css_selector(choice_dict : Dict) -> str:
+def make_css_selector(choice_dict : dict) -> str:
     """
      tag, id, attributes, その他のプロパティを含む辞書から CSS セレクタを生成します
 
