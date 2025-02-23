@@ -55,7 +55,11 @@ def highlight_main_content(driver, main_content, filename):
     img.save(filename)
 
 
-async def save_screenshot(url_list: list, save_dir="temp", width=500, height=None) -> list:
+async def save_screenshot(url_list: list, 
+                          save_dir="temp", 
+                          width=500, 
+                          height : int | None =None
+                          ) -> list:
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
@@ -266,7 +270,7 @@ async def test_main(url : str):
                 print("Error: Empty tree structure returned")
                 return None
 
-            save_json(tree)
+            # save_json(tree)
 
             tree = [tree]  # Convert tree to list[Dict]
             scorer = MainContentScorer(tree, dimensions['width'], dimensions['height'])

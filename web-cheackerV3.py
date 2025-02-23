@@ -219,28 +219,24 @@ def remove_encoded_chars(url):
 from urllib.parse import unquote
 import unicodedata
 
-CL_URL = 0
-CL_RUN_CODE = 1
-CL_RESULT_VL = 2
-CL_UPDATED_DATETIME = 3
-CL_MODIFY_DATETIME = 4 
-CL_CSS_SELECTOR = 5
-
 CSV_COLUMN = { "url" : 0, # scraping url
                "run_code" : 1, # datetime for code of the run for
                "result_vl" : 2 ,  
                "updated_datetime" : 3, 
                "full_scan_datetime"  : 4, 
                "css_selector" : 5,
+               "web_page_type" : 6,
 }
 
-MAX_COLUMN = len(CSV_COLUMN)
+
 
 class CSVManager:
-    def __init__(self, file_path):
+    def __init__(self, file_path, csv_column_dict):
         self.file_path = file_path
+        self.csv_column = csv_column_dict
+        self.max_column = len(csv_column_dict)
         self.csv_df = self.read_csv_with_padding()
-        self.url_column_list : list = self.csv_df.iloc[:, CL_URL].tolist()
+        self.url_column_list : list = self.csv_df.iloc[:, CSV_COLUMN["url"]].tolist()
         self.before_csv_df = self.csv_df.copy()
 
     def read_csv_with_padding(self) -> pd.DataFrame :
@@ -256,12 +252,12 @@ class CSVManager:
             df = pd.read_csv(self.file_path, header=None, encoding='utf-8')
             
             # カラム数がnum_columnsに足りない場合、補完する
-            if len(df.columns) < MAX_COLUMN :
+            if len(df.columns) < self.max_column :
                 log_print.debug("column is too short and add column")
 
-                padding_needed = MAX_COLUMN - len(df.columns)
+                padding_needed = self.max_column - len(df.columns)
                 padding = [[ 0 ] * padding_needed for _ in range(len(df))]
-                df = pd.concat([df, pd.DataFrame(padding, columns=range(len(df.columns), MAX_COLUMN))], axis=1)
+                df = pd.concat([df, pd.DataFrame(padding, columns=range(len(df.columns), self.max_column))], axis=1)
             
             # URLカラムからエンコーディングされた文字列を削除する
             df[CSV_COLUMN["url"]] = df[CSV_COLUMN["url"]].apply(lambda x: unicodedata.normalize('NFKD', x) if isinstance(x, str) else x)
@@ -272,7 +268,7 @@ class CSVManager:
             return df
         except pd.errors.EmptyDataError:
             log_print.warning("指定されたファイルが空です。空ファイル内に空のデータを追加します。")
-            empty_data = [[ 0 ] * MAX_COLUMN]
+            empty_data = [[ 0 ] * self.max_column]
             pd.DataFrame(empty_data).to_csv(self.file_path, index=False, header=False)  # 空ファイル内に空のデータを追加
             return pd.DataFrame(empty_data)
         
@@ -303,6 +299,8 @@ class CSVManager:
         log_print.info(diff_df)
         return diff_df
 
+    def get_record_as_dict(self, index: int) -> dict:
+        return {col_name: self.csv_df.at[index, col_idx] for col_name, col_idx in self.csv_column.items()}
 
 
     def __getitem__(self, index_column):
@@ -369,9 +367,9 @@ class CSVManager:
 
 # csv function end ---------------------------------------------------------------- 
 
-def scraping_mainditect(url : str) :
+def scraping_mainditect(url_data : dict) -> dict | None:
     try:
-        log_print.debug(f"scraping {url} is {type(url)}")
+        url = url_data['url']
         rescored_candidate = asyncio.run(playwright_mainditect.test_main(url))
 
         return rescored_candidate
@@ -408,7 +406,7 @@ def process_url(url : str,
     try:
         log_print.info(f"Processing URL: {url}, index: {index_num}")
         now_sec = datetime.now()
-        
+
         css_selector = csv_manager[index_num, "css_selector"]
         run_code_time = csv_manager[index_num, "run_code"]
         full_scan_datetime = csv_manager[index_num, "full_scan_datetime"]
@@ -428,7 +426,10 @@ def process_url(url : str,
 
 
         if not css_selector or diff_days >= 4:
-            rescored_candidate = scraping_mainditect(url)
+            # ----------------------------------------------------------------
+            # full scan 
+            # ----------------------------------------------------------------
+            rescored_candidate = scraping_mainditect(csv_manager.get_record_as_dict(index_num))
             if rescored_candidate:
                 content_hash_text = hashlib.sha256(str(rescored_candidate["links"]).encode()).hexdigest()
                 csv_manager[index_num, "full_scan_datetime"] = get_Strdatetime()
@@ -439,6 +440,9 @@ def process_url(url : str,
                 error_list.append([url, "Full scan returned None"])
                 return
         else:
+            # -----------------------------------------------------------------
+            # selecter choice scan
+            # -----------------------------------------------------------------
             try:
                 rescored_candidate = choice_content(url, css_selector)
                 proc_time = datetime.now() - now_sec
@@ -449,6 +453,9 @@ def process_url(url : str,
                 log_print.error(e)
                 return
 
+        # ----------------------------------------------------------------
+        # result process
+        # ----------------------------------------------------------------
         if rescored_candidate:
             content_hash_text = hashlib.sha256(str(rescored_candidate["links"]).encode()).hexdigest()
             if csv_manager[index_num, "result_vl"] != content_hash_text:
@@ -508,7 +515,7 @@ def main():
     user = User("jav")
     util_str.util_handle_path(user.csv_file_path)
 
-    csv_manager = CSVManager(user.csv_file_path)
+    csv_manager = CSVManager(user.csv_file_path, CSV_COLUMN)
     
     error_list = []
     
@@ -522,7 +529,6 @@ def main():
     
     csv_manager.write_csv_update_date()
     diff_urls = csv_manager.chk_diff()
-    log_print.info(diff_urls)
 
     file_list = asyncio.run(playwright_mainditect.save_screenshot(diff_urls, save_dir="temp"))
     
