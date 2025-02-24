@@ -29,8 +29,8 @@ SAVE_JSON_DIR_PATH  = os.path.join(SCRIPT_PATH, "./data/json/")
 USER_DIR_PATH = os.path.join(SCRIPT_PATH, "./user")
 
 WORKER_THREADS_NUM = 2
+PROC_MPL_SEC = 30
 
-import sys
 # カレントディレクトリをpythonパスに追加する
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -41,7 +41,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 pd.set_option('display.max_rows', None)
 pd.set_option('display.max_columns', None)
 
-PROC_MPL_SEC = 30
+
 
 # +----------------------------------------------------------------
 # logging settings
@@ -229,15 +229,15 @@ CSV_COLUMN = { "url" : 0, # scraping url
 }
 
 
-
 class CSVManager:
     def __init__(self, file_path, csv_column_dict):
         self.file_path = file_path
         self.csv_column = csv_column_dict
         self.max_column = len(csv_column_dict)
         self.csv_df = self.read_csv_with_padding()
-        self.url_column_list : list = self.csv_df.iloc[:, CSV_COLUMN["url"]].tolist()
+        self.url_column_list = self.csv_df.iloc[:, CSV_COLUMN["url"]].tolist()
         self.before_csv_df = self.csv_df.copy()
+        log_print.info(f"{self.csv_df}")
 
     def read_csv_with_padding(self) -> pd.DataFrame :
         """
@@ -279,10 +279,13 @@ class CSVManager:
     def write_csv_updateValues( self ,
                                 content_hash_txt :str ,
                                 index_num : int,
-                                css_selector : str) -> None:
+                                css_selector : str,
+                                chk_url : str ) -> None:
         self.csv_df.at[index_num, CSV_COLUMN["updated_datetime"]] = self.get_str_datetime()
         self.csv_df.at[index_num, CSV_COLUMN["result_vl"]] = content_hash_txt
         self.csv_df.at[index_num, CSV_COLUMN["css_selector"]] = css_selector
+        if chk_url != self.csv_df.at[index_num, CSV_COLUMN["url"]] :
+            self.csv_df.at[index_num, CSV_COLUMN["url"]] = chk_url
         log_print.info(f" ## update ## - index : {index_num} - {content_hash_txt}")
 
     @staticmethod
@@ -302,6 +305,12 @@ class CSVManager:
     def get_record_as_dict(self, index: int) -> dict:
         return {col_name: self.csv_df.at[index, col_idx] for col_name, col_idx in self.csv_column.items()}
 
+    def update_record_from_dict(self, index: int, record_dict: dict) -> None:
+        for key, value in record_dict.items():
+            if key in self.csv_column:
+                self.csv_df.at[index, self.csv_column[key]] = value
+            else :
+                log_print.warning(f"column not found for {key}")
 
     def __getitem__(self, index_column):
         index, column = index_column
@@ -311,91 +320,26 @@ class CSVManager:
         index, column = index_column
         self.csv_df.at[index, CSV_COLUMN[column]] = value
 
-
-
-
-# def read_csv_with_padding(file_path, max_column):
-#     """
-#     Read a CSV file and pad missing columns with None values.
-
-#     Args:
-#         file_path (str): Path to the CSV file.
-#         num_columns (int): Number of columns expected in the CSV file.
-
-#     Returns:
-#         pandas.DataFrame: DataFrame containing the CSV data with padded columns.
-#     """
-#     try:
-#         # CSVファイルを読み込む
-#         df = pd.read_csv(file_path, header=None, encoding='utf-8')
-        
-#         # カラム数がnum_columnsに足りない場合、補完する
-#         if len(df.columns) < max_column:
-#             log_print.debug("column is too short and add column")
-
-#             padding_needed = max_column - len(df.columns)
-#             padding = [[ 0 ] * padding_needed for _ in range(len(df))]
-#             df = pd.concat([df, pd.DataFrame(padding, columns=range(len(df.columns), max_column))], axis=1)
-        
-#         # URLカラムからエンコーディングされた文字列を削除する
-#         df[CSV_COLUMN["url"]] = df[CSV_COLUMN["url"]].apply(lambda x: unicodedata.normalize('NFKD', x) if isinstance(x, str) else x)
-
-#         # dateframeの値に欠損値（NaN)を""に置換
-#         df = df.fillna("").astype(str)
-
-#         return df
-#     except pd.errors.EmptyDataError:
-#         print("指定されたファイルが空です。空ファイル内に空のデータを追加します。")
-#         empty_data = [[ 0 ] * max_column]
-#         pd.DataFrame(empty_data).to_csv(file_path, index=False, header=False)  # 空ファイル内に空のデータを追加
-#         return pd.DataFrame(empty_data)
-
-# def write_csv_updateDate( path : str, csv_df : pd.DataFrame):
-#     csv_df.iloc[:, CSV_COLUMN["run_code"]] = get_Strdatetime()
-
-#     csv_df.to_csv( path, index=False, header=False)
-
-# def write_csv_updateValues( content_hashTxt :str ,
-#                             csv_df : pd.DataFrame,
-#                             index_num : int,
-#                             css_selector : str) -> None:
-#     csv_df.at[index_num , CL_UPDATED_DATETIME] = get_Strdatetime()
-#     csv_df.at[index_num , CL_RESULT_VL ] = content_hashTxt
-#     csv_df.at[index_num , CL_CSS_SELECTOR ] = css_selector
-#     log_print.info(f" ## update ## - index : {index_num} - {content_hashTxt}")
-
-
 # csv function end ---------------------------------------------------------------- 
 
 def scraping_mainditect(url_data : dict) -> dict | None:
     try:
         url = url_data['url']
+        web_type = url_data['web_page_type']
         rescored_candidate = asyncio.run(playwright_mainditect.test_main(url))
 
         return rescored_candidate
     except Exception as e:
         log_print.warning(f"{e}")
 
-def choice_content(url : str, css_selector : str):
+def choice_content(url_data : dict) -> dict | None:
+    url = url_data['url']
+    css_selector = url_data['css_selector']
     try:
         rescored_candidate = asyncio.run(playwright_mainditect.choice_content(url,css_selector))
         return rescored_candidate
     except Exception as e:
         log_print.warning(f"{e}")
-
-"""
-def pre_proc():
-    find_or_create(SAVE_CSV_DIR_PATH)
-
-    csv_df = read_csv_with_padding(SAVE_CSV_DIR_PATH, MAX_COLUMN)
-
-    print(csv_df)
-    
-    url_columnLst = csv_df.iloc[:, CL_URL].tolist()
-    # print(url_columnLst)
-    # print(csv_df.at[0 , 2] ,type(csv_df.at[0 , 2] ))
-    return csv_df, url_columnLst
-"""
 
 # Worker function to process a single URL
 def process_url(url : str, 
@@ -444,7 +388,7 @@ def process_url(url : str,
             # selecter choice scan
             # -----------------------------------------------------------------
             try:
-                rescored_candidate = choice_content(url, css_selector)
+                rescored_candidate = choice_content(csv_manager.get_record_as_dict(index_num))
                 proc_time = datetime.now() - now_sec
                 if proc_time.total_seconds() > PROC_MPL_SEC:
                     error_list.append([url, f"Processing time exceeded {PROC_MPL_SEC} sec -> {proc_time.total_seconds()} sec"])
@@ -459,9 +403,12 @@ def process_url(url : str,
         if rescored_candidate:
             content_hash_text = hashlib.sha256(str(rescored_candidate["links"]).encode()).hexdigest()
             if csv_manager[index_num, "result_vl"] != content_hash_text:
-                log_print.info(f"Updating {url} - {content_hash_text}")
-                save_json(rescored_candidate, url)
-                csv_manager.write_csv_updateValues(content_hash_text, index_num, css_selector)
+
+                chk_url = rescored_candidate["url"]
+                css_selector = rescored_candidate["css_selector"]
+                save_json(rescored_candidate, chk_url)
+
+                csv_manager.write_csv_updateValues(content_hash_text, index_num, css_selector, chk_url)
                 result_flg = True
         else:
             log_print.error("Choice content is None")
@@ -471,8 +418,8 @@ def process_url(url : str,
         log_print.error(f"Error processing URL {url}: {e}")
         error_list.append([url, e])
     
-    return result_flg, update_flg
-
+#     return result_flg, update_flg
+        return None
 
 def worker(q : queue.Queue,
             csv_manager : CSVManager,
@@ -489,8 +436,9 @@ def worker(q : queue.Queue,
         if url is None:
             break
 
-        result_flg, update_flg = process_url(url, index_num, csv_manager, error_list)
-        log_print.debug(f"Worker flags - Result: {result_flg}, Update: {update_flg}")
+        # result_flg, update_flg = process_url(url, index_num, csv_manager, error_list)
+        # log_print.debug(f"Worker flags - Result: {result_flg}, Update: {update_flg}")
+        process_url(url, index_num, csv_manager, error_list)
         q.task_done()
 
 
@@ -542,6 +490,8 @@ def main():
         user.send_resultmail(body, body_type="html", image_list=file_list)
     
     shutil.rmtree("temp")
+
+    log_print.info(f"{csv_manager.csv_df}")
 
 if __name__ == "__main__":
     main()
