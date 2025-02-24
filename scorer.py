@@ -21,7 +21,7 @@ class MainContentScorer:
 
     def _calculate_screen_occupancy_multiplier(self, 
                                                occupancy_rate: float, 
-                                               peak: float = 0.6, 
+                                               peak: float = 0.8, 
                                                sigma: float = 0.3
                                                ) -> float:
         """
@@ -271,7 +271,7 @@ def score_text_length(node: Dict) -> float:
 # +  depth weight
 # + ----------------------------------------------------------------
 def calculate_depth_weight(current_depth : int , 
-                           max_depth : int = 8,
+                           max_depth : int = 7,
                            base_weight :float =1.0 , 
                            weight_factor :float =6.0) -> float:
     """

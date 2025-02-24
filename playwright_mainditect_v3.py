@@ -19,6 +19,7 @@ import hashlib
 import util_str
 from get_tree import get_tree
 from scorer import MainContentScorer
+from web_type_chk import PageMonitor
 
 asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
@@ -200,6 +201,24 @@ async def setup_page(url : str,
         traceback.print_exc()
         return None
 
+async def adjust_page_view(page: Page) -> dict:
+    """ページのサイズを調整し、スクロールを実行"""
+    dimensions = await page.evaluate('''() => {
+        return {
+            width: Math.max(document.body.scrollWidth, document.body.offsetWidth, 
+                            document.documentElement.clientWidth, document.documentElement.scrollWidth, 
+                            document.documentElement.offsetWidth),
+            height: Math.max(document.body.scrollHeight, document.body.offsetHeight, 
+                             document.documentElement.clientHeight, document.documentElement.scrollHeight, 
+                             document.documentElement.offsetHeight)
+        }
+    }''')
+
+    await page.set_viewport_size({"width": dimensions['width'], "height": dimensions['height']})
+    await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+    await page.wait_for_timeout(2000)
+
+    return dimensions
 
 
 async def fetch_robots_txt(url):
@@ -226,106 +245,125 @@ def is_scraping_allowed(robots_txt : str,
     # Check if we are allowed to scrape the target path
     return robot_parser.can_fetch("*", target_path)
 
+async def initialize_browser_and_page(url):
+    """ブラウザとページを初期化し、スクレイピングの準備をする"""
+    playwright = await async_playwright().start()
+    try :
+        browser = await playwright.chromium.launch(headless=True)
+        page = await setup_page(url, browser)
+    except Exception as e :
+        playwright.stop()
+        return None, None, None
+    return playwright, browser, page
+
+
 
 async def test_main(url : str):       
 
     max_loop_count = 10
 
-    async with async_playwright() as p:
-        # Fetch robots.txt
-        robots_txt = await fetch_robots_txt(url)
+    # Fetch robots.txt
+    robots_txt = await fetch_robots_txt(url)
+    
+    if robots_txt:
+        # Check if scraping is allowed
+        parsed_url = urlparse(url)
+        target_path = parsed_url.path or "/"
         
-        if robots_txt:
-            # Check if scraping is allowed
-            parsed_url = urlparse(url)
-            target_path = parsed_url.path or "/"
-            
-            if not is_scraping_allowed(robots_txt, target_path):
-                print(f"Scraping is not allowed on this URL: {url}")
-                return None
-
-
-        #browser = await p.chromium.launch(headless=False, args=['--start-maximized'])
-        browser = await p.chromium.launch(headless=True)
-        page = await setup_page(url, browser)
-        if not page:
+        if not is_scraping_allowed(robots_txt, target_path):
+            print(f"Scraping is not allowed on this URL: {url}")
             return None
 
-        try:
 
-            dimensions = await page.evaluate('''() => {
-                return {
-                    width: Math.max(document.body.scrollWidth, document.body.offsetWidth, document.documentElement.clientWidth, document.documentElement.scrollWidth, document.documentElement.offsetWidth),
-                    height: Math.max(document.body.scrollHeight, document.body.offsetHeight, document.documentElement.clientHeight, document.documentElement.scrollHeight, document.documentElement.offsetHeight)
-                }
-            }''')
+    #browser = await p.chromium.launch(headless=False, args=['--start-maximized'])
+    playwright, browser, page = await initialize_browser_and_page(url)
 
-            await page.set_viewport_size({"width": dimensions['width'], "height": dimensions['height']})
+    if not page:
+        await browser.close()
+        await playwright.stop()  # Playwright自体も終了させる
+        return None
 
-            await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
-            await page.wait_for_timeout(2000)
+    try:
 
-            tree = await get_tree(page)
-            if not tree:
-                print("Error: Empty tree structure returned")
-                return None
+        dimensions = await adjust_page_view(page)
 
-            # save_json(tree)
-
-            tree = [tree]  # Convert tree to list[Dict]
-            scorer = MainContentScorer(tree, dimensions['width'], dimensions['height'])
-            main_contents = scorer.find_candidates()
-
-            if not main_contents:
-                print("No main content detected.")
-                return None
-
-            print("Top candidates:")
-            for content in main_contents[:6]:
-                print_content(content)
-
-            if main_contents:
-                main_contents = rescore_main_content_with_children(main_contents[0])
-
-                # print("pre content diff:")
-                # for content in main_contents[:2]:
-                #     print_content(content)
-
-                loop_count = 0
-                while main_contents:
-                    tmp_main_content = main_contents[0] 
-
-                    main_contents = rescore_main_content_with_children(tmp_main_content)
-
-                    print(f" tmp_main tag : {tmp_main_content['tag']} main tag : {main_contents[0]['tag']}")
-                    print(f'tmp_candidates score : {tmp_main_content["score"]}  & main_contents {main_contents[0]["score"]}')
-                    if tmp_main_content["score"] >= main_contents[0]["score"]:
-                        break
-
-                    loop_count += 1
-                    if loop_count == max_loop_count:
-                        print("error: loop count")
-                        break
-
-                print("Rescored child nodes:")
-                for child in main_contents[:5]:
-                    print_content(child)
-
-                print("Selected main content:")
-                print_content(tmp_main_content)
-
-                return tmp_main_content
-            else:
-                print("No main content detected after initial search.")
-                return None
-
-        except Exception as e:
-            print("An error occurred during test_main:")
-            print_error_details(e)
-
-        finally:
-            await browser.close()
+        tree = await get_tree(page)
+        if not tree:
+            print("Error: Empty tree structure returned")
             return None
+
+        # ----------------------------------------------------------------
+        # web type cheak
+        # ----------------------------------------------------------------
+        monitor = PageMonitor(url, tree)
+        watch_url = monitor.get_watch_url()
+
+        if watch_url:
+            print(f"URL updated: {url} -> {watch_url}. Restarting process...")
+            await browser.close()  # 既存のブラウザを閉じる
+            return await test_main(watch_url)  # 再帰的に処理を実行
+
+        # save_json(tree)
+
+        tree = [tree]  # Convert tree to list[Dict]
+        scorer = MainContentScorer(tree, dimensions['width'], dimensions['height'])
+        main_contents = scorer.find_candidates()
+
+        if not main_contents:
+            print("No main content detected.")
+            return {}
+
+        print("Top candidates:")
+        for content in main_contents[:6]:
+            print_content(content)
+
+        if main_contents:
+            main_contents = rescore_main_content_with_children(main_contents[0])
+
+            # print("pre content diff:")
+            # for content in main_contents[:2]:
+            #     print_content(content)
+
+            loop_count = 0
+            tmp_main_content = {}
+            while main_contents:
+                tmp_main_content = main_contents[0] 
+
+                main_contents = rescore_main_content_with_children(tmp_main_content)
+
+                print(f" tmp_main tag : {tmp_main_content['tag']} main tag : {main_contents[0]['tag']}")
+                print(f'tmp_candidates score : {tmp_main_content["score"]}  & main_contents {main_contents[0]["score"]}')
+                if tmp_main_content["score"] >= main_contents[0]["score"]:
+                    break
+
+                loop_count += 1
+                if loop_count == max_loop_count:
+                    print("error: loop count")
+                    break
+
+            print("Rescored child nodes:")
+            for child in main_contents[:5]:
+                print_content(child)
+
+            print("Selected main content:")
+            print_content(tmp_main_content)
+
+            tmp_main_content["url"] = url
+
+            return tmp_main_content
+        else:
+            print("No main content detected after initial search.")
+
+            return {}
+
+    except Exception as e:
+        print("An error occurred during test_main:")
+        print_error_details(e)
+
+    finally:
+        await browser.close()
+        await playwright.stop()  # Playwright自体も終了させる
+
 
 
 async def choice_content(url: str, selector: str):
@@ -354,6 +392,8 @@ async def choice_content(url: str, selector: str):
             if not tree:
                 print(f"No matching elements found for selector: {selector}")
                 return {}
+            
+            tree["url"] = url
 
             return tree
 
@@ -374,15 +414,16 @@ if __name__ == "__main__":
     #url = "https://monoschinos2.com/anime/bleach-sennen-kessen-hen-soukoku-tan-sub-espanol"
     url = "https://gamewith.jp/apexlegends/"
     url = "https://s1s1s1.com/top "
-    url = "https://f95zone.to/threads/translation-request-big-breasts-party-ntr.52990/page-495"
+    url = "https://f95zone.to/threads/translation-request-big-breasts-party-ntr.52990/page-497"
 
     import datetime
     sta_sec = datetime.datetime.now()
-    asyncio.run(test_main(url))
+    dict_obj = asyncio.run(test_main(url))
     end_sec = datetime.datetime.now()
 
     print(f"full proc {end_sec - sta_sec} seconds")
-
+    print(type(dict_obj))
+ 
     # choice_dict = {
     #     "id": "ld_blog_article_comment_entries",
     #     "tag": "ol",
