@@ -17,7 +17,7 @@ import hashlib
 
 # my module 
 import util_str
-from get_tree import get_tree
+from make_tree import make_tree
 from scorer import MainContentScorer
 from web_type_chk import PageMonitor
 
@@ -287,7 +287,7 @@ async def test_main(url : str):
 
         dimensions = await adjust_page_view(page)
 
-        tree = await get_tree(page)
+        tree = await make_tree(page)
         if not tree:
             print("Error: Empty tree structure returned")
             return None
@@ -388,7 +388,7 @@ async def choice_content(url: str, selector: str):
                 await asyncio.sleep(1)  # 必要最小限の待機
 
             # DOMツリーを取得
-            tree = await get_tree(page, selector=selector)
+            tree = await make_tree(page, selector=selector)
             if not tree:
                 print(f"No matching elements found for selector: {selector}")
                 return {}
