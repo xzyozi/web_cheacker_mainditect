@@ -3,7 +3,7 @@ from playwright.async_api import Page, ElementHandle
 import json
 
 
-async def get_tree(
+async def make_tree(
     page: Page,
     selector: Optional[str] = None,
     wait_for_load: bool = True,

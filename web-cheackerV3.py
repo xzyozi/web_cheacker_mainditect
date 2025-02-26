@@ -405,7 +405,10 @@ def process_url(url : str,
             if csv_manager[index_num, "result_vl"] != content_hash_text:
 
                 chk_url = rescored_candidate["url"]
-                css_selector = rescored_candidate["css_selector"]
+
+                if url == chk_url:
+                    css_selector = rescored_candidate["css_selector"]
+                
                 save_json(rescored_candidate, chk_url)
 
                 csv_manager.write_csv_updateValues(content_hash_text, index_num, css_selector, chk_url)

@@ -3,8 +3,6 @@ from typing import Dict, List, Any, Union , Optional
 from scipy import stats
 
 
-
-
 class MainContentScorer:
     def __init__(self, tree: list[Dict], width: int, height: int):
         if isinstance(tree, list):
@@ -24,12 +22,34 @@ class MainContentScorer:
                                                peak: float = 0.8, 
                                                sigma: float = 0.3
                                                ) -> float:
-        """
-        Calculate the score multiplier based on the screen occupancy rate using a Gaussian function.
-        :param occupancy_rate: The rate of screen occupancy (0 to 1).
-        :param peak: The peak point of the Gaussian curve (default is 0.9). 0.6 or 0.65
-        :param sigma: The standard deviation of the Gaussian curve (default is 0.1).
-        :return: The multiplier for the score.
+        """        
+        画面占有率に基づいてスコアの倍率を計算する。  
+        この関数はガウス関数（正規分布）を使用し、基準値（peak）を中心に  
+        偏差（sigma）が大きくなるほどスコアを減衰させる。
+
+        :param occupancy_rate: The rate of screen occupancy (0 to 1).  
+                    要素が画面全体に占める面積の割合（0～1の範囲）。
+                    例: `0.5` → 画面の 50% を占める要素  
+                        `0.1` → 画面の 10% を占める要素  
+
+        :param peak: The peak point of the Gaussian curve (default is 0.9).  
+                    スコアが最大となる画面占有率（デフォルトは `0.9` = 90%）。  
+                    これより離れるほどスコアが減衰する。  
+                    例: `peak=0.7` にすると 70% 占有の要素が最も高評価される。
+
+        :param sigma: The standard deviation of the Gaussian curve (default is 0.1).  
+                    正規分布の標準偏差（デフォルトは `0.1`）。  
+                    `sigma` が小さいほど減衰が急になり、評価範囲が狭くなる。  
+                    `sigma` が大きいと広範囲の要素が高スコアを維持する。  
+
+        :return: The multiplier for the score.  
+                スコア倍率（`1.0` が最大で、`peak` から離れるほど指数関数的に減衰する）。
+
+        **スコアの変化の例:**
+        - `peak = 0.9`, `sigma = 0.1` → **90% 占有の要素が最も評価され、それ以外は急減衰**
+        - `peak = 0.7`, `sigma = 0.2` → **70% 〜 90% 占有の要素も比較的高スコアを維持**
+        - `sigma` を `0.05` にすると **90% 付近以外の要素は大幅にスコアダウン**
+        - `sigma` を `0.2` にすると **広い範囲（70%〜100%）の要素が評価される**
         """
         exponent = -0.5 * ((occupancy_rate - peak) / sigma) ** 2
         return math.exp(exponent)
