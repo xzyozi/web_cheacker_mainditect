@@ -1,17 +1,28 @@
 import re
 from urllib.parse import urlparse
+from dataclasses import dataclass
+from enum import Enum
+
+from dom_treeSt import DOMTreeSt
+
+@dataclass
+class WebType(Enum):
+    plane = "plane"
+    page_changer = "page_changer"
+
+
 
 class PageMonitor:
     def __init__(self, 
                  base_url : str, 
-                 node : dict
+                 node : DOMTreeSt
                  ):
         self.base_url = base_url  # 監視対象のURL（既存の探索URL）
         self.node = node  # 解析対象のDOM情報
 
     def should_check_update(self):
         """ページ更新チェックを実行すべきか判定"""
-        for link in self.node["links"]:
+        for link in self.node.links:
             if re.search(r"page[-=]\d+", link):
                 return True  # ページ番号を含むリンクがあれば更新チェックが必要
         return False  # 該当リンクなし → 更新不要
@@ -20,7 +31,7 @@ class PageMonitor:
         """最新ページのURLを取得"""
         page_numbers = []
         page_format = None  # "page-" or "page=" の形式を保持
-        for link in self.node["links"]:
+        for link in self.node.links:
             match = re.search(r"(page[-=/]?)(\d+)", link)
             if match:
                 page_numbers.append(int(match.group(2)))
@@ -52,13 +63,13 @@ def test_page_monitor_1():
     """PageMonitor の単体テスト１"""
     # サンプルデータ
     base_url = "http://sample.com/def/page-1"
-    node_data = {
-        "links": [
+    node_data = DOMTreeSt(
+        links = [
             "http://sample.com/def/page-1",
             "http://sample.com/def/page-2",
             "http://sample.com/def/page-10"
         ]
-    }
+    )
     
     monitor = PageMonitor(base_url, node_data)
     
