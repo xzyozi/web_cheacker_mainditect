@@ -19,7 +19,7 @@ import playwright_mainditect_v3 as playwright_mainditect
 from mail import send_email
 from text_struct import text_struct
 import util_str
-
+from dom_treeSt import DOMTreeSt, BoundingBox
 # +----------------------------------------------------------------
 # + Constant definition
 # +----------------------------------------------------------------
@@ -322,7 +322,7 @@ class CSVManager:
 
 # csv function end ---------------------------------------------------------------- 
 
-def scraping_mainditect(url_data : dict) -> dict | None:
+def scraping_mainditect(url_data : dict) -> DOMTreeSt | None:
     try:
         url = url_data['url']
         web_type = url_data['web_page_type']
@@ -332,7 +332,7 @@ def scraping_mainditect(url_data : dict) -> dict | None:
     except Exception as e:
         log_print.warning(f"{e}")
 
-def choice_content(url_data : dict) -> dict | None:
+def choice_content(url_data : dict) -> DOMTreeSt | None:
     url = url_data['url']
     css_selector = url_data['css_selector']
     try:
@@ -375,7 +375,7 @@ def process_url(url : str,
             # ----------------------------------------------------------------
             rescored_candidate = scraping_mainditect(csv_manager.get_record_as_dict(index_num))
             if rescored_candidate:
-                content_hash_text = hashlib.sha256(str(rescored_candidate["links"]).encode()).hexdigest()
+                content_hash_text = hashlib.sha256(str(rescored_candidate.links).encode()).hexdigest()
                 csv_manager[index_num, "full_scan_datetime"] = get_Strdatetime()
                 update_flg = True
                 result_flg = True
@@ -401,13 +401,13 @@ def process_url(url : str,
         # result process
         # ----------------------------------------------------------------
         if rescored_candidate:
-            content_hash_text = hashlib.sha256(str(rescored_candidate["links"]).encode()).hexdigest()
+            content_hash_text = hashlib.sha256(str(rescored_candidate.links).encode()).hexdigest()
             if csv_manager[index_num, "result_vl"] != content_hash_text:
 
-                chk_url = rescored_candidate["url"]
+                chk_url = rescored_candidate.url
 
-                if url == chk_url:
-                    css_selector = rescored_candidate["css_selector"]
+                # if url == chk_url:
+                #     css_selector = rescored_candidate["css_selector"]
                 
                 save_json(rescored_candidate, chk_url)
 

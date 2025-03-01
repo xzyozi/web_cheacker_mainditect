@@ -20,6 +20,7 @@ import util_str
 from make_tree import make_tree
 from scorer import MainContentScorer
 from web_type_chk import PageMonitor
+from dom_treeSt import DOMTreeSt, BoundingBox
 
 asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
@@ -127,7 +128,7 @@ def print_error_details(e : Exception) -> None :
     traceback.print_exc(file=sys.stdout)
 
 
-def update_nodes_with_children(data: Union[Dict[str, Any], List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+def update_nodes_with_children(data: Union[Dict[str, Any], List[Dict[str, Any]], DOMTreeSt]) -> Union[List[Dict[str, Any]], List[DOMTreeSt]]:
     """
     Recursively enrich nodes with their descendant nodes and return the enriched nodes in a list.
 
@@ -149,20 +150,27 @@ def update_nodes_with_children(data: Union[Dict[str, Any], List[Dict[str, Any]]]
         if 'children' in data:
             updated_nodes.extend(update_nodes_with_children(data['children']))
 
+    elif isinstance(data, DOMTreeSt):
+        updated_nodes.append(data)
+        if data.children :
+            updated_nodes.extend(update_nodes_with_children(data.children))
+
     else :
         print(f"type error : {type(data)} -> {data}")
 
     return updated_nodes
 
 
-def rescore_main_content_with_children(main_content : Dict, driver=None) -> list[Dict]:
-    if not isinstance(main_content, dict):
-        raise TypeError("main_content must be a dictionary")
+def rescore_main_content_with_children(main_content : DOMTreeSt, 
+                                       driver=None
+                                       ) -> list[DOMTreeSt]:
+    if not isinstance(main_content, DOMTreeSt):
+        raise TypeError("main_content must be a DOMTreeSt")
 
     # メインコンテンツのサイズを取得
-    main_rect = main_content.get("rect", {"x": 0, "y": 0, "width": 0, "height": 0})
-    main_width = main_rect.get("width", 0)
-    main_height = main_rect.get("height", 0)
+    main_rect = main_content.rect
+    main_width = main_rect.width
+    main_height = main_rect.height
 
 
     # 親ノードとその子ノードのlistを作成
@@ -179,7 +187,7 @@ def rescore_main_content_with_children(main_content : Dict, driver=None) -> list
     #     print(f"Tag: {node['tag']}, Score: {node['score']}")
 
     # スコアの高い順に子ノードを並べ替える
-    scored_nodes.sort(key=lambda x: x["score"], reverse=True)
+    scored_nodes.sort(key=lambda x: x.score, reverse=True)
 
     return scored_nodes
 
@@ -258,7 +266,7 @@ async def initialize_browser_and_page(url):
 
 
 
-async def test_main(url : str):       
+async def test_main(url : str) -> DOMTreeSt | None:       
 
     max_loop_count = 10
 
@@ -313,27 +321,31 @@ async def test_main(url : str):
             print("No main content detected.")
             return {}
 
-        print("Top candidates:")
-        for content in main_contents[:6]:
-            print_content(content)
+        print(f"Top candidates:{len(main_contents)}")
+        for content in main_contents[:0]:
+            print(content)
 
         if main_contents:
             main_contents = rescore_main_content_with_children(main_contents[0])
+
+            print("main content:")
+            print(main_contents[0])
+            print(main_contents[1])
 
             # print("pre content diff:")
             # for content in main_contents[:2]:
             #     print_content(content)
 
             loop_count = 0
-            tmp_main_content = {}
+            # tmp_main_content = DOMTreeSt()
             while main_contents:
                 tmp_main_content = main_contents[0] 
 
                 main_contents = rescore_main_content_with_children(tmp_main_content)
 
-                print(f" tmp_main tag : {tmp_main_content['tag']} main tag : {main_contents[0]['tag']}")
-                print(f'tmp_candidates score : {tmp_main_content["score"]}  & main_contents {main_contents[0]["score"]}')
-                if tmp_main_content["score"] >= main_contents[0]["score"]:
+                print(f" tmp_main tag : {tmp_main_content.tag} main tag : {main_contents[0].tag}")
+                print(f'tmp_candidates score : {tmp_main_content.score}  & main_contents {main_contents[0].score}')
+                if tmp_main_content.score >= main_contents[0].score:
                     break
 
                 loop_count += 1
@@ -343,18 +355,19 @@ async def test_main(url : str):
 
             print("Rescored child nodes:")
             for child in main_contents[:5]:
-                print_content(child)
+                print(child)
 
             print("Selected main content:")
-            print_content(tmp_main_content)
+            # print_content(tmp_main_content)
+            print(tmp_main_content)
 
-            tmp_main_content["url"] = url
+            tmp_main_content.url = url
 
             return tmp_main_content
         else:
             print("No main content detected after initial search.")
 
-            return {}
+            return None
 
     except Exception as e:
         print("An error occurred during test_main:")
@@ -393,13 +406,13 @@ async def choice_content(url: str, selector: str):
                 print(f"No matching elements found for selector: {selector}")
                 return {}
             
-            tree["url"] = url
+            tree.url = url
 
             return tree
 
         except Exception as e:
             print(f"Error during content extraction: {str(e)}")
-            return {}
+            return None
 
         finally:
             await context.close()

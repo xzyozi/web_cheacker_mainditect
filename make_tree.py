@@ -1,7 +1,8 @@
 from typing import  Any, Union , Optional
-from playwright.async_api import Page, ElementHandle
+from playwright.async_api import Page, ElementHandle, async_playwright
 import json
-
+# my module
+from dom_treeSt import DOMTreeSt, BoundingBox
 
 async def make_tree(
     page: Page,
@@ -9,9 +10,10 @@ async def make_tree(
     wait_for_load: bool = True,
     timeout: int = 30000,
     debug: bool = True
-) -> dict:
+) -> DOMTreeSt:
     """
     Get DOM tree starting from a specific selector or body.
+    Page.goto(url)後に使用
     
     Args:
         page: Playwright ページオブジェクト
@@ -69,32 +71,31 @@ async def make_tree(
 
             css_selector = make_css_selector(properties)
 
-            node = {
-                "tag": properties['tag'],
-                "id": properties['id'],
-                "attributes": properties['attributes'],
-                "children": [],
-                "rect": {
-                    "x": bounding_box['x'],
-                    "y": bounding_box['y'],
-                    "width": bounding_box['width'],
-                    "height": bounding_box['height'],
-                },
-                "depth": current_depth,
-                "text": properties['text'],
-                "score": 0,
-                "css_selector": css_selector,
-                "links": properties['links'],
-            }
+            tree = DOMTreeSt(
+                tag=properties['tag'],
+                id=properties['id'],
+                attributes=properties['attributes'],
+                rect=BoundingBox(
+                    x=bounding_box['x'],
+                    y=bounding_box['y'],
+                    width=bounding_box['width'],
+                    height=bounding_box['height'],
+                ),
+                depth=current_depth,
+                text=properties['text'],
+                score=0,
+                css_selector=css_selector,
+                links=properties['links'],
+            )
 
             # Get children
             children = await el.query_selector_all(':scope > *')
             for child in children:
                 child_node = await parse_element(child, current_depth + 1)
                 if child_node:
-                    node["children"].append(child_node)
+                    tree.children.append(child_node)
 
-            return node
+            return tree
 
         except Exception as e:
             print(f"Error parsing element: {str(e)}")
@@ -272,3 +273,22 @@ def make_css_selector(choice_dict : dict) -> str:
     #     selector += href_filter
 
     return selector
+
+async def test_makeTree():
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+        await page.goto("https://example.com")
+
+        root_element = await page.query_selector("body")
+        if root_element:
+            dom_tree = await make_tree(root_element)
+            # print(dom_tree.to_dict())  # ツリー全体を表示
+            print(dom_tree)
+
+        await browser.close()
+
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(test_makeTree())

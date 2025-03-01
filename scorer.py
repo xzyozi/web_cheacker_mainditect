@@ -2,9 +2,14 @@ import math
 from typing import Dict, List, Any, Union , Optional
 from scipy import stats
 
+from dom_treeSt import DOMTreeSt, BoundingBox
 
 class MainContentScorer:
-    def __init__(self, tree: list[Dict], width: int, height: int):
+    def __init__(self,
+                 tree: list[DOMTreeSt], 
+                 width: int, 
+                 height: int
+                 ):
         if isinstance(tree, list):
             self.tree = tree
         else:
@@ -57,17 +62,17 @@ class MainContentScorer:
 
 
     def _score_node(self, 
-                     node: Dict,
+                     node: DOMTreeSt,
                      pre_mode : bool = False ,
                      depth_flag : bool = True,
                      maintag_addscore : bool = False,
                      ) -> None:
         if self.init_depth_flag :
             # 一番上のtreeを0にするために差分をとる
-            self.parent_depth_diff = node["depth"] 
+            self.parent_depth_diff = node.depth 
             self.init_depth_flag = False
             # print("★ top level depth")
-            # print(f' parent depth diff : {self.parent_depth_diff}  , depth : {node["depth"]}')
+            # print(f' parent depth diff : {self.parent_depth_diff}  , depth : {node.depth}')
             # print_content(node)
 
         score = 1
@@ -77,7 +82,7 @@ class MainContentScorer:
                 score += 1
         """
         try:
-            link_count = len(node.get("links", []))  # リンクの数を取得
+            link_count = len(node.links)  # リンクの数を取得
 
             link_score = 0.2 * min(link_count, 5)
 
@@ -89,7 +94,7 @@ class MainContentScorer:
 
 
         # Calculate the screen occupancy rate
-        element_area = node["rect"]["width"] * node["rect"]["height"]
+        element_area = node.rect.width * node.rect.height
         page_area = self.width * self.height
         occupancy_rate = element_area / page_area
         multiplier = self._calculate_screen_occupancy_multiplier(occupancy_rate)
@@ -98,22 +103,22 @@ class MainContentScorer:
         score *= multiplier
 
 
-        x = (node["rect"]["x"] + node["rect"]["width"] / 2) / self.width  # X座標を正規化
+        x = (node.rect.x + node.rect.width / 2) / self.width  # X座標を正規化
         if self.height != 0:
-            y = node["rect"]["y"] / self.height  # Y座標を正規化
+            y = node.rect.y / self.height  # Y座標を正規化
         else:
             y = 0  # heightが0の場合はyを0に設定
-        w = node["rect"]["width"] / self.width  # 幅を正規化
+        w = node.rect.width / self.width  # 幅を正規化
         if self.height != 0:
-            h = node["rect"]["height"] / self.height  # 高さを正規化
+            h = node.rect.height / self.height  # 高さを正規化
         else:
             h = 0  # heightが0の場合は高さを0に設定
 
         # 正規化された座標と寸法から、各要素のスコアを計算
-        x_score = X_DIST.pdf(x) ** WEIGHTS["x"]
-        y_score = Y_DIST.pdf(y) ** WEIGHTS["y"]
-        w_score = WIDTH_DIST.pdf(w) ** WEIGHTS["width"]
-        h_score = min(h, 0.9) ** WEIGHTS["height"]
+        x_score = X_DIST.pdf(x) ** WeightBox.x
+        y_score = Y_DIST.pdf(y) ** WeightBox.y
+        w_score = WIDTH_DIST.pdf(w) ** WeightBox.width
+        h_score = min(h, 0.9) ** WeightBox.height
 
         score *= x_score * y_score * w_score * h_score
 
@@ -132,16 +137,16 @@ class MainContentScorer:
 
         if depth_flag :
             # ネストが深いほどスコアを高く設定する
-            depth_weight = calculate_depth_weight( node["depth"] - self.parent_depth_diff)  # 深さに基づく重みを計算
+            depth_weight = calculate_depth_weight( node.depth - self.parent_depth_diff)  # 深さに基づく重みを計算
             score *= depth_weight  # スコアを計算
             # print("★  code passed to depth weight calculation " + str(depth_weight ) ) 
         
-        node["score"] = score * link_score  # * text_score  # 総合スコアを計算
+        node.score = score * link_score  # * text_score  # 総合スコアを計算
 
 
         if maintag_addscore :
             if is_main_element(node):
-                node["score"] += 0.5
+                node.score += 0.5
 
 
 
@@ -151,7 +156,7 @@ class MainContentScorer:
         """
 
 
-    def find_candidates(self) -> List[Dict]:
+    def find_candidates(self) -> List[DOMTreeSt]:
         # self.tree = [self.tree] # ルートノードを List[Dict] に変換
         # if type(self.tree) == dict :
         #     nodes = [self.tree] # ルートノードを List[Dict] に変換
@@ -168,14 +173,14 @@ class MainContentScorer:
             self._score_node(node, pre_mode=True, depth_flag=False, maintag_addscore=True) 
             # print(f"Scored node: {node['tag']}, Score: {node['score']}, Valid: {is_valid_element(node)}")  # デバッグ用の出力
             
-            nodes.extend(node["children"])  # 子ノードを追加
+            nodes.extend(node.children)  # 子ノードを追加
 
-        candidates.sort(key=lambda x: x["score"], reverse=True)
+        candidates.sort(key=lambda x: x.score, reverse=True)
         
         return candidates
     
     # scoring for children nodes
-    def score_parent_and_children(self) -> list[Dict]: 
+    def score_parent_and_children(self) -> list[DOMTreeSt]: 
         """
         親ノードとその子ノードのスコアを計算する
 
@@ -184,7 +189,7 @@ class MainContentScorer:
         Returns:
             scored_nodes (list[Dict]}: 親ノードとその子ノードのスコアリング結果を含む辞書のリスト
         """
-        scored_nodes = []
+        scored_nodes : List[DOMTreeSt] = []
         # self._score_node(parent_node)  # 親ノードのスコアを計算
         # scored_nodes.append(parent_node)  # 親ノードを追加
 
@@ -196,7 +201,7 @@ class MainContentScorer:
             self._score_node(node)
             scored_nodes.append(node) 
 
-        scored_nodes.sort(key=lambda x: x["score"], reverse=True)
+        scored_nodes.sort(key=lambda x: x.score, reverse=True)
 
         return scored_nodes
     
@@ -210,7 +215,7 @@ LINK_LENGTH_STD_LOW = 5     # 文字数の標準偏差
 LINK_LENGTH_STD_HIGH = 30
 
 
-def score_link_length(node: Dict) -> float:
+def score_link_length(node: DOMTreeSt) -> float:
     """
     要素内のlink量に基づいてスコアを計算する関数
 
@@ -220,7 +225,7 @@ def score_link_length(node: Dict) -> float:
     Returns:
         float: link量に基づくスコア
     """
-    link_length = len(node.get("links", []))  # 要素内のlink数を取得
+    link_length = len(node.links)  # 要素内のlink数を取得
     # リンクがない場合、スコアを0にするのではなく0.1にするようにする
     # if text_length == 0:score = 0
     if link_length == 0:score = 0.1
@@ -253,6 +258,12 @@ WEIGHTS = {
     "height": 1.5    # 高さの重み
 }
 
+class WeightBox(BoundingBox):
+    x = 1         # X軸の重み
+    y = 1         # Y軸の重み
+    width = 1     # 幅の重み
+    height = 1.5  # 高さの重み
+
 # テキスト量のスコアリングに関する定数
 TEXT_LENGTH_WEIGHT = 1.5  # テキスト量の重みの係数
 TEXT_LENGTH_MEAN = 50    # 文字数の平均値
@@ -260,7 +271,7 @@ TEXT_LENGTH_STD_LOW = 40     # 文字数の標準偏差（平均未満の場合�
 TEXT_LENGTH_STD_HIGH = 1000  # 文字数の標準偏差（平均以上の場合）
 
 
-def score_text_length(node: Dict) -> float:
+def score_text_length(node: DOMTreeSt) -> float:
     """
     要素内のテキスト量に基づいてスコアを計算する関数
 
@@ -270,7 +281,7 @@ def score_text_length(node: Dict) -> float:
     Returns:
         float: テキスト量に基づくスコア
     """
-    text_length = len(node.get("text", ""))  # 要素内のテキストの文字数を取得
+    text_length = len(node.text)  # 要素内のテキストの文字数を取得
     # print(f'id: {node.get("id")} text: {text_length}')    
 
     if text_length == 0: score = 0
@@ -293,7 +304,7 @@ def score_text_length(node: Dict) -> float:
 def calculate_depth_weight(current_depth : int , 
                            max_depth : int = 7,
                            base_weight :float =1.0 , 
-                           weight_factor :float =6.0) -> float:
+                           weight_factor :float =4.0) -> float:
     """
     現在の階層レベルに基づいて depth の重みを計算する関数
 
@@ -313,34 +324,34 @@ def calculate_depth_weight(current_depth : int ,
 
     return weight
 
-def is_main_element(node: Dict) -> bool:
+def is_main_element(node: DOMTreeSt) -> bool:
     """
     メインコンテンツ判定
     """
 
-    tag = node["tag"].upper()
+    tag = node.tag.upper()
     if tag == "MAIN":
         return True
-    if "id" in node["attributes"] and "main" in node["attributes"]["id"].lower():
+    if "id" in node.attributes and "main" in node.attributes["id"].lower():
         return True
     return False
 
 # def is_skippable(node: Dict) -> bool:
-#     if len(node["children"]) != 1:
+#     if len(node.children) != 1:
 #         return False
-#     child = node["children"][0]
+#     child = node.children[0]
 #     skip_threshold = 5
 #     if (
-#         abs(node["rect"]["x"] - child["rect"]["x"]) < skip_threshold
-#         and abs(node["rect"]["y"] - child["rect"]["y"]) < skip_threshold
-#         and abs(node["rect"]["width"] - child["rect"]["width"]) < skip_threshold
-#         and abs(node["rect"]["height"] - child["rect"]["height"]) < skip_threshold
+#         abs(node.rect.x - child.rect.x) < skip_threshold
+#         and abs(node.rect.y - child.rect.y) < skip_threshold
+#         and abs(node.rect.width - child.rect.width) < skip_threshold
+#         and abs(node.rect.height - child.rect.height) < skip_threshold
 #     ):
 #         return True
 #     return False
 
-def is_valid_element(node: Dict) -> bool:
-    tag = node["tag"].upper()
+def is_valid_element(node: DOMTreeSt) -> bool:
+    tag = node.tag.upper()
     invalid_tags = [
         "NAV",
         "ASIDE",
@@ -368,7 +379,7 @@ def is_valid_element(node: Dict) -> bool:
     if tag in invalid_tags:
         return False
     
-    area = node["rect"]["width"] * node["rect"]["height"]
+    area = node.rect.width * node.rect.height
     if area < 0.05:
         return False
     return True
