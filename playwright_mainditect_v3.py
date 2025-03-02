@@ -29,7 +29,23 @@ asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 # + save json file
 # + ---------------------------------------------------------------
 import json
-def save_json(data, file_path="./data/json.json") :
+def save_json(data : dict, 
+              url : str, 
+              directory="data"):
+    """
+    辞書型のデータをJSONファイルとして保存する
+    
+    Args:
+        data (dict): 保存するデータ
+        url (str): データに対応するURL
+        directory (str): JSONファイルを保存するディレクトリのパス
+    Retrun: 
+        None
+    """
+    domain = util_str.get_domain(url)
+    file_path = os.path.join(directory, f"{domain}.json")
+    util_str.util_handle_path(file_path)  # ファイルを作成または取得する
+    
     with open(file_path, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
@@ -311,7 +327,6 @@ async def test_main(url : str) -> DOMTreeSt | None:
             await browser.close()  # 既存のブラウザを閉じる
             return await test_main(watch_url)  # 再帰的に処理を実行
 
-        # save_json(tree)
 
         tree = [tree]  # Convert tree to list[Dict]
         scorer = MainContentScorer(tree, dimensions['width'], dimensions['height'])
@@ -362,6 +377,10 @@ async def test_main(url : str) -> DOMTreeSt | None:
             print(tmp_main_content)
 
             tmp_main_content.url = url
+
+            json_data = tmp_main_content.to_dict()
+
+            save_json(json_data,url)
 
             return tmp_main_content
         else:
