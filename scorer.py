@@ -302,7 +302,7 @@ def score_text_length(node: DOMTreeSt) -> float:
 # +  depth weight
 # + ----------------------------------------------------------------
 def calculate_depth_weight(current_depth : int , 
-                           max_depth : int = 7,
+                           max_depth : int = 5,
                            base_weight :float =1.0 , 
                            weight_factor :float =4.0) -> float:
     """

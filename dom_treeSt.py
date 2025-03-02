@@ -75,6 +75,7 @@ class DOMTreeSt:
     def __repr__(self) -> str:
         """ノードの情報を見やすく表示"""
         info = [
+            f"",
             f"Tag: {self.tag}",
             f"Score: {self.score}",
             f"ID: {self.id}" if self.id else "ID: None",

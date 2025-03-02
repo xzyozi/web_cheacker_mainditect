@@ -10,6 +10,7 @@ import numpy as np
 import requests
 import asyncio
 import shutil
+import traceback
 
 
 # +----------------------------------------------------------------
@@ -122,7 +123,9 @@ class User:
 # +----------------------------------------------------------------
 # + json function
 # +----------------------------------------------------------------
-def save_json(data, url, directory=SAVE_JSON_DIR_PATH):
+def save_json(data : dict, 
+              url : str, 
+              directory=SAVE_JSON_DIR_PATH):
     """
     辞書型のデータをJSONファイルとして保存する
     
@@ -136,9 +139,6 @@ def save_json(data, url, directory=SAVE_JSON_DIR_PATH):
     domain = util_str.get_domain(url)
     file_path = os.path.join(directory, f"{domain}.json")
     util_str.util_handle_path(file_path)  # ファイルを作成または取得する
-     
-    # URLをデータに追加
-    data['url'] = url
     
     with open(file_path, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
@@ -348,7 +348,7 @@ def process_url(url : str,
                 error_list : list
                 ):
     try:
-        log_print.info(f"Processing URL: {url}, index: {index_num}")
+
         now_sec = datetime.now()
 
         css_selector = csv_manager[index_num, "css_selector"]
@@ -373,9 +373,9 @@ def process_url(url : str,
             # ----------------------------------------------------------------
             # full scan 
             # ----------------------------------------------------------------
+            log_print.info(f"FULL SCAN URL: {url}, index: {index_num}")
             rescored_candidate = scraping_mainditect(csv_manager.get_record_as_dict(index_num))
             if rescored_candidate:
-                content_hash_text = hashlib.sha256(str(rescored_candidate.links).encode()).hexdigest()
                 csv_manager[index_num, "full_scan_datetime"] = get_Strdatetime()
                 update_flg = True
                 result_flg = True
@@ -387,6 +387,7 @@ def process_url(url : str,
             # -----------------------------------------------------------------
             # selecter choice scan
             # -----------------------------------------------------------------
+            log_print.info(f"CHOICE SCAN URL: {url}, index: {index_num}")
             try:
                 rescored_candidate = choice_content(csv_manager.get_record_as_dict(index_num))
                 proc_time = datetime.now() - now_sec
@@ -402,6 +403,7 @@ def process_url(url : str,
         # ----------------------------------------------------------------
         if rescored_candidate:
             content_hash_text = hashlib.sha256(str(rescored_candidate.links).encode()).hexdigest()
+            log_print.debug("hash_text: %s", content_hash_text)
             if csv_manager[index_num, "result_vl"] != content_hash_text:
 
                 chk_url = rescored_candidate.url
@@ -409,7 +411,8 @@ def process_url(url : str,
                 # if url == chk_url:
                 #     css_selector = rescored_candidate["css_selector"]
                 
-                save_json(rescored_candidate, chk_url)
+                # save_json(rescored_candidate.to_dict, chk_url)
+                # log_print("■save_json")
 
                 csv_manager.write_csv_updateValues(content_hash_text, index_num, css_selector, chk_url)
                 result_flg = True
@@ -487,7 +490,9 @@ def main():
         log_print.info("-------- ERROR list output -----------")
         for error_msg in error_list:
             log_print.info(error_msg)
-    
+
+        traceback.print_exc()
+
     if diff_urls:
         body = text_struct.generate_html(diff_urls, file_list)
         user.send_resultmail(body, body_type="html", image_list=file_list)

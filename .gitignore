@@ -17,3 +17,4 @@ add_process/add.bat
 add_process/config.ini
 add_process/add_process.py
 get_tree.py
+test/__pycache__/
