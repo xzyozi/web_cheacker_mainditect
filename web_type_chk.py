@@ -1,16 +1,15 @@
 import re
 from urllib.parse import urlparse
 from dataclasses import dataclass
+from typing import Dict, List, Optional
 from enum import Enum
 
 from dom_treeSt import DOMTreeSt
 
-@dataclass
+@dataclass(frozen=True)
 class WebType(Enum):
     plane = "plane"
     page_changer = "page_changer"
-
-
 
 class PageMonitor:
     def __init__(self, 
@@ -59,6 +58,27 @@ class PageMonitor:
         """URLが変更されていれば新しいURLを返す"""
         return self.typechk() if self.should_check_update() else None
 
+
+class WebTypeCHK() :
+    def __init__(self, 
+                 base_url : str, 
+                 node : DOMTreeSt
+                 ):
+        self.pagemon = PageMonitor(base_url,node)
+        self.node = node
+        self.next_url = None
+
+        
+
+    def webtype_chk(self) -> Optional[str]:
+        ret = self.pagemon.get_watch_url()
+        if ret :
+            self.node.web_type = WebType.page_changer
+            self.next_url = ret
+            return WebType.page_changer
+        
+        return WebType.plane
+
 def test_page_monitor_1():
     """PageMonitor の単体テスト１"""
     # サンプルデータ
@@ -93,7 +113,7 @@ def test_page_monitor_2():
     }
     
     monitor = PageMonitor(base_url, node_data)
-    
+    webtype = WebTypeCHK(base_url, node_data)
     assert monitor.should_check_update() == True, "ページ更新チェックが正しく判定されていません"
     expected_url = "http://sample.com/def/page-10"
     assert monitor.determine_watch_page() == expected_url, f"期待されるURL {expected_url} と一致しません"
@@ -102,4 +122,5 @@ def test_page_monitor_2():
     print("すべてのテストが成功しました！")
 
 if __name__ == "__main__":
-    test_page_monitor_1()
+
+    test_page_monitor_2()

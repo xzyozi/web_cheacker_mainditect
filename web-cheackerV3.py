@@ -117,7 +117,7 @@ class User:
                 image_list=image_list
             )
 
-        else : log_print("not send mail")
+        else : log_print.info("not send mail")
 
 
 # +----------------------------------------------------------------
@@ -335,8 +335,9 @@ def scraping_mainditect(url_data : dict) -> DOMTreeSt | None:
 def choice_content(url_data : dict) -> DOMTreeSt | None:
     url = url_data['url']
     css_selector = url_data['css_selector']
+    web_type = url_data["web_page_type"]
     try:
-        rescored_candidate = asyncio.run(playwright_mainditect.choice_content(url,css_selector))
+        rescored_candidate = asyncio.run(playwright_mainditect.choice_content(url,css_selector,web_type))
         return rescored_candidate
     except Exception as e:
         log_print.warning(f"{e}")
@@ -377,6 +378,7 @@ def process_url(url : str,
             rescored_candidate = scraping_mainditect(csv_manager.get_record_as_dict(index_num))
             if rescored_candidate:
                 csv_manager[index_num, "full_scan_datetime"] = get_Strdatetime()
+                csv_manager[index_num, "web_page_type"] = rescored_candidate.web_type
                 update_flg = True
                 result_flg = True
             else:
@@ -409,10 +411,11 @@ def process_url(url : str,
                 chk_url = rescored_candidate.url
 
                 # if url == chk_url:
-                #     css_selector = rescored_candidate["css_selector"]
+                css_selector = rescored_candidate.css_selector
                 
                 # save_json(rescored_candidate.to_dict, chk_url)
                 # log_print("■save_json")
+                log_print(f"{url} : webtype : {rescored_candidate.web_type}")
 
                 csv_manager.write_csv_updateValues(content_hash_text, index_num, css_selector, chk_url)
                 result_flg = True
@@ -421,8 +424,10 @@ def process_url(url : str,
             error_list.append([url, "Choice content None"])
             csv_manager[index_num, "full_scan_datetime"] = ""
     except Exception as e:
-        log_print.error(f"Error processing URL {url}: {e}")
-        error_list.append([url, e])
+        tb = traceback.extract_tb(e.__traceback__)  # 例外のトレースバックを取得
+        last_entry = tb[-1]  # 最後のエントリ（エラーが発生した行）
+        log_print.error(f"Error processing URL {url}: {e}{last_entry.lineno}")
+        error_list.append([url, e,last_entry.line,last_entry.lineno])
     
 #     return result_flg, update_flg
         return None

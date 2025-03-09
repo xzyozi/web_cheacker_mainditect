@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
+from enum import Enum
 
 @dataclass
 class BoundingBox:
@@ -31,6 +32,7 @@ class DOMTreeSt:
     css_selector: str = ""
     links: List[str] = field(default_factory=list)
     chk_url: str = ""
+    web_type: str = ""
 
     def add_child(self, child: "DOMTreeSt") -> None:
         """子ノードを追加する"""
