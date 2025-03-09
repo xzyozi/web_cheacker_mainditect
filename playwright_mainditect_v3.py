@@ -19,7 +19,7 @@ import hashlib
 import util_str
 from make_tree import make_tree
 from scorer import MainContentScorer
-from web_type_chk import PageMonitor
+from web_type_chk import WebTypeCHK, WebType
 from dom_treeSt import DOMTreeSt, BoundingBox
 
 asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -319,8 +319,9 @@ async def test_main(url : str) -> DOMTreeSt | None:
         # ----------------------------------------------------------------
         # web type cheak
         # ----------------------------------------------------------------
-        monitor = PageMonitor(url, tree)
-        watch_url = monitor.get_watch_url()
+        webtype = WebTypeCHK(url, tree)
+        chktype = webtype.webtype_chk()
+        watch_url = webtype.next_url
 
         if watch_url:
             print(f"URL updated: {url} -> {watch_url}. Restarting process...")
@@ -377,6 +378,7 @@ async def test_main(url : str) -> DOMTreeSt | None:
             print(tmp_main_content)
 
             tmp_main_content.url = url
+            tmp_main_content.web_type = chktype
 
             json_data = tmp_main_content.to_dict()
 
@@ -398,7 +400,15 @@ async def test_main(url : str) -> DOMTreeSt | None:
 
 
 
-async def choice_content(url: str, selector: str):
+async def choice_content(url: str, 
+                         selector: str,
+                         webtype : str,
+                         ):
+    
+    if webtype == WebType.page_changer :
+        print(f"webtype is pagechange full scan process start :{WebType.page_changer}")
+        return await test_main(url)
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
