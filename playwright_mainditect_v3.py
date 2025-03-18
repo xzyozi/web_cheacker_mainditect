@@ -269,7 +269,7 @@ def is_scraping_allowed(robots_txt : str,
     # Check if we are allowed to scrape the target path
     return robot_parser.can_fetch("*", target_path)
 
-async def initialize_browser_and_page(url):
+async def initialize_browser_and_page(url : str):
     """ブラウザとページを初期化し、スクレイピングの準備をする"""
     playwright = await async_playwright().start()
     try :
@@ -282,7 +282,10 @@ async def initialize_browser_and_page(url):
 
 
 
-async def test_main(url : str) -> DOMTreeSt | None:       
+async def test_main(url : str,
+                    count : int = 0,
+                    arg_webtype : any = None
+                    ) -> DOMTreeSt | None:       
 
     max_loop_count = 10
 
@@ -323,10 +326,15 @@ async def test_main(url : str) -> DOMTreeSt | None:
         chktype = webtype.webtype_chk()
         watch_url = webtype.next_url
 
-        if watch_url:
+        if watch_url and count < 3 :
             print(f"URL updated: {url} -> {watch_url}. Restarting process...")
             await browser.close()  # 既存のブラウザを閉じる
-            return await test_main(watch_url)  # 再帰的に処理を実行
+            await playwright.stop()
+            # 前回時点のwebtypeが存在する場合はそちらを採用する
+            if arg_webtype:
+                return await test_main(watch_url, count + 1, arg_webtype=arg_webtype)  # 再帰的に処理を実行
+            else:
+                return await test_main(watch_url, count + 1, arg_webtype=chktype)  # 再帰的に処理を実行
 
 
         tree = [tree]  # Convert tree to list[Dict]
@@ -378,7 +386,12 @@ async def test_main(url : str) -> DOMTreeSt | None:
             print(tmp_main_content)
 
             tmp_main_content.url = url
-            tmp_main_content.web_type = chktype
+
+            # 再帰処理後であれば前回時点
+            if arg_webtype :
+                tmp_main_content.web_type = arg_webtype
+            else : 
+                tmp_main_content.web_type = chktype
 
             json_data = tmp_main_content.to_dict()
 
@@ -402,12 +415,14 @@ async def test_main(url : str) -> DOMTreeSt | None:
 
 async def choice_content(url: str, 
                          selector: str,
-                         webtype : str,
+                         webtype_str : str,
                          ):
     
+    webtype = WebType.from_string(webtype_str)
+    # print(f"chk webtype : {webtype}({type(webtype)}) -- {WebType.page_changer} ({type(WebType.page_changer)})")
     if webtype == WebType.page_changer :
         print(f"webtype is pagechange full scan process start :{WebType.page_changer}")
-        return await test_main(url)
+        return await test_main(url,webtype)
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)

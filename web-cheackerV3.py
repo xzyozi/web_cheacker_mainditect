@@ -11,6 +11,7 @@ import requests
 import asyncio
 import shutil
 import traceback
+import re
 
 
 # +----------------------------------------------------------------
@@ -148,16 +149,29 @@ def save_json(data : dict,
 # datetime edit function 
 # +----------------------------------------------------------------
 DEFAULT_DATETIME = "19700101 00:00"
-DATEFORMAT = "%Y%m%d %H:%M"
+DEFAULT_DATEFORMAT = "%Y%m%d %H:%M"
+# 正規表現と対応する strptime フォーマットの辞書
+DATE_FORMATS = [
+    (re.compile(r"^\d{4}\d{2}\d{2} \d{2}:\d{2}:\d{2}$"), "%Y%m%d %H:%M:%S"),
+    (re.compile(r"^\d{4}\d{2}\d{2} \d{2}:\d{2}$"), "%Y%m%d %H:%M"),
+    (re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$"), "%Y-%m-%d %H:%M:%S"),
+    (re.compile(r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}$"), "%Y/%m/%d %H:%M"),
+    (re.compile(r"^\d{4}-\d{2}-\d{2}$"), "%Y-%m-%d"),
+    (re.compile(r"^\d{2}/\d{2}/\d{4}$"), "%m/%d/%Y"),
+    (re.compile(r"^\d{4}/\d{2}/\d{2}$"), "%Y/%m/%d"),
+    (re.compile(r"^\d{2}-\d{2}-\d{4}$"), "%d-%m-%Y"),
+    (re.compile(r"^\d{2}:\d{2}:\d{2}$"), "%H:%M:%S"),
+    (re.compile(r"^\d{2}:\d{2}$"), "%H:%M"),
+]
 
 def get_Strdatetime() -> str:
     nowtime = datetime.now()
-    formatted_now = nowtime.strftime(DATEFORMAT)
+    formatted_now = nowtime.strftime(DEFAULT_DATEFORMAT)
 
     return formatted_now
 
 def exchange_datetime(date_string : str) -> datetime :
-    return datetime.strptime(date_string, DATEFORMAT )
+    return datetime.strptime(date_string, DEFAULT_DATEFORMAT )
 
 def test_datetime():    
     date_string = "20240326"
@@ -165,7 +179,14 @@ def test_datetime():
     print(exchange_datetime(date_string))
     print(get_Strdatetime())
 
-def safe_parse_datetime(date_str, date_format=DATEFORMAT, default_datetime=DEFAULT_DATETIME):
+def detect_datetime_format(date_str):
+    for pattern, fmt in DATE_FORMATS:
+        if pattern.match(date_str):
+            log_print.info("format found")
+            return fmt
+    return None  # 判別できなかった場合
+
+def safe_parse_datetime(date_str, default_datetime=DEFAULT_DATETIME):
     """
     Safely parse a datetime string. If parsing fails, use the default datetime.
 
@@ -177,11 +198,14 @@ def safe_parse_datetime(date_str, date_format=DATEFORMAT, default_datetime=DEFAU
     Returns:
         datetime: A parsed datetime object.
     """
-    try:
-        return datetime.strptime(date_str, date_format)
-    except ValueError:
+
+    fmt = detect_datetime_format(date_str)
+
+    if fmt :
+        return datetime.strptime(date_str, fmt)
+    else :
         log_print.warning(f"Invalid datetime format for '{date_str}'. Using default: {default_datetime}")
-        return datetime.strptime(default_datetime, date_format)
+        return datetime.strptime(default_datetime, DEFAULT_DATEFORMAT)
 
 
 # +----------------------------------------------------------------
@@ -194,7 +218,7 @@ def get_last_modified(url):
         last_modified = response.headers.get('Last-Modified')
         if last_modified:
 
-            last_modified_datetime = datetime.strptime(last_modified, DATEFORMAT)
+            last_modified_datetime = datetime.strptime(last_modified, DEFAULT_DATEFORMAT)
             formatted_last_modified = last_modified_datetime.strftime("%Y%m%d")
             
             log_print.debug(formatted_last_modified, type(formatted_last_modified))
@@ -355,9 +379,15 @@ def process_url(url : str,
         css_selector = csv_manager[index_num, "css_selector"]
         run_code_time = csv_manager[index_num, "run_code"]
         full_scan_datetime = csv_manager[index_num, "full_scan_datetime"]
-        
+        bef_web_type = csv_manager[index_num,"web_page_type"]
+
         diff_days = (safe_parse_datetime(run_code_time) - safe_parse_datetime(full_scan_datetime)).days
-        
+        log_print.info(f"scan datatime : {safe_parse_datetime(run_code_time)} type:{type(run_code_time)}")
+        log_print.info(f"full datatime : {safe_parse_datetime(full_scan_datetime)} type:{type(full_scan_datetime)}")
+        log_print.info(f"diff day : {diff_days}")
+
+        log_print.info(f"web type {bef_web_type} {type(bef_web_type)}")
+
         result_flg = False
         update_flg = False
 
@@ -389,7 +419,7 @@ def process_url(url : str,
             # -----------------------------------------------------------------
             # selecter choice scan
             # -----------------------------------------------------------------
-            log_print.info(f"CHOICE SCAN URL: {url}, index: {index_num}")
+            log_print.info(f"CHOICE SCAN URL: {url}, index: {index_num}") 
             try:
                 rescored_candidate = choice_content(csv_manager.get_record_as_dict(index_num))
                 proc_time = datetime.now() - now_sec
@@ -415,7 +445,7 @@ def process_url(url : str,
                 
                 # save_json(rescored_candidate.to_dict, chk_url)
                 # log_print("■save_json")
-                log_print(f"{url} : webtype : {rescored_candidate.web_type}")
+                log_print.info(f"{url} : webtype : {rescored_candidate.web_type}")
 
                 csv_manager.write_csv_updateValues(content_hash_text, index_num, css_selector, chk_url)
                 result_flg = True

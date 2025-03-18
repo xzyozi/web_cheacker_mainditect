@@ -6,10 +6,31 @@ from enum import Enum
 
 from dom_treeSt import DOMTreeSt
 
-@dataclass(frozen=True)
+
 class WebType(Enum):
-    plane = "plane"
-    page_changer = "page_changer"
+    plane = ("plane", 1)
+    page_changer = ("page_changer", 2)
+
+    def __init__(self, value: str, priority: int):
+        self._value_ = value
+        self._priority = priority 
+
+    @property
+    def priority(self) -> int:
+        return self._priority  
+
+    def __lt__(self, other: "WebType") -> bool:
+        return self.priority < other.priority
+
+    def __eq__(self, other: "WebType") -> bool:
+        return self.priority == other.priority
+
+    @classmethod
+    def from_string(cls, enum_str: str) -> "WebType":
+        _, member_name = enum_str.split(".")  # "WebType.plane" -> "plane"
+        return getattr(cls, member_name)  # WebType.plane を取得
+
+    
 
 class PageMonitor:
     def __init__(self, 
@@ -21,9 +42,11 @@ class PageMonitor:
 
     def should_check_update(self):
         """ページ更新チェックを実行すべきか判定"""
-        for link in self.node.links:
-            if re.search(r"page[-=]\d+", link):
-                return True  # ページ番号を含むリンクがあれば更新チェックが必要
+        if re.search(r"page[-=/]?\d+", self.base_url) :
+
+            for link in self.node.links:
+                if re.search(r"page[-=]\d+", link):
+                    return True  # ページ番号を含むリンクがあれば更新チェックが必要
         return False  # 該当リンクなし → 更新不要
 
     def determine_watch_page(self):
