@@ -54,13 +54,16 @@ INFO = logging.INFO
 DEBUG = logging.DEBUG
 
 def setup_logging(log_level=INFO):
+
+    fmt = '%(message)s - [%(filename)s][%(lineno)d Line][%(asctime)s]'
+    datefmt = "%Y-%m-%d %H-%M-%S"
     # ロガーを作成
     logger = logging.getLogger()
     logger.setLevel(log_level)
 
     # フォーマッターを作成
     # formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s - Line %(lineno)d')
-    formatter = logging.Formatter('%(message)s - [%(filename)s][%(lineno)d Line][%(asctime)s]')
+    formatter = logging.Formatter(fmt , datefmt)
     # コンソールハンドラーを作成し、フォーマッターを設定
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
@@ -71,9 +74,9 @@ def setup_logging(log_level=INFO):
     return logger
 
 # set up logging
-log_print = setup_logging()
+logger = setup_logging()
 
-log_print.info(SCRIPT_PATH)
+logger.info(SCRIPT_PATH)
 
 
 # +----------------------------------------------------------------
@@ -103,7 +106,7 @@ class User:
     # mail settings
     def load_mail_settings(self):
         config_pass = os.path.join(self.directory,"mail.yaml")
-        log_print.info(config_pass)
+        logger.info(config_pass)
 
         with open(config_pass)as f :
             self.yaml_file = yaml.safe_load(f)
@@ -118,7 +121,7 @@ class User:
                 image_list=image_list
             )
 
-        else : log_print.info("not send mail")
+        else : logger.info("not send mail")
 
 
 # +----------------------------------------------------------------
@@ -182,7 +185,7 @@ def test_datetime():
 def detect_datetime_format(date_str):
     for pattern, fmt in DATE_FORMATS:
         if pattern.match(date_str):
-            log_print.info("format found")
+            logger.info("format found")
             return fmt
     return None  # 判別できなかった場合
 
@@ -204,7 +207,7 @@ def safe_parse_datetime(date_str, default_datetime=DEFAULT_DATETIME):
     if fmt :
         return datetime.strptime(date_str, fmt)
     else :
-        log_print.warning(f"Invalid datetime format for '{date_str}'. Using default: {default_datetime}")
+        logger.warning(f"Invalid datetime format for '{date_str}'. Using default: {default_datetime}")
         return datetime.strptime(default_datetime, DEFAULT_DATEFORMAT)
 
 
@@ -221,10 +224,10 @@ def get_last_modified(url):
             last_modified_datetime = datetime.strptime(last_modified, DEFAULT_DATEFORMAT)
             formatted_last_modified = last_modified_datetime.strftime("%Y%m%d")
             
-            log_print.debug(formatted_last_modified, type(formatted_last_modified))
+            logger.debug(formatted_last_modified, type(formatted_last_modified))
             return formatted_last_modified
     except Exception as e:
-        log_print.warning(e)
+        logger.warning(e)
 
 # + ----------------------------------------------------------------
 #  remove encoded chars
@@ -261,7 +264,7 @@ class CSVManager:
         self.csv_df = self.read_csv_with_padding()
         self.url_column_list = self.csv_df.iloc[:, CSV_COLUMN["url"]].tolist()
         self.before_csv_df = self.csv_df.copy()
-        log_print.info(f"{self.csv_df}")
+        logger.info(f"{self.csv_df}")
 
     def read_csv_with_padding(self) -> pd.DataFrame :
         """
@@ -277,7 +280,7 @@ class CSVManager:
             
             # カラム数がnum_columnsに足りない場合、補完する
             if len(df.columns) < self.max_column :
-                log_print.debug("column is too short and add column")
+                logger.debug("column is too short and add column")
 
                 padding_needed = self.max_column - len(df.columns)
                 padding = [[ 0 ] * padding_needed for _ in range(len(df))]
@@ -291,7 +294,7 @@ class CSVManager:
 
             return df
         except pd.errors.EmptyDataError:
-            log_print.warning("指定されたファイルが空です。空ファイル内に空のデータを追加します。")
+            logger.warning("指定されたファイルが空です。空ファイル内に空のデータを追加します。")
             empty_data = [[ 0 ] * self.max_column]
             pd.DataFrame(empty_data).to_csv(self.file_path, index=False, header=False)  # 空ファイル内に空のデータを追加
             return pd.DataFrame(empty_data)
@@ -310,7 +313,7 @@ class CSVManager:
         self.csv_df.at[index_num, CSV_COLUMN["css_selector"]] = css_selector
         if chk_url != self.csv_df.at[index_num, CSV_COLUMN["url"]] :
             self.csv_df.at[index_num, CSV_COLUMN["url"]] = chk_url
-        log_print.info(f" ## update ## - index : {index_num} - {content_hash_txt}")
+        logger.info(f" ## update ## - index : {index_num} - {content_hash_txt}")
 
     @staticmethod
     def get_str_datetime() -> str:
@@ -323,7 +326,7 @@ class CSVManager:
         result = self.csv_df[diff_column]
 
         diff_df = [row[CSV_COLUMN["url"]] for row in result.values.tolist()]
-        log_print.info(diff_df)
+        logger.info(diff_df)
         return diff_df
 
     def get_record_as_dict(self, index: int) -> dict:
@@ -334,7 +337,7 @@ class CSVManager:
             if key in self.csv_column:
                 self.csv_df.at[index, self.csv_column[key]] = value
             else :
-                log_print.warning(f"column not found for {key}")
+                logger.warning(f"column not found for {key}")
 
     def __getitem__(self, index_column):
         index, column = index_column
@@ -354,7 +357,7 @@ def scraping_mainditect(url_data : dict) -> DOMTreeSt | None:
 
         return rescored_candidate
     except Exception as e:
-        log_print.warning(f"{e}")
+        logger.warning(f"{e}")
 
 def choice_content(url_data : dict) -> DOMTreeSt | None:
     url = url_data['url']
@@ -364,7 +367,7 @@ def choice_content(url_data : dict) -> DOMTreeSt | None:
         rescored_candidate = asyncio.run(playwright_mainditect.choice_content(url,css_selector,web_type))
         return rescored_candidate
     except Exception as e:
-        log_print.warning(f"{e}")
+        logger.warning(f"{e}")
 
 # Worker function to process a single URL
 def process_url(url : str, 
@@ -382,11 +385,11 @@ def process_url(url : str,
         bef_web_type = csv_manager[index_num,"web_page_type"]
 
         diff_days = (safe_parse_datetime(run_code_time) - safe_parse_datetime(full_scan_datetime)).days
-        log_print.info(f"scan datatime : {safe_parse_datetime(run_code_time)} type:{type(run_code_time)}")
-        log_print.info(f"full datatime : {safe_parse_datetime(full_scan_datetime)} type:{type(full_scan_datetime)}")
-        log_print.info(f"diff day : {diff_days}")
+        logger.info(f"scan datatime : {safe_parse_datetime(run_code_time)} type:{type(run_code_time)}")
+        logger.info(f"full datatime : {safe_parse_datetime(full_scan_datetime)} type:{type(full_scan_datetime)}")
+        logger.info(f"diff day : {diff_days}")
 
-        log_print.info(f"web type {bef_web_type} {type(bef_web_type)}")
+        logger.info(f"web type {bef_web_type} {type(bef_web_type)}")
 
         result_flg = False
         update_flg = False
@@ -404,7 +407,7 @@ def process_url(url : str,
             # ----------------------------------------------------------------
             # full scan 
             # ----------------------------------------------------------------
-            log_print.info(f"FULL SCAN URL: {url}, index: {index_num}")
+            logger.info(f"FULL SCAN URL: {url}, index: {index_num}")
             rescored_candidate = scraping_mainditect(csv_manager.get_record_as_dict(index_num))
             if rescored_candidate:
                 csv_manager[index_num, "full_scan_datetime"] = get_Strdatetime()
@@ -412,14 +415,14 @@ def process_url(url : str,
                 update_flg = True
                 result_flg = True
             else:
-                log_print.info("Full scan returned None")
+                logger.info("Full scan returned None")
                 error_list.append([url, "Full scan returned None"])
                 return
         else:
             # -----------------------------------------------------------------
             # selecter choice scan
             # -----------------------------------------------------------------
-            log_print.info(f"CHOICE SCAN URL: {url}, index: {index_num}") 
+            logger.info(f"CHOICE SCAN URL: {url}, index: {index_num}") 
             try:
                 rescored_candidate = choice_content(csv_manager.get_record_as_dict(index_num))
                 proc_time = datetime.now() - now_sec
@@ -427,7 +430,7 @@ def process_url(url : str,
                     error_list.append([url, f"Processing time exceeded {PROC_MPL_SEC} sec -> {proc_time.total_seconds()} sec"])
                 update_flg = True
             except Exception as e:
-                log_print.error(e)
+                logger.error(e)
                 return
 
         # ----------------------------------------------------------------
@@ -435,7 +438,7 @@ def process_url(url : str,
         # ----------------------------------------------------------------
         if rescored_candidate:
             content_hash_text = hashlib.sha256(str(rescored_candidate.links).encode()).hexdigest()
-            log_print.debug("hash_text: %s", content_hash_text)
+            logger.debug("hash_text: %s", content_hash_text)
             if csv_manager[index_num, "result_vl"] != content_hash_text:
 
                 chk_url = rescored_candidate.url
@@ -445,18 +448,18 @@ def process_url(url : str,
                 
                 # save_json(rescored_candidate.to_dict, chk_url)
                 # log_print("■save_json")
-                log_print.info(f"{url} : webtype : {rescored_candidate.web_type}")
+                logger.info(f"{url} : webtype : {rescored_candidate.web_type}")
 
                 csv_manager.write_csv_updateValues(content_hash_text, index_num, css_selector, chk_url)
                 result_flg = True
         else:
-            log_print.error("Choice content is None")
+            logger.error("Choice content is None")
             error_list.append([url, "Choice content None"])
             csv_manager[index_num, "full_scan_datetime"] = ""
     except Exception as e:
         tb = traceback.extract_tb(e.__traceback__)  # 例外のトレースバックを取得
         last_entry = tb[-1]  # 最後のエントリ（エラーが発生した行）
-        log_print.error(f"Error processing URL {url}: {e}{last_entry.lineno}")
+        logger.error(f"Error processing URL {url}: {e}{last_entry.lineno}")
         error_list.append([url, e,last_entry.line,last_entry.lineno])
     
 #     return result_flg, update_flg
@@ -470,7 +473,7 @@ def worker(q : queue.Queue,
         try:
             url = q.get(timeout=10)
         except queue.Empty:
-            log_print.info("Queue is empty, exiting worker")
+            logger.info("Queue is empty, exiting worker")
             break
         
         index_num = csv_manager.url_column_list.index(url)
@@ -522,9 +525,9 @@ def main():
     file_list = asyncio.run(playwright_mainditect.save_screenshot(diff_urls, save_dir="temp"))
     
     if error_list:
-        log_print.info("-------- ERROR list output -----------")
+        logger.info("-------- ERROR list output -----------")
         for error_msg in error_list:
-            log_print.info(error_msg)
+            logger.info(error_msg)
 
         traceback.print_exc()
 
@@ -534,7 +537,7 @@ def main():
     
     shutil.rmtree("temp")
 
-    log_print.info(f"{csv_manager.csv_df}")
+    logger.info(f"{csv_manager.csv_df}")
 
 if __name__ == "__main__":
     main()
