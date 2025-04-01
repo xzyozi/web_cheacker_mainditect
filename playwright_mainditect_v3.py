@@ -14,6 +14,7 @@ import aiohttp
 import sys
 from urllib.parse import urlparse
 import hashlib
+from datetime import datetime
 
 # my module 
 import util_str
@@ -21,9 +22,15 @@ from make_tree import make_tree
 from scorer import MainContentScorer
 from web_type_chk import WebTypeCHK, WebType
 from dom_treeSt import DOMTreeSt, BoundingBox
+from setup_logger import setup_logger
 
 asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
+# logger setting 
+LOGGER_DATEFORMAT = "%Y%m%d_%H%M%S"
+nowtime = datetime.now()
+formatted_now = nowtime.strftime(LOGGER_DATEFORMAT)
+logger = setup_logger("web-cheacker",log_file=f"./log/web-chk_{formatted_now}.log")
 
 # + ----------------------------------------------------------------
 # + save json file
@@ -90,7 +97,7 @@ async def save_screenshot(url_list: list,
             # Validate the URL
             parsed_url = urlparse(url)
             if not parsed_url.scheme or not parsed_url.netloc:
-                print(f"Invalid URL skipped: {url}")
+                logger.info(f"Invalid URL skipped: {url}")
                 continue
 
             domain = parsed_url.netloc.replace(".", "_")  # Generate a safe file name from the domain
@@ -111,7 +118,7 @@ async def save_screenshot(url_list: list,
 
                 filelist.append(filepath)  # Add to the list only if successful
             except Exception as e:
-                print(f"Failed to process {url}: {e}")
+                logger.error(f"Failed to process {url}: {e}")
                 url_list.remove(url)  # Remove from the list on failure
 
         await browser.close()
@@ -123,24 +130,24 @@ async def save_screenshot(url_list: list,
 # ----------------------------------------------------------------
 def print_content(content : Dict) -> None:
     if content['score'] > 0:
-        print(f"Tag: {content['tag']}, Score: {content['score']}, id: {content['id']}")
-        # print(f"children: {content['children']}")
-        print(f"attributes: {content['attributes']}")
-        print(f"Rect: {content['rect']}")
-        print(f"depth: {content['depth']}")
-        print(f"css_selector: {content['css_selector']}")
+        logger.info(f"Tag: {content['tag']}, Score: {content['score']}, id: {content['id']}")
+        # logger.info(f"children: {content['children']}")
+        logger.info(f"attributes: {content['attributes']}")
+        logger.info(f"Rect: {content['rect']}")
+        logger.info(f"depth: {content['depth']}")
+        logger.info(f"css_selector: {content['css_selector']}")
         # if len(content['children']) < 50 :
-        #     print(f"text attributes: {content['text']}")
+        #     logger.info(f"text attributes: {content['text']}")
         if content['links'] :
-            print(f"Links: {', '.join(content.get('links', []))}")
-        else : print("no links found")
-        print("----------------------------------------------------------")
+            logger.info(f"Links: {', '.join(content.get('links', []))}")
+        else : logger.info("no links found")
+        logger.info("----------------------------------------------------------")
 
 # error chackintg 
 def print_error_details(e : Exception) -> None :
-    print(f"Error type: {type(e).__name__}")
-    print(f"Error message: {str(e)}")
-    print("Traceback:")
+    logger.error(f"Error type: {type(e).__name__}")
+    logger.error(f"Error message: {str(e)}")
+    logger.error("Traceback:")
     traceback.print_exc(file=sys.stdout)
 
 
@@ -172,7 +179,7 @@ def update_nodes_with_children(data: Union[Dict[str, Any], List[Dict[str, Any]],
             updated_nodes.extend(update_nodes_with_children(data.children))
 
     else :
-        print(f"type error : {type(data)} -> {data}")
+        logger.info(f"type error : {type(data)} -> {data}")
 
     return updated_nodes
 
@@ -200,7 +207,7 @@ def rescore_main_content_with_children(main_content : DOMTreeSt,
 
     # スコアをチェック
     # for node in scored_nodes:
-    #     print(f"Tag: {node['tag']}, Score: {node['score']}")
+    #     logger.info(f"Tag: {node['tag']}, Score: {node['score']}")
 
     # スコアの高い順に子ノードを並べ替える
     scored_nodes.sort(key=lambda x: x.score, reverse=True)
@@ -218,10 +225,10 @@ async def setup_page(url : str,
         try:
             await page.wait_for_load_state('networkidle', timeout=30000)
         except PlaywrightTimeoutError:
-            print("Network did not become idle within 30 seconds, continuing anyway.")
+            logger.warning("Network did not become idle within 30 seconds, continuing anyway.")
         return page
     except Exception as e:
-        print(f"Error setting up page: {e}")
+        logger.error(f"setting up page: {e}")
         traceback.print_exc()
         return None
 
@@ -277,6 +284,7 @@ async def initialize_browser_and_page(url : str):
         page = await setup_page(url, browser)
     except Exception as e :
         playwright.stop()
+        logger.error("playwright stop")
         return None, None, None
     return playwright, browser, page
 
@@ -298,7 +306,7 @@ async def test_main(url : str,
         target_path = parsed_url.path or "/"
         
         if not is_scraping_allowed(robots_txt, target_path):
-            print(f"Scraping is not allowed on this URL: {url}")
+            logger.info(f"Scraping is not allowed on this URL: {url}")
             return None
 
 
@@ -316,7 +324,7 @@ async def test_main(url : str,
 
         tree = await make_tree(page)
         if not tree:
-            print("Error: Empty tree structure returned")
+            logger.info("Error: Empty tree structure returned")
             return None
 
         # ----------------------------------------------------------------
@@ -327,7 +335,7 @@ async def test_main(url : str,
         watch_url = webtype.next_url
 
         if watch_url and count < 3 :
-            print(f"URL updated: {url} -> {watch_url}. Restarting process...")
+            logger.info(f"URL updated: {url} -> {watch_url}. Restarting process...")
             await browser.close()  # 既存のブラウザを閉じる
             await playwright.stop()
             # 前回時点のwebtypeが存在する場合はそちらを採用する
@@ -342,21 +350,21 @@ async def test_main(url : str,
         main_contents = scorer.find_candidates()
 
         if not main_contents:
-            print("No main content detected.")
+            logger.info("No main content detected.")
             return {}
 
-        print(f"Top candidates:{len(main_contents)}")
+        logger.info(f"Top candidates:{len(main_contents)}")
         for content in main_contents[:0]:
-            print(content)
+            logger.info(content)
 
         if main_contents:
             main_contents = rescore_main_content_with_children(main_contents[0])
 
-            print("main content:")
-            print(main_contents[0])
-            print(main_contents[1])
+            logger.info("main content:")
+            logger.info(main_contents[0])
+            logger.info(main_contents[1])
 
-            # print("pre content diff:")
+            # logger.info("pre content diff:")
             # for content in main_contents[:2]:
             #     print_content(content)
 
@@ -367,23 +375,23 @@ async def test_main(url : str,
 
                 main_contents = rescore_main_content_with_children(tmp_main_content)
 
-                print(f" tmp_main tag : {tmp_main_content.tag} main tag : {main_contents[0].tag}")
-                print(f'tmp_candidates score : {tmp_main_content.score}  & main_contents {main_contents[0].score}')
+                logger.info(f" tmp_main tag : {tmp_main_content.tag} main tag : {main_contents[0].tag}")
+                logger.info(f'tmp_candidates score : {tmp_main_content.score}  & main_contents {main_contents[0].score}')
                 if tmp_main_content.score >= main_contents[0].score:
                     break
 
                 loop_count += 1
                 if loop_count == max_loop_count:
-                    print("error: loop count")
+                    logger.info("error: loop count")
                     break
 
-            print("Rescored child nodes:")
+            logger.info("Rescored child nodes:")
             for child in main_contents[:5]:
-                print(child)
+                logger.info(child)
 
-            print("Selected main content:")
+            logger.info("Selected main content:")
             # print_content(tmp_main_content)
-            print(tmp_main_content)
+            logger.info(tmp_main_content)
 
             tmp_main_content.url = url
 
@@ -399,12 +407,12 @@ async def test_main(url : str,
 
             return tmp_main_content
         else:
-            print("No main content detected after initial search.")
+            logger.info("No main content detected after initial search.")
 
             return None
 
     except Exception as e:
-        print("An error occurred during test_main:")
+        logger.error("An error occurred during test_main:")
         print_error_details(e)
 
     finally:
@@ -419,9 +427,9 @@ async def choice_content(url: str,
                          ):
     
     webtype = WebType.from_string(webtype_str)
-    # print(f"chk webtype : {webtype}({type(webtype)}) -- {WebType.page_changer} ({type(WebType.page_changer)})")
+    # logger.info(f"chk webtype : {webtype}({type(webtype)}) -- {WebType.page_changer} ({type(WebType.page_changer)})")
     if webtype == WebType.page_changer :
-        print(f"webtype is pagechange full scan process start :{WebType.page_changer}")
+        logger.warning(f"webtype is pagechange full scan process start :{WebType.page_changer}")
         return await test_main(url,webtype)
 
     async with async_playwright() as p:
@@ -447,7 +455,7 @@ async def choice_content(url: str,
             # DOMツリーを取得
             tree = await make_tree(page, selector=selector)
             if not tree:
-                print(f"No matching elements found for selector: {selector}")
+                logger.info(f"No matching elements found for selector: {selector}")
                 return {}
             
             tree.url = url
@@ -455,7 +463,7 @@ async def choice_content(url: str,
             return tree
 
         except Exception as e:
-            print(f"Error during content extraction: {str(e)}")
+            logger.error(f"Error during content extraction: {str(e)}")
             return None
 
         finally:
@@ -478,8 +486,8 @@ if __name__ == "__main__":
     dict_obj = asyncio.run(test_main(url))
     end_sec = datetime.datetime.now()
 
-    print(f"full proc {end_sec - sta_sec} seconds")
-    print(type(dict_obj))
+    logger.info(f"full proc {end_sec - sta_sec} seconds")
+    logger.info(type(dict_obj))
  
     # choice_dict = {
     #     "id": "ld_blog_article_comment_entries",
@@ -490,19 +498,19 @@ if __name__ == "__main__":
 
     # end_sec = datetime.datetime.now()
     # ch_tree=  asyncio.run(choice_content(url,"div#article-body[id='article-body']"))
-    # print(ch_tree,type(ch_tree))
+    # logger.info(ch_tree,type(ch_tree))
     # if ch_tree is not None :
     #     content_hash_text = hashlib.sha256(str(ch_tree["links"]).encode()).hexdigest()
     
-    #     print(content_hash_text)
+    #     logger.info(content_hash_text)
     #     end_sec = datetime.datetime.now()
-    #     print(f"select scan proc {end_sec - sta_sec} seconds")
+    #     logger.info(f"select scan proc {end_sec - sta_sec} seconds")
 
 
-    print(datetime.datetime.now())
+    logger.info(datetime.datetime.now())
 
     # import requests
 
     # response = requests.get(url)
     # last_modified = response.headers.get("Last-Modified")
-    # print(last_modified)
+    # logger.info(last_modified)

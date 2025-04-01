@@ -1,8 +1,18 @@
 from typing import  Any, Union , Optional
 from playwright.async_api import Page, ElementHandle, async_playwright
 import json
+from datetime import datetime
 # my module
 from dom_treeSt import DOMTreeSt, BoundingBox
+from setup_logger import setup_logger
+
+
+# logger setting 
+LOGGER_DATEFORMAT = "%Y%m%d_%H%M%S"
+nowtime = datetime.now()
+formatted_now = nowtime.strftime(LOGGER_DATEFORMAT)
+logger = setup_logger("web-cheacker",log_file=f"./log/web-chk_{formatted_now}.log")
+
 
 async def make_tree(
     page: Page,
@@ -57,7 +67,7 @@ async def make_tree(
                 if not bounding_box:
                     return {}
             except Exception as e:
-                print(f"Could not get bounding box: {str(e)}")
+                logger.error(f"Could not get bounding box: {str(e)}")
                 return {}
 
             # Get element properties
@@ -98,13 +108,13 @@ async def make_tree(
             return tree
 
         except Exception as e:
-            print(f"Error parsing element: {str(e)}")
+            logger.info(f"Error parsing element: {str(e)}")
             return {}
 
 
     try:
         if debug:
-            print(f"Searching for element with selector: {selector}")
+            logger.info(f"Searching for element with selector: {selector}")
             
             # 現在のページ内容の確認
             all_elements = await page.evaluate('''() => {
@@ -117,17 +127,17 @@ async def make_tree(
                 }));
             }''')
             
-            print("Found elements with IDs on page:")
+            logger.debug("Found elements with IDs on page:")
             for el in all_elements:
-                print(f"- {el['tag']}#{el['id']} (visible: {el['visible']})")
+                logger.debug(f"- {el['tag']}#{el['id']} (visible: {el['visible']})")
 
         if wait_for_load:
             try:
-                print("Waiting for network idle...")
+                logger.info("Waiting for network idle...")
                 await page.wait_for_load_state('networkidle', timeout=timeout)
-                print("Network is idle")
+                logger.info("Network is idle")
             except Exception as e:
-                print(f"Network did not become idle within {timeout}ms: {str(e)}")
+                logger.warning(f"Network did not become idle within {timeout}ms: {str(e)}")
 
         # Try to find element with JavaScript first
         if selector:
@@ -147,33 +157,33 @@ async def make_tree(
             
             if debug:
                 if exists_js.get('exists'):
-                    print(f"Element found in DOM: {json.dumps(exists_js, indent=2)}")
+                    logger.info(f"Element found in DOM: {json.dumps(exists_js, indent=2)}")
                 else:
-                    print(f"Element not found in DOM: {selector}")
+                    logger.info(f"Element not found in DOM: {selector}")
 
         # If selector is provided, try to find that element
         root = None
         if selector:
             try:
-                print(f"Waiting for element to be visible: {selector}")
+                logger.info(f"Waiting for element to be visible: {selector}")
                 root = await page.wait_for_selector(selector, timeout=timeout)
                 if not root:
-                    print(f"Element not found: {selector}")
+                    logger.info(f"Element not found: {selector}")
                     return {}
             except Exception as e:
-                print(f"Error finding element {selector}: {str(e)}")
+                logger.error(f"finding element {selector}: {str(e)}")
                 
                 # Additional debug information
                 if debug:
                     page_content = await page.content()
-                    print(f"Current page title: {await page.title()}")
-                    print(f"Current URL: {page.url}")
+                    logger.info(f"Current page title: {await page.title()}")
+                    logger.info(f"Current URL: {page.url}")
                     
                     # Check if element exists but is not visible
                     element_handle = await page.query_selector(selector)
                     if element_handle:
                         is_visible = await element_handle.is_visible()
-                        print(f"Element exists but visible: {is_visible}")
+                        logger.info(f"Element exists but visible: {is_visible}")
                         
                         # Get element properties
                         properties = await element_handle.evaluate('''el => ({
@@ -182,7 +192,7 @@ async def make_tree(
                             visibility: window.getComputedStyle(el).visibility,
                             opacity: window.getComputedStyle(el).opacity
                         })''')
-                        print(f"Element properties: {json.dumps(properties, indent=2)}")
+                        logger.info(f"Element properties: {json.dumps(properties, indent=2)}")
                 
                 return {}
         else:
@@ -194,7 +204,7 @@ async def make_tree(
         return await parse_element(root)
 
     except Exception as e:
-        print(f"Error in get_tree: {str(e)}")
+        logger.error(f"EXCEPT: {str(e)}")
         return {}
     
 
@@ -283,8 +293,8 @@ async def test_makeTree():
         root_element = await page.query_selector("body")
         if root_element:
             dom_tree = await make_tree(root_element)
-            # print(dom_tree.to_dict())  # ツリー全体を表示
-            print(dom_tree)
+            # logger.info(dom_tree.to_dict())  # ツリー全体を表示
+            logger.info(dom_tree)
 
         await browser.close()
 

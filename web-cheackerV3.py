@@ -22,6 +22,7 @@ from mail import send_email
 from text_struct import text_struct
 import util_str
 from dom_treeSt import DOMTreeSt, BoundingBox
+from setup_logger import setup_logger
 # +----------------------------------------------------------------
 # + Constant definition
 # +----------------------------------------------------------------
@@ -48,33 +49,11 @@ pd.set_option('display.max_columns', None)
 # +----------------------------------------------------------------
 # logging settings
 # +----------------------------------------------------------------
-import logging
+LOGGER_DATEFORMAT = "%Y%m%d_%H%M%S"
+nowtime = datetime.now()
+formatted_now = nowtime.strftime(LOGGER_DATEFORMAT)
 
-INFO = logging.INFO
-DEBUG = logging.DEBUG
-
-def setup_logging(log_level=INFO):
-
-    fmt = '%(message)s - [%(filename)s][%(lineno)d Line][%(asctime)s]'
-    datefmt = "%Y-%m-%d %H-%M-%S"
-    # ロガーを作成
-    logger = logging.getLogger()
-    logger.setLevel(log_level)
-
-    # フォーマッターを作成
-    # formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s - Line %(lineno)d')
-    formatter = logging.Formatter(fmt , datefmt)
-    # コンソールハンドラーを作成し、フォーマッターを設定
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
-
-    # ロガーにハンドラーを追加
-    logger.addHandler(console_handler)
-
-    return logger
-
-# set up logging
-logger = setup_logging()
+logger = setup_logger("web-cheacker",log_file=f"./log/web-chk_{formatted_now}.log")
 
 logger.info(SCRIPT_PATH)
 
@@ -473,7 +452,7 @@ def worker(q : queue.Queue,
         try:
             url = q.get(timeout=10)
         except queue.Empty:
-            logger.info("Queue is empty, exiting worker")
+            logger.debug("Queue is empty, exiting worker")
             break
         
         index_num = csv_manager.url_column_list.index(url)
