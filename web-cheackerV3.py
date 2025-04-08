@@ -55,7 +55,7 @@ formatted_now = nowtime.strftime(LOGGER_DATEFORMAT)
 
 logger = setup_logger("web-cheacker",log_file=f"./log/web-chk_{formatted_now}.log")
 
-logger.info(SCRIPT_PATH)
+logger.debug(SCRIPT_PATH)
 
 
 # +----------------------------------------------------------------
@@ -292,7 +292,7 @@ class CSVManager:
         self.csv_df.at[index_num, CSV_COLUMN["css_selector"]] = css_selector
         if chk_url != self.csv_df.at[index_num, CSV_COLUMN["url"]] :
             self.csv_df.at[index_num, CSV_COLUMN["url"]] = chk_url
-        logger.info(f" ## update ## - index : {index_num} - {content_hash_txt}")
+        logger.notice(f" ## update ## - index : {index_num} - {content_hash_txt}")
 
     @staticmethod
     def get_str_datetime() -> str:
@@ -305,7 +305,7 @@ class CSVManager:
         result = self.csv_df[diff_column]
 
         diff_df = [row[CSV_COLUMN["url"]] for row in result.values.tolist()]
-        logger.info(diff_df)
+        logger.notice(diff_df)
         return diff_df
 
     def get_record_as_dict(self, index: int) -> dict:
@@ -480,8 +480,8 @@ def start_workers(q : queue.Queue,
 
 
 def main():
-    if os.path.isdir("temp"):
-        shutil.rmtree("temp")
+    if os.path.isdir("temp_image"):
+        shutil.rmtree("temp_image")
     
     user = User("jav")
     util_str.util_handle_path(user.csv_file_path)
@@ -501,12 +501,14 @@ def main():
     csv_manager.write_csv_update_date()
     diff_urls = csv_manager.chk_diff()
 
-    file_list = asyncio.run(playwright_mainditect.save_screenshot(diff_urls, save_dir="temp"))
+    file_list = asyncio.run(playwright_mainditect.save_screenshot(diff_urls, save_dir="temp_image"))
+    asyncio.run(playwright_mainditect.save_screenshot(diff_urls, save_dir="data/view",width=1920))
+
     
     if error_list:
-        logger.info("-------- ERROR list output -----------")
+        logger.alert("-------- ERROR list output -----------")
         for error_msg in error_list:
-            logger.info(error_msg)
+            logger.alert(error_msg)
 
         traceback.print_exc()
 
@@ -514,7 +516,7 @@ def main():
         body = text_struct.generate_html(diff_urls, file_list)
         user.send_resultmail(body, body_type="html", image_list=file_list)
     
-    shutil.rmtree("temp")
+    shutil.rmtree("temp_image")
 
     logger.info(f"{csv_manager.csv_df}")
 
