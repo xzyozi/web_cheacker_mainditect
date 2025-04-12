@@ -364,11 +364,11 @@ def process_url(url : str,
         bef_web_type = csv_manager[index_num,"web_page_type"]
 
         diff_days = (safe_parse_datetime(run_code_time) - safe_parse_datetime(full_scan_datetime)).days
-        logger.info(f"scan datatime : {safe_parse_datetime(run_code_time)} type:{type(run_code_time)}")
-        logger.info(f"full datatime : {safe_parse_datetime(full_scan_datetime)} type:{type(full_scan_datetime)}")
-        logger.debug(f"diff day : {diff_days}")
+        logger.debug(f"scan datatime : {safe_parse_datetime(run_code_time)} type:{type(run_code_time)}")
+        logger.debug(f"full datatime : {safe_parse_datetime(full_scan_datetime)} type:{type(full_scan_datetime)}")
+        logger.info(f"diff day : {diff_days} url : {url}")
 
-        logger.info(f"web type {bef_web_type} {type(bef_web_type)}")
+        logger.debug(f"web type {bef_web_type} {type(bef_web_type)}")
 
         result_flg = False
         update_flg = False
@@ -444,7 +444,7 @@ def process_url(url : str,
 #     return result_flg, update_flg
         return None
 
-def worker(q : queue.Queue,
+def worker( q : queue.Queue,
             csv_manager : CSVManager,
             error_list : list
             ):
@@ -506,7 +506,7 @@ def main():
 
     
     if error_list:
-        logger.warning("-------- ERROR list output -----------")
+        logger.info("-------- ERROR list output -----------")
         for error_msg in error_list:
             logger.warning(error_msg)
 
