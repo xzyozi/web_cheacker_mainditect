@@ -168,7 +168,7 @@ async def make_tree(
                 logger.info(f"Waiting for element to be visible: {selector}")
                 root = await page.wait_for_selector(selector, timeout=timeout)
                 if not root:
-                    logger.info(f"Element not found: {selector}")
+                    logger.critical(f"Element not found: {selector}")
                     return {}
             except Exception as e:
                 logger.error(f"finding element {selector}: {str(e)}")

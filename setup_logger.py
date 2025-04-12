@@ -4,12 +4,32 @@ import sys
 import os
 from logging.handlers import RotatingFileHandler
 
+# # カスタムログレベルを追加
+# NOTICE_LEVEL = logging.INFO + 2
+# ALERT_LEVEL = logging.INFO + 4
+
+# logging.addLevelName(NOTICE_LEVEL, "NOTICE")
+# logging.addLevelName(ALERT_LEVEL, "ALERT")
+
+# # ログレベルのカスタムメソッド追加
+# def notice(self, message, *args, **kwargs):
+#     if self.isEnabledFor(NOTICE_LEVEL):
+#         self._log(NOTICE_LEVEL, message, args, **kwargs)
+
+# def alert(self, message, *args, **kwargs):
+#     if self.isEnabledFor(ALERT_LEVEL):
+#         self._log(ALERT_LEVEL, message, args, **kwargs)
+
+# logging.Logger.notice = notice
+# logging.Logger.alert = alert
+
 class ColoredFormatter(logging.Formatter):
     """ANSIカラー対応のフォーマッター"""
     COLORS = {
         "DEBUG": "\033[0;36m",  # CYAN
-        "STATUS": "\033[38;5;173m",  # Calm ORANGE
+        # "NOTICE": "\033[1;34m",  # LIGHT BLUE
         "INFO": "\033[0;32m",  # GREEN
+        # "ALERT": "\033[0;35m",  # PURPLE
         "WARNING": "\033[0;33m",  # YELLOW
         "ERROR": "\033[0;31m",  # RED
         "CRITICAL": "\033[0;37;41m",  # WHITE ON RED
@@ -56,8 +76,8 @@ def setup_logger(
             logging.addLevelName(level_value, level_name)
 
     # 文字列のログレベルを数値に変換
-    level = getattr(logging, level.upper(), logging.INFO)
-    logger.setLevel(level)
+    level = getattr(logging, level.upper(), logging.DEBUG)
+    logger.setLevel(logging.DEBUG)
 
     # すでにハンドラーがある場合は再設定しない
     if logger.handlers:
@@ -71,6 +91,9 @@ def setup_logger(
     stream_handler = logging.StreamHandler(sys.stdout)
     formatter = ColoredFormatter(log_format, datefmt=date_format) if use_colors else logging.Formatter(log_format, datefmt=date_format)
     stream_handler.setFormatter(formatter)
+
+    stream_handler.setLevel(logging.INFO)
+
     logger.addHandler(stream_handler)
 
     # ファイル出力を追加（必要な場合）
@@ -80,6 +103,9 @@ def setup_logger(
         os.makedirs(log_dir, exist_ok=True)  # ディレクトリ作成
         file_handler = RotatingFileHandler(log_file, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8")
         file_handler.setFormatter(logging.Formatter(log_format, datefmt=date_format))
+
+        file_handler.setLevel(logging.DEBUG)
+
         logger.addHandler(file_handler)
 
     return logger
