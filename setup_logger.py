@@ -4,6 +4,25 @@ import sys
 import os
 from logging.handlers import RotatingFileHandler
 
+# カスタムログレベルを追加
+NOTICE_LEVEL = logging.INFO + 2
+ALERT_LEVEL = logging.INFO + 4
+
+logging.addLevelName(NOTICE_LEVEL, "NOTICE")
+logging.addLevelName(ALERT_LEVEL, "ALERT")
+
+# ログレベルのカスタムメソッド追加
+def notice(self, message, *args, **kwargs):
+    if self.isEnabledFor(NOTICE_LEVEL):
+        self._log(NOTICE_LEVEL, message, args, **kwargs)
+
+def alert(self, message, *args, **kwargs):
+    if self.isEnabledFor(ALERT_LEVEL):
+        self._log(ALERT_LEVEL, message, args, **kwargs)
+
+logging.Logger.notice = notice
+logging.Logger.alert = alert
+
 # # カスタムログレベルを追加
 # NOTICE_LEVEL = logging.INFO + 2
 # ALERT_LEVEL = logging.INFO + 4
@@ -27,8 +46,9 @@ class ColoredFormatter(logging.Formatter):
     """ANSIカラー対応のフォーマッター"""
     COLORS = {
         "DEBUG": "\033[0;36m",  # CYAN
-        # "NOTICE": "\033[1;34m",  # LIGHT BLUE
+        "NOTICE": "\033[1;34m",  # LIGHT BLUE
         "INFO": "\033[0;32m",  # GREEN
+        "ALERT": "\033[0;35m",  # PURPLE
         # "ALERT": "\033[0;35m",  # PURPLE
         "WARNING": "\033[0;33m",  # YELLOW
         "ERROR": "\033[0;31m",  # RED
