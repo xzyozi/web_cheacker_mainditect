@@ -97,11 +97,11 @@ async def save_screenshot(url_list: list,
             # Validate the URL
             parsed_url = urlparse(url)
             if not parsed_url.scheme or not parsed_url.netloc:
-                logger.info(f"Invalid URL skipped: {url}")
+                logger.warning(f"Invalid URL skipped: {url}")
                 continue
 
             domain = parsed_url.netloc.replace(".", "_")  # Generate a safe file name from the domain
-            filename = f"{domain}.png"
+            filename = generate_filename(url)
             filepath = os.path.join(save_dir, filename)
 
             try:
@@ -124,6 +124,25 @@ async def save_screenshot(url_list: list,
         await browser.close()
 
     return filelist
+
+def generate_filename(url: str) -> str:
+    """URL から一意なファイル名を生成"""
+    parsed_url = urlparse(url)
+    
+    # ドメイン部分
+    domain = parsed_url.netloc.replace(".", "_")
+
+    # パス部分（最後のスラッシュ以降）
+    path = parsed_url.path.rstrip("/")  # 最後の `/` を削除
+    if "/" in path:
+        last_part = path.rsplit("/", 1)[-1]  # 最後の `/` 以降を取得
+    else:
+        last_part = "index"  # ルートの場合は `index`
+
+    #hash_part = hashlib.md5(url.encode()).hexdigest()[:8]  # MD5の先頭8文字
+    filename = f"{domain}_{last_part}.png"
+
+    return filename
 
 # ----------------------------------------------------------------
 # debugger 
@@ -375,14 +394,14 @@ async def test_main(url : str,
 
                 main_contents = rescore_main_content_with_children(tmp_main_content)
 
-                logger.info(f" tmp_main tag : {tmp_main_content.tag} main tag : {main_contents[0].tag}")
+                logger.notice(f" tmp_main selector : {tmp_main_content.css_selector} main selector: {main_contents[0].css_selector}")
                 logger.info(f'tmp_candidates score : {tmp_main_content.score}  & main_contents {main_contents[0].score}')
                 if tmp_main_content.score >= main_contents[0].score:
                     break
 
                 loop_count += 1
                 if loop_count == max_loop_count:
-                    logger.info("error: loop count")
+                    logger.warning("loop count MAX")
                     break
 
             logger.info("Rescored child nodes:")
@@ -407,7 +426,7 @@ async def test_main(url : str,
 
             return tmp_main_content
         else:
-            logger.info("No main content detected after initial search.")
+            logger.warning("No main content detected after initial search.")
 
             return None
 
