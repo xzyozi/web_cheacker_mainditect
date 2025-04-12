@@ -394,7 +394,7 @@ async def test_main(url : str,
 
                 main_contents = rescore_main_content_with_children(tmp_main_content)
 
-                logger.notice(f" tmp_main selector : {tmp_main_content.css_selector} main selector: {main_contents[0].css_selector}")
+                logger.info(f" tmp_main selector : {tmp_main_content.css_selector} main selector: {main_contents[0].css_selector}")
                 logger.info(f'tmp_candidates score : {tmp_main_content.score}  & main_contents {main_contents[0].score}')
                 if tmp_main_content.score >= main_contents[0].score:
                     break

@@ -85,7 +85,7 @@ class User:
     # mail settings
     def load_mail_settings(self):
         config_pass = os.path.join(self.directory,"mail.yaml")
-        logger.info(config_pass)
+        logger.debug(config_pass)
 
         with open(config_pass)as f :
             self.yaml_file = yaml.safe_load(f)
@@ -100,7 +100,7 @@ class User:
                 image_list=image_list
             )
 
-        else : logger.info("not send mail")
+        else : logger.warning("not send mail")
 
 
 # +----------------------------------------------------------------
@@ -164,7 +164,7 @@ def test_datetime():
 def detect_datetime_format(date_str):
     for pattern, fmt in DATE_FORMATS:
         if pattern.match(date_str):
-            logger.info("format found")
+            # logger.debug("format found")
             return fmt
     return None  # 判別できなかった場合
 
@@ -292,7 +292,7 @@ class CSVManager:
         self.csv_df.at[index_num, CSV_COLUMN["css_selector"]] = css_selector
         if chk_url != self.csv_df.at[index_num, CSV_COLUMN["url"]] :
             self.csv_df.at[index_num, CSV_COLUMN["url"]] = chk_url
-        logger.notice(f" ## update ## - index : {index_num} - {content_hash_txt}")
+        logger.info(f" ## update ## - index : {index_num} - {content_hash_txt}")
 
     @staticmethod
     def get_str_datetime() -> str:
@@ -305,7 +305,7 @@ class CSVManager:
         result = self.csv_df[diff_column]
 
         diff_df = [row[CSV_COLUMN["url"]] for row in result.values.tolist()]
-        logger.notice(diff_df)
+        logger.info(diff_df)
         return diff_df
 
     def get_record_as_dict(self, index: int) -> dict:
@@ -366,7 +366,7 @@ def process_url(url : str,
         diff_days = (safe_parse_datetime(run_code_time) - safe_parse_datetime(full_scan_datetime)).days
         logger.info(f"scan datatime : {safe_parse_datetime(run_code_time)} type:{type(run_code_time)}")
         logger.info(f"full datatime : {safe_parse_datetime(full_scan_datetime)} type:{type(full_scan_datetime)}")
-        logger.info(f"diff day : {diff_days}")
+        logger.debug(f"diff day : {diff_days}")
 
         logger.info(f"web type {bef_web_type} {type(bef_web_type)}")
 
@@ -506,9 +506,9 @@ def main():
 
     
     if error_list:
-        logger.alert("-------- ERROR list output -----------")
+        logger.warning("-------- ERROR list output -----------")
         for error_msg in error_list:
-            logger.alert(error_msg)
+            logger.warning(error_msg)
 
         traceback.print_exc()
 
