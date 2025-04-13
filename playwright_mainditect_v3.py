@@ -406,7 +406,7 @@ async def test_main(url : str,
 
             logger.info("Rescored child nodes:")
             for child in main_contents[:5]:
-                logger.info(child)
+                logger.debug(child)
 
             logger.info("Selected main content:")
             # print_content(tmp_main_content)

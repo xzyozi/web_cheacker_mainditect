@@ -50,7 +50,7 @@ def setup_logger(
     log_file: str = None,
     max_bytes: int = 10 * 1024 * 1024,  # 10MB
     backup_count: int = 5,
-    custom_levels: dict = None,
+    # custom_levels: dict = None,
 ) -> logging.Logger:
     """
     汎用的なロガー設定関数
@@ -62,7 +62,7 @@ def setup_logger(
         log_file (str, optional): ファイル出力のパス (デフォルト: None)
         max_bytes (int, optional): 1ファイルの最大サイズ (デフォルト: 10MB)
         backup_count (int, optional): ログの世代数 (デフォルト: 5)
-        custom_levels (dict, optional): カスタムログレベルの追加 (例: {"STATUS": logging.INFO + 5})
+        # custom_levels (dict, optional): カスタムログレベルの追加 (例: {"STATUS": logging.INFO + 5})
 
     Returns:
         logging.Logger: 設定済みのロガー
@@ -71,9 +71,9 @@ def setup_logger(
     logger.propagate = False
 
     # カスタムログレベルを追加
-    if custom_levels:
-        for level_name, level_value in custom_levels.items():
-            logging.addLevelName(level_value, level_name)
+    # if custom_levels:
+    #     for level_name, level_value in custom_levels.items():
+    #         logging.addLevelName(level_value, level_name)
 
     # 文字列のログレベルを数値に変換
     level = getattr(logging, level.upper(), logging.DEBUG)

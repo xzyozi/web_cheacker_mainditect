@@ -346,7 +346,7 @@ def choice_content(url_data : dict) -> DOMTreeSt | None:
         rescored_candidate = asyncio.run(playwright_mainditect.choice_content(url,css_selector,web_type))
         return rescored_candidate
     except Exception as e:
-        logger.warning(f"{e}")
+        logger.exception()
 
 # Worker function to process a single URL
 def process_url(url : str, 

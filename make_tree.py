@@ -133,7 +133,7 @@ async def make_tree(
 
         if wait_for_load:
             try:
-                logger.info("Waiting for network idle...")
+                logger.debug("Waiting for network idle...")
                 await page.wait_for_load_state('networkidle', timeout=timeout)
                 logger.info("Network is idle")
             except Exception as e:
