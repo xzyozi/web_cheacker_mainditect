@@ -10,7 +10,6 @@ text_struct/__pycache__/
 web_update_cheacker2.srctrlbm
 web_update_cheacker2.srctrldb
 web_update_cheacker2.srctrlprj
-users/jav/
 data/
 poi.py
 add_process/add.bat
@@ -23,3 +22,4 @@ text_struct/__pycache__/text_struct.cpython-310.pyc
 users/jav/cheacker_url.csv
 log/
 debug/
+users/
