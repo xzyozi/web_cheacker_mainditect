@@ -447,8 +447,8 @@ async def choice_content(url: str,
     
     webtype = WebType.from_string(webtype_str)
     # logger.info(f"chk webtype : {webtype}({type(webtype)}) -- {WebType.page_changer} ({type(WebType.page_changer)})")
-    if webtype == WebType.page_changer :
-        logger.warning(f"webtype is pagechange full scan process start :{WebType.page_changer}")
+    if webtype == WebType.page_changer or webtype == WebType.not_quickscan :
+        logger.warning(f"webtype is pagechange full scan process start :{webtype}")
         return await test_main(url,webtype)
 
     async with async_playwright() as p:
@@ -497,8 +497,8 @@ if __name__ == "__main__":
     # url = "http://animesoku.com/archives/38156477.html" # ng
     #url = "https://monoschinos2.com/anime/bleach-sennen-kessen-hen-soukoku-tan-sub-espanol"
     url = "https://gamewith.jp/apexlegends/"
-    url = "https://s1s1s1.com/top "
-    url = "https://f95zone.to/threads/translation-request-big-breasts-party-ntr.52990/page-497"
+    # url = "https://s1s1s1.com/top "
+    # url = "https://f95zone.to/threads/translation-request-big-breasts-party-ntr.52990/page-497"
 
     import datetime
     sta_sec = datetime.datetime.now()
@@ -516,8 +516,8 @@ if __name__ == "__main__":
     # sta_sec = datetime.datetime.now()
 
     # end_sec = datetime.datetime.now()
-    # ch_tree=  asyncio.run(choice_content(url,"div#article-body[id='article-body']"))
-    # logger.info(ch_tree,type(ch_tree))
+    ch_tree=  asyncio.run(choice_content(url,"div#article-body[id='article-body']"))
+    logger.info(ch_tree,type(ch_tree))
     # if ch_tree is not None :
     #     content_hash_text = hashlib.sha256(str(ch_tree["links"]).encode()).hexdigest()
     
