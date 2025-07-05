@@ -10,6 +10,7 @@ from dom_treeSt import DOMTreeSt
 class WebType(Enum):
     plane = ("plane", 1)
     page_changer = ("page_changer", 2)
+    not_quickscan = ("not_quickscan", 3)
 
     def __init__(self, value: str, priority: int):
         self._value_ = value
@@ -26,7 +27,7 @@ class WebType(Enum):
         return self.priority == other.priority
 
     @classmethod
-    def from_string(cls, enum_str: str) -> "WebType":
+    def from_string(cls, enum_str: str) :
         _, member_name = enum_str.split(".")  # "WebType.plane" -> "plane"
         return getattr(cls, member_name)  # WebType.plane を取得
 
