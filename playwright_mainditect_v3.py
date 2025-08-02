@@ -403,6 +403,7 @@ async def test_main(url : str,
                 if loop_count == max_loop_count:
                     logger.warning("loop count MAX")
                     break
+            # while loop end
 
             logger.info("Rescored child nodes:")
             for child in main_contents[:5]:
@@ -412,9 +413,23 @@ async def test_main(url : str,
             # print_content(tmp_main_content)
             logger.info(tmp_main_content)
 
+            # css_selector_list setting
+            # 堅牢なセレクタ候補を上位3つまで取得（空のセレクタは除外）
+            selector_candidates = [node.css_selector for node in main_contents[:3] if node.css_selector]
+            
+            # 自身のセレクタも候補の先頭に追加しておく
+            if tmp_main_content.css_selector and tmp_main_content.css_selector not in selector_candidates:
+                selector_candidates.insert(0, tmp_main_content.css_selector)
+
+            # 最終的に選ばれたコンテンツに、セレクタ候補リストとプライマリセレクタを格納
+            tmp_main_content.css_selector_list = selector_candidates
+            if selector_candidates:
+                tmp_main_content.css_selector = selector_candidates[0]
+            # css_selector_list setting end
+
             tmp_main_content.url = url
 
-            # 再帰処理後であれば前回時点
+            # web_type setting 再帰処理後であれば前回時点
             if arg_webtype :
                 tmp_main_content.web_type = arg_webtype
             else : 
@@ -422,6 +437,7 @@ async def test_main(url : str,
 
             json_data = tmp_main_content.to_dict()
 
+            # save json
             save_json(json_data,url)
 
             return tmp_main_content
@@ -441,7 +457,7 @@ async def test_main(url : str,
 
 
 async def choice_content(url: str, 
-                         selector: str,
+                         css_selector_list : list[str],
                          webtype_str : str,
                          ):
     
@@ -451,6 +467,15 @@ async def choice_content(url: str,
         logger.warning(f"webtype is pagechange full scan process start :{webtype}")
         return await test_main(url,webtype)
 
+    if webtype in [WebType.page_changer, WebType.not_quickscan]:
+        logger.warning(f"webtype is pagechange, starting full scan process: {webtype}")
+        return await test_main(url, arg_webtype=webtype)
+
+    # セレクタリストが空の場合はFullスキャンに移行
+    if not css_selector_list:
+        logger.warning("No selectors provided for quick scan, starting full scan.")
+        return await test_main(url, arg_webtype=webtype)
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
@@ -459,77 +484,98 @@ async def choice_content(url: str,
         try:
             # ページ移動と初期待機を簡略化
             await page.goto(url, wait_until='load', timeout=10000)
-            await page.wait_for_selector(selector, state='attached', timeout=10000)
-            
-            # コンテンツ読み込みを最適化
-            previous_height = None
-            while True:
-                current_height = await page.evaluate("document.body.scrollHeight")
-                if previous_height == current_height:
-                    break
-                previous_height = current_height
-                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                await asyncio.sleep(1)  # 必要最小限の待機
 
-            # DOMツリーを取得
-            tree = await make_tree(page, selector=selector)
-            if not tree:
-                logger.info(f"No matching elements found for selector: {selector}")
-                return {}
+            found_tree = None
+            # セレクタをループで試す
+            for selector in css_selector_list:
+                try:
+                    # 短いタイムアウトでセレクタの存在を確認
+                    await page.wait_for_selector(selector, state='attached', timeout=5000)
+                    logger.info(f"Selector found, extracting content with: {selector}")
+                    tree = await make_tree(page, selector=selector)
+                    if tree:
+                        found_tree = tree
+                        # Quickスキャン成功時は、成功したセレクタをプライマリとし、リストの先頭に持ってくる
+                        css_selector_list.remove(selector)
+                        css_selector_list.insert(0, selector)
+                        found_tree.css_selector_list = css_selector_list
+                        found_tree.css_selector = selector
+                        break # 見つかったらループを抜ける
+                except PlaywrightTimeoutError:
+                    logger.debug(f"Selector failed, trying next: {selector}")
+                    continue # 次のセレクタへ
             
-            tree.url = url
+            if not found_tree:
+                logger.warning(f"All selectors failed for URL: {url}. Quick scan failed.")
+                return None # 全て失敗したらNoneを返す
 
-            return tree
+            found_tree.url = url
+            return found_tree
 
         except Exception as e:
             logger.error(f"Error during content extraction: {str(e)}")
-            return None
-
+            return None # Quickスキャン失敗
         finally:
             await context.close()
             await browser.close()
 
 
 if __name__ == "__main__":
-    # 使用例
-    url = "https://loopholes.site/"
-    #url = " https://mangakoma01.net/manga/zhou-shu-hui-zhana004"
-    # url = "http://animesoku.com/archives/38156477.html" # ng
-    #url = "https://monoschinos2.com/anime/bleach-sennen-kessen-hen-soukoku-tan-sub-espanol"
-    url = "https://gamewith.jp/apexlegends/"
-    # url = "https://s1s1s1.com/top "
-    # url = "https://f95zone.to/threads/translation-request-big-breasts-party-ntr.52990/page-497"
+    import argparse
+    import time
 
-    import datetime
-    sta_sec = datetime.datetime.now()
-    dict_obj = asyncio.run(test_main(url))
-    end_sec = datetime.datetime.now()
+    # --- コマンドライン引数の設定 ---
+    parser = argparse.ArgumentParser(
+        description="""
+        Playwright Main Content Detection Script.
+        Used for testing the content extraction logic on a single URL.
+        """
+    )
+    parser.add_argument("url", help="The URL to test.")
+    parser.add_argument(
+        "--mode",
+        choices=["full", "quick"],
+        default="full",
+        help="Scan mode to execute. 'full' runs test_main, 'quick' runs choice_content. Default: full"
+    )
+    parser.add_argument(
+        "--selector",
+        help="CSS selector to use for 'quick' mode."
+    )
+    args = parser.parse_args()
 
-    logger.info(f"full proc {end_sec - sta_sec} seconds")
-    logger.info(type(dict_obj))
- 
-    # choice_dict = {
-    #     "id": "ld_blog_article_comment_entries",
-    #     "tag": "ol",
-    #     "attributes": {"id": "ld_blog_article_comment_entries"}
-    # }
-    # sta_sec = datetime.datetime.now()
+    # --- 実行ロジック ---
+    start_time = time.time()
+    logger.info(f"Starting test for URL: {args.url} (Mode: {args.mode})")
 
-    # end_sec = datetime.datetime.now()
-    ch_tree=  asyncio.run(choice_content(url,"div#article-body[id='article-body']"))
-    logger.info(ch_tree,type(ch_tree))
-    # if ch_tree is not None :
-    #     content_hash_text = hashlib.sha256(str(ch_tree["links"]).encode()).hexdigest()
-    
-    #     logger.info(content_hash_text)
-    #     end_sec = datetime.datetime.now()
-    #     logger.info(f"select scan proc {end_sec - sta_sec} seconds")
+    result_obj = None
 
+    if args.mode == 'full':
+        # --- Fullスキャンのテスト ---
+        logger.info("Executing Full Scan (test_main)...")
+        result_obj = asyncio.run(test_main(args.url))
 
-    logger.info(datetime.datetime.now())
+    elif args.mode == 'quick':
+        # --- Quickスキャンのテスト ---
+        if not args.selector:
+            logger.error("Error: --selector is required for 'quick' mode.")
+            sys.exit(1)
+        
+        logger.info(f"Executing Quick Scan (choice_content) with selector: {args.selector}")
+        # choice_contentはセレクタのリストを要求するため、リストとして渡す
+        result_obj = asyncio.run(choice_content(url=args.url, selectors=[args.selector], webtype_str="plane"))
 
-    # import requests
+    end_time = time.time()
+    processing_time = end_time - start_time
 
-    # response = requests.get(url)
-    # last_modified = response.headers.get("Last-Modified")
-    # logger.info(last_modified)
+    # --- 結果の表示 ---
+    if result_obj:
+        logger.info("Test finished successfully.")
+        logger.info(f"Primary CSS Selector: {result_obj.css_selector}")
+        logger.info(f"Selector Candidates: {result_obj.css_selector_list}")
+        logger.info(f"Extracted Links Count: {len(result_obj.links)}")
+        # print(result_obj) # オブジェクト全体を詳細に見たい場合はコメントを外す
+    else:
+        logger.warning("Test finished, but no content was extracted.")
+
+    logger.info(f"Total processing time: {processing_time:.2f} seconds.")

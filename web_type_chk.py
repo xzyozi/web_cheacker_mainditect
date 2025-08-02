@@ -2,7 +2,7 @@ import re
 from urllib.parse import urlparse
 from dataclasses import dataclass
 from typing import Dict, List, Optional
-from enum import Enum
+from enum import Enum, auto
 
 from dom_treeSt import DOMTreeSt
 
@@ -27,10 +27,30 @@ class WebType(Enum):
         return self.priority == other.priority
 
     @classmethod
-    def from_string(cls, enum_str: str) :
-        _, member_name = enum_str.split(".")  # "WebType.plane" -> "plane"
-        return getattr(cls, member_name)  # WebType.plane を取得
+    def from_string(cls, enum_str: str) -> "WebType":
+        """
+        文字列から対応するEnumメンバーを返す。
+        "WebType.plane" と "plane" の両方の形式に対応。
+        """
+        if not isinstance(enum_str, str):
+            # 文字列でない場合はデフォルト値を返す
+            return cls.plane
 
+        # ▼▼▼ ここのロジックを修正 ▼▼▼
+        member_name = ""
+        # "."が含まれているかチェック
+        if "." in enum_str:
+            # "WebType.plane" のような古い形式の場合、ドットの後ろの部分を取得
+            _, member_name = enum_str.split(".", 1)
+        else:
+            # "plane" のような新しい形式の場合、その文字列をそのまま使用
+            member_name = enum_str
+
+        try:
+            return cls[member_name.strip()]
+        except KeyError:
+            # 対応するメンバーが見つからない場合はデフォルト値を返す
+            return cls.plane
     
 
 class PageMonitor:
