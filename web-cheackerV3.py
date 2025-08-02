@@ -1,5 +1,4 @@
 from datetime import datetime
-import csv
 import pandas as pd
 import json
 import os , sys
@@ -12,7 +11,7 @@ import asyncio
 import shutil
 import traceback
 import re
-
+import json
 
 # +----------------------------------------------------------------
 # + my module imports
@@ -70,14 +69,13 @@ class User:
         self.directory = os.path.join("users",directory)
 
 
-        self.csv_file_path = os.path.join(self.directory, "cheacker_url.csv")
-        self.csv_file_path = os.path.abspath(self.csv_file_path)
-        
-        self.csv_file_path = self.csv_file_path.replace(r"\\", "/")
+        self.data_file_path = os.path.join(self.directory, "cheacker_url.jsonl")
+        self.data_file_path = os.path.abspath(self.data_file_path)
+        self.data_file_path = self.data_file_path.replace(r"\\", "/")
 
         self.json_dir_path = os.path.join(self.directory, "json/")
 
-        util_str.util_handle_path(self.csv_file_path)
+        util_str.util_handle_path(self.data_file_path)
         util_str.util_handle_path(self.json_dir_path)
 
         self.load_mail_settings()
@@ -194,19 +192,31 @@ def safe_parse_datetime(date_str, default_datetime=DEFAULT_DATETIME):
 #   Last-Modified function
 # +----------------------------------------------------------------
 
-def get_last_modified(url):
-    try:
-        response = requests.head(url)
-        last_modified = response.headers.get('Last-Modified')
-        if last_modified:
+from email.utils import parsedate_to_datetime
 
-            last_modified_datetime = datetime.strptime(last_modified, DEFAULT_DATEFORMAT)
-            formatted_last_modified = last_modified_datetime.strftime("%Y%m%d")
+def get_last_modified(url: str) -> str | None:
+    """
+    URLのLast-Modifiedヘッダを取得し、単純な文字列として返す。
+    タイムゾーンは考慮せず、日付と時刻の文字列表現として扱う。
+    """
+    try:
+        # タイムアウトを設定して、応答がない場合に長時間待たないようにする
+        response = requests.head(url, timeout=10)
+        response.raise_for_status() # 200番台以外のステータスコードで例外を発生
+        
+        last_modified_header = response.headers.get('Last-Modified')
+        if last_modified_header:
+            # 例: "Wed, 21 Oct 2015 07:28:00 GMT" -> datetimeオブジェクトに変換
+            dt_object = parsedate_to_datetime(last_modified_header)
+            # datetimeオブジェクトを単純な文字列にフォーマットして返す
+            return dt_object.strftime("%Y-%m-%d %H:%M:%S")
             
-            logger.debug(formatted_last_modified, type(formatted_last_modified))
-            return formatted_last_modified
-    except Exception as e:
-        logger.warning(e)
+    except requests.RequestException as e:
+        logger.debug(f"Could not get Last-Modified for {url}: {e}")
+    except (TypeError, ValueError) as e:
+        logger.debug(f"Could not parse Last-Modified header for {url}: {e}")
+        
+    return None
 
 # + ----------------------------------------------------------------
 #  remove encoded chars
@@ -235,243 +245,200 @@ CSV_COLUMN = { "url" : 0, # scraping url
 }
 
 
-class CSVManager:
-    def __init__(self, file_path, csv_column_dict):
+class DataManager:
+    def __init__(self, file_path):
         self.file_path = file_path
-        self.csv_column = csv_column_dict
-        self.max_column = len(csv_column_dict)
-        self.csv_df = self.read_csv_with_padding()
-        self.url_column_list = self.csv_df.iloc[:, CSV_COLUMN["url"]].tolist()
-        self.before_csv_df = self.csv_df.copy()
-        logger.info(f"{self.csv_df}")
-
-    def read_csv_with_padding(self) -> pd.DataFrame :
-        """
-        Read a CSV file and pad missing columns with None values.
-
-        Returns:
-            pandas.DataFrame: DataFrame containing the CSV data with padded columns.
-
-        """
+        self.lock = threading.Lock()
         try:
-            # CSVファイルを読み込む
-            df = pd.read_csv(self.file_path, header=None, encoding='utf-8')
-            
-            # カラム数がnum_columnsに足りない場合、補完する
-            if len(df.columns) < self.max_column :
-                logger.debug("column is too short and add column")
-
-                padding_needed = self.max_column - len(df.columns)
-                padding = [[ 0 ] * padding_needed for _ in range(len(df))]
-                df = pd.concat([df, pd.DataFrame(padding, columns=range(len(df.columns), self.max_column))], axis=1)
-            
-            # URLカラムからエンコーディングされた文字列を削除する
-            df[CSV_COLUMN["url"]] = df[CSV_COLUMN["url"]].apply(lambda x: unicodedata.normalize('NFKD', x) if isinstance(x, str) else x)
-
-            # dateframeの値に欠損値（NaN)を""に置換
-            df = df.fillna("").astype(str)
-
-            return df
-        except pd.errors.EmptyDataError:
-            logger.warning("指定されたファイルが空です。空ファイル内に空のデータを追加します。")
-            empty_data = [[ 0 ] * self.max_column]
-            pd.DataFrame(empty_data).to_csv(self.file_path, index=False, header=False)  # 空ファイル内に空のデータを追加
-            return pd.DataFrame(empty_data)
+            with self.lock:
+                self.df = pd.read_json(self.file_path, lines=True, orient='records')
+        except (FileNotFoundError, ValueError):
+            self.df = pd.DataFrame(columns=[
+                "url", "run_code", "result_vl", "updated_datetime", 
+                "full_scan_datetime", "css_selector_list", "web_page_type"
+            ])
         
-    def write_csv_update_date(self) -> None:
-        self.csv_df.iloc[:, CSV_COLUMN["run_code"]] = self.get_str_datetime()
-        self.csv_df.to_csv(self.file_path, index=False, header=False)
+        if 'css_selector_list' not in self.df.columns:
+            self.df['css_selector_list'] = [[] for _ in range(len(self.df))]
 
-    def write_csv_updateValues( self ,
-                                content_hash_txt :str ,
-                                index_num : int,
-                                css_selector : str,
-                                chk_url : str ) -> None:
-        self.csv_df.at[index_num, CSV_COLUMN["updated_datetime"]] = self.get_str_datetime()
-        self.csv_df.at[index_num, CSV_COLUMN["result_vl"]] = content_hash_txt
-        self.csv_df.at[index_num, CSV_COLUMN["css_selector"]] = css_selector
-        if chk_url != self.csv_df.at[index_num, CSV_COLUMN["url"]] :
-            self.csv_df.at[index_num, CSV_COLUMN["url"]] = chk_url
-        logger.info(f" ## update ## - index : {index_num} - {content_hash_txt}")
+        self.df = self.df.fillna({
+            'web_page_type': '',
+            'result_vl': '',
+            'full_scan_datetime': ''
+        })
+        self.df['css_selector_list'] = self.df['css_selector_list'].apply(lambda x: x if isinstance(x, list) else [])
 
-    @staticmethod
-    def get_str_datetime() -> str:
-        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    def chk_diff(self) -> list:
-        # diff chack of dataflame
-        diff_column = self.csv_df.iloc[:, CSV_COLUMN["result_vl"] ] != self.before_csv_df.iloc[:, CSV_COLUMN["result_vl"] ]
-
-        result = self.csv_df[diff_column]
-
-        diff_df = [row[CSV_COLUMN["url"]] for row in result.values.tolist()]
-        logger.info(diff_df)
-        return diff_df
+        self.before_df = self.df.copy()
+        logger.info(f"Loaded data:\n{self.df}")
 
     def get_record_as_dict(self, index: int) -> dict:
-        return {col_name: self.csv_df.at[index, col_idx] for col_name, col_idx in self.csv_column.items()}
+        return self.df.loc[index].to_dict()
 
-    def update_record_from_dict(self, index: int, record_dict: dict) -> None:
-        for key, value in record_dict.items():
-            if key in self.csv_column:
-                self.csv_df.at[index, self.csv_column[key]] = value
-            else :
-                logger.warning(f"column not found for {key}")
+    def update_record_from_dom_tree(self, index: int, dom_tree: DOMTreeSt):
+        record = {
+            "result_vl": hashlib.sha256(str(dom_tree.links).encode()).hexdigest(),
+            "updated_datetime": get_Strdatetime(),
+            "css_selector_list": dom_tree.css_selector_list,
+            "web_page_type": dom_tree.web_type,
+            "url": dom_tree.url
+        }
+        for key, value in record.items():
+            self.df.at[index, key] = value
+        logger.info(f" ## update ## - index : {index}")
+        
+    def update_scan_result(self, index: int, dom_tree: DOMTreeSt):
+        """
+        スキャン成功時の結果をまとめてDataFrameに書き込むメソッド。
+        """
+        new_hash = hashlib.sha256(str(dom_tree.links).encode()).hexdigest()
+        
+        logger.info(f" ## UPDATE ## - index : {index} - {new_hash}")
+        logger.debug(f"Updating with selectors: {dom_tree.css_selector_list}")
 
-    def __getitem__(self, index_column):
-        index, column = index_column
-        return self.csv_df.at[index, CSV_COLUMN[column]]
+        self.df.at[index, "result_vl"] = new_hash
+        self.df.at[index, "updated_datetime"] = get_Strdatetime()
+        self.df.at[index, "css_selector_list"] = dom_tree.css_selector_list
+        self.df.at[index, "web_page_type"] = dom_tree.web_type
+        
+        # URLがリダイレクト等で変更された場合に対応
+        if dom_tree.url != self.df.at[index, "url"]:
+            self.df.at[index, "url"] = dom_tree.url
 
-    def __setitem__(self, index_column, value):
-        index, column = index_column
-        self.csv_df.at[index, CSV_COLUMN[column]] = value
+    def update_full_scan_timestamp(self, index: int):
+        """Fullスキャンのタイムスタンプのみを更新する"""
+        self.df.at[index, "full_scan_datetime"] = get_Strdatetime()
+
+    def clear_scan_data(self, index: int):
+        """スキャン失敗時に、次回のFullスキャンを促すためにデータをクリアする"""
+        logger.warning(f"Clearing scan data for index: {index} to force full scan next time.")
+        self.df.at[index, "css_selector_list"] = []
+        self.df.at[index, "full_scan_datetime"] = ""
+
+    def save_data(self):
+        with self.lock:
+            self.df['run_code'] = get_Strdatetime()
+            self.df.to_json(self.file_path, orient='records', lines=True, force_ascii=False)
+
+    def chk_diff(self) -> list:
+        # result_vl列を比較して差分を検出
+        diff_mask = self.df['result_vl'] != self.before_df['result_vl']
+        diff_urls = self.df.loc[diff_mask, 'url'].tolist()
+        logger.info(f"Found {len(diff_urls)} updated URLs: {diff_urls}")
+        return diff_urls
 
 # csv function end ---------------------------------------------------------------- 
 
-def scraping_mainditect(url_data : dict) -> DOMTreeSt | None:
-    try:
-        url = url_data['url']
-        web_type = url_data['web_page_type']
-        rescored_candidate = asyncio.run(playwright_mainditect.test_main(url))
-
-        return rescored_candidate
-    except Exception as e:
-        logger.warning(f"{e}")
-
-def choice_content(url_data : dict) -> DOMTreeSt | None:
-    url = url_data['url']
-    css_selector = url_data['css_selector']
-    web_type = url_data["web_page_type"]
-    try:
-        rescored_candidate = asyncio.run(playwright_mainditect.choice_content(url,css_selector,web_type))
-        return rescored_candidate
-    except Exception as e:
-        logger.exception()
 
 # Worker function to process a single URL
-def process_url(url : str, 
-                index_num : int, 
-                csv_manager : CSVManager,  
-                error_list : list
+def process_url(url: str, 
+                index_num: int, 
+                data_manager: DataManager, 
+                error_list: list
                 ):
     try:
+        # ▼▼▼ 処理開始時刻を記録 ▼▼▼
+        start_time = datetime.now()
+        
+        record = data_manager.get_record_as_dict(index_num)
 
-        now_sec = datetime.now()
-
-        css_selector = csv_manager[index_num, "css_selector"]
-        run_code_time = csv_manager[index_num, "run_code"]
-        full_scan_datetime = csv_manager[index_num, "full_scan_datetime"]
-        bef_web_type = csv_manager[index_num,"web_page_type"]
-
-        diff_days = (safe_parse_datetime(run_code_time) - safe_parse_datetime(full_scan_datetime)).days
-        logger.debug(f"scan datatime : {safe_parse_datetime(run_code_time)} type:{type(run_code_time)}")
-        logger.debug(f"full datatime : {safe_parse_datetime(full_scan_datetime)} type:{type(full_scan_datetime)}")
-        logger.info(f"diff day : {diff_days} url : {url}")
-
-        logger.debug(f"web type {bef_web_type} {type(bef_web_type)}")
-
-        result_flg = False
-        update_flg = False
-
+        # Last-Modifiedによる高速チェック
         # last_modified = get_last_modified(url)
         # if last_modified:
-        #     if csv_df.at[index_num, CL_RESULT_VL] != last_modified or csv_df.at[index_num, CL_RESULT_VL] is None:
-        #         log_print.info(f"{csv_df.at[index_num, CL_RESULT_VL]} is not {last_modified}) ")
-        #         write_csv_updateValues(last_modified, csv_df, index_num)
-        #         log_print.info(f"Updated URL for modified : {url}")
-        #         result_flg = True
+        #     if record.get('result_vl') != last_modified:
+        #         data_manager.update_with_last_modified(index_num, last_modified)
+        #         return 
+        #     else:
+        #         logger.debug(f"Skipping DOM check for {url} due to unchanged Last-Modified header.")
+        #         return
+        
+        # --- Last-Modifiedが利用できない場合、通常のDOMスキャン処理に進む ---
+        css_selector_list = record.get('css_selector_list', [])
+        full_scan_datetime_str = record.get('full_scan_datetime', '')
 
+        diff_days = 99
+        if full_scan_datetime_str:
+            try:
+                diff_days = (datetime.now() - safe_parse_datetime(full_scan_datetime_str)).days
+            except TypeError:
+                logger.warning(f"Could not parse datetime: {full_scan_datetime_str}")
 
-        if not css_selector or diff_days >= 4:
-            # ----------------------------------------------------------------
-            # full scan 
-            # ----------------------------------------------------------------
-            logger.info(f"FULL SCAN URL: {url}, index: {index_num}")
-            rescored_candidate = scraping_mainditect(csv_manager.get_record_as_dict(index_num))
+        rescored_candidate = None
+        # ----------------------------------------------------------------
+        # --- Quickスキャン試行 ---
+        # ----------------------------------------------------------------
+        if css_selector_list and diff_days < 4:
+            logger.info(f"QUICK SCAN URL: {url}, index: {index_num}")
+            rescored_candidate = asyncio.run(
+                playwright_mainditect.choice_content(url, css_selector_list, record['web_page_type'])
+            )
+        # ----------------------------------------------------------------
+        # --- Fullスキャン (Quickスキャンしなかった、または失敗した場合) ---
+        # ----------------------------------------------------------------
+        if not rescored_candidate:
+            if css_selector_list:
+                logger.info(f"Quick scan failed. Falling back to FULL SCAN for URL: {url}")
+            else:
+                logger.info(f"FULL SCAN URL: {url}, index: {index_num}")
+            
+            rescored_candidate = asyncio.run(
+                playwright_mainditect.test_main(url=record['url'], arg_webtype=record['web_page_type'])
+            )
+            
             if rescored_candidate:
-                csv_manager[index_num, "full_scan_datetime"] = get_Strdatetime()
-                csv_manager[index_num, "web_page_type"] = rescored_candidate.web_type
-                update_flg = True
-                result_flg = True
+                data_manager.update_full_scan_timestamp(index_num)
             else:
                 logger.info("Full scan returned None")
                 error_list.append([url, "Full scan returned None"])
                 return
-        else:
-            # -----------------------------------------------------------------
-            # selecter choice scan
-            # -----------------------------------------------------------------
-            logger.info(f"CHOICE SCAN URL: {url}, index: {index_num}") 
-            try:
-                rescored_candidate = choice_content(csv_manager.get_record_as_dict(index_num))
-                proc_time = datetime.now() - now_sec
-                if proc_time.total_seconds() > PROC_MPL_SEC:
-                    error_list.append([url, f"Processing time exceeded {PROC_MPL_SEC} sec -> {proc_time.total_seconds()} sec"])
-                update_flg = True
-            except Exception as e:
-                logger.error(e)
-                return
 
         # ----------------------------------------------------------------
-        # result process
+        # --- 結果処理 (共通) ---
         # ----------------------------------------------------------------
         if rescored_candidate:
-            content_hash_text = hashlib.sha256(str(rescored_candidate.links).encode()).hexdigest()
-            logger.debug("hash_text: %s", content_hash_text)
-            if csv_manager[index_num, "result_vl"] != content_hash_text:
-
-                chk_url = rescored_candidate.url
-
-                # if url == chk_url:
-                css_selector = rescored_candidate.css_selector
-                
-                # save_json(rescored_candidate.to_dict, chk_url)
-                # log_print("■save_json")
-                logger.info(f"{url} : webtype : {rescored_candidate.web_type}")
-
-                csv_manager.write_csv_updateValues(content_hash_text, index_num, css_selector, chk_url)
-                result_flg = True
+            new_hash = hashlib.sha256(str(rescored_candidate.links).encode()).hexdigest()
+            if record['result_vl'] != new_hash:
+                data_manager.update_scan_result(index_num, rescored_candidate)
         else:
-            logger.error("Choice content is None")
-            error_list.append([url, "Choice content None"])
-            csv_manager[index_num, "full_scan_datetime"] = ""
+            logger.error(f"Scan process resulted in None for URL: {url}")
+            error_list.append([url, "Scan process resulted in None"])
+            data_manager.clear_scan_data(index_num)
+
+        # ▼▼▼ 処理の最後にタイムアウトをチェック ▼▼▼
+        duration = (datetime.now() - start_time).total_seconds()
+        if duration > PROC_MPL_SEC:
+            timeout_msg = f"Processing time exceeded {PROC_MPL_SEC} sec -> {duration:.2f} sec"
+            logger.warning(f"TIMEOUT for {url}: {timeout_msg}")
+            error_list.append([url, timeout_msg])
+            
     except Exception as e:
-        tb = traceback.extract_tb(e.__traceback__)  # 例外のトレースバックを取得
-        last_entry = tb[-1]  # 最後のエントリ（エラーが発生した行）
-        logger.error(f"Error processing URL {url}: {e}{last_entry.lineno}")
-        error_list.append([url, e,last_entry.line,last_entry.lineno])
-    
-#     return result_flg, update_flg
-        return None
+        tb = traceback.extract_tb(e.__traceback__)
+        last_entry = tb[-1]
+        logger.error(f"Error processing URL {url}: {e} at line {last_entry.lineno}")
+        error_list.append([url, e, last_entry.line, last_entry.lineno])
+
 
 def worker( q : queue.Queue,
-            csv_manager : CSVManager,
+            data_manager: DataManager,
             error_list : list
             ):
     while True:
         try:
-            url = q.get(timeout=10)
+            url,index_num = q.get(timeout=10)
         except queue.Empty:
             logger.debug("Queue is empty, exiting worker")
             break
-        
-        index_num = csv_manager.url_column_list.index(url)
-        if url is None:
-            break
 
-        # result_flg, update_flg = process_url(url, index_num, csv_manager, error_list)
-        # log_print.debug(f"Worker flags - Result: {result_flg}, Update: {update_flg}")
-        process_url(url, index_num, csv_manager, error_list)
+        process_url(url, index_num, data_manager, error_list)
         q.task_done()
 
 
 def start_workers(q : queue.Queue, 
-                  csv_manager : CSVManager, 
+                  data_manager : DataManager, 
                   error_list : list 
                   ):
     threads = []
     for _ in range(WORKER_THREADS_NUM):
-        thread = threading.Thread(target=worker, args=(q, csv_manager, error_list))
+        thread = threading.Thread(target=worker, args=(q, data_manager, error_list))
         thread.daemon = True
         thread.start()
         threads.append(thread)
@@ -484,41 +451,39 @@ def main():
         shutil.rmtree("temp_image")
     
     user = User("jav")
-    util_str.util_handle_path(user.csv_file_path)
+    util_str.util_handle_path(user.data_file_path)
 
-    csv_manager = CSVManager(user.csv_file_path, CSV_COLUMN)
+    data_manager = DataManager(user.data_file_path)
     
     error_list = []
-    
     q_pool = queue.Queue()
 
-    for url in csv_manager.csv_df.iloc[:, CSV_COLUMN["url"]]:
-        if url:
-            q_pool.put(url)
+    for index, row in data_manager.df.iterrows():
+        if row['url']:
+            q_pool.put((row['url'], index))
 
-    start_workers(q_pool, csv_manager, error_list)
+    start_workers(q_pool, data_manager, error_list) 
     
-    csv_manager.write_csv_update_date()
-    diff_urls = csv_manager.chk_diff()
+    diff_urls = data_manager.chk_diff()
+    data_manager.save_data()
 
-    file_list = asyncio.run(playwright_mainditect.save_screenshot(diff_urls, save_dir="temp_image"))
-    asyncio.run(playwright_mainditect.save_screenshot(diff_urls, save_dir="data/view",width=1920))
+    if diff_urls:
+        file_list = asyncio.run(playwright_mainditect.save_screenshot(diff_urls, save_dir="temp_image"))
+        asyncio.run(playwright_mainditect.save_screenshot(diff_urls, save_dir="data/view", width=1920))
+        body = text_struct.generate_html(diff_urls, file_list)
+        user.send_resultmail(body, body_type="html", image_list=file_list)
 
-    
     if error_list:
         logger.info("-------- ERROR list output -----------")
         for error_msg in error_list:
             logger.warning(error_msg)
 
         traceback.print_exc()
-
-    if diff_urls:
-        body = text_struct.generate_html(diff_urls, file_list)
-        user.send_resultmail(body, body_type="html", image_list=file_list)
     
-    shutil.rmtree("temp_image")
+    if os.path.isdir("temp_image"):
+        shutil.rmtree("temp_image")
 
-    logger.info(f"{csv_manager.csv_df}")
+    logger.info(f"{data_manager.df}")
 
 if __name__ == "__main__":
     main()
