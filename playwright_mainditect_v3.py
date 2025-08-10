@@ -510,6 +510,7 @@ async def choice_content(url: str,
                 return None # 全て失敗したらNoneを返す
 
             found_tree.url = url
+            found_tree.web_type = webtype_str
             return found_tree
 
         except Exception as e:

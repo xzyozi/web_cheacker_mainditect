@@ -28,28 +28,13 @@ class WebType(Enum):
 
     @classmethod
     def from_string(cls, enum_str: str) -> "WebType":
-        """
-        文字列から対応するEnumメンバーを返す。
-        "WebType.plane" と "plane" の両方の形式に対応。
-        """
-        if not isinstance(enum_str, str):
-            # 文字列でない場合はデフォルト値を返す
+        if not isinstance(enum_str, str) or not enum_str:
             return cls.plane
-
-        # ▼▼▼ ここのロジックを修正 ▼▼▼
-        member_name = ""
-        # "."が含まれているかチェック
-        if "." in enum_str:
-            # "WebType.plane" のような古い形式の場合、ドットの後ろの部分を取得
-            _, member_name = enum_str.split(".", 1)
-        else:
-            # "plane" のような新しい形式の場合、その文字列をそのまま使用
-            member_name = enum_str
-
+        
+        member_name = enum_str.split(".")[-1] # "WebType.plane"でも"plane"でも対応
         try:
             return cls[member_name.strip()]
         except KeyError:
-            # 対応するメンバーが見つからない場合はデフォルト値を返す
             return cls.plane
     
 
@@ -114,14 +99,17 @@ class WebTypeCHK() :
 
         
 
-    def webtype_chk(self) -> Optional[str]:
-        ret = self.pagemon.get_watch_url()
-        if ret :
-            self.node.web_type = WebType.page_changer
-            self.next_url = ret
-            return WebType.page_changer
+    def webtype_chk(self) -> str:
+        """
+        Webページのタイプを文字列として返す。
+        """
+        new_watch_url = self.pagemon.get_watch_url()
+        if new_watch_url:
+            self.next_url = new_watch_url
+            #  Enumオブジェクトではなく、その名前（文字列）を返す 
+            return WebType.page_changer.name
         
-        return WebType.plane
+        return WebType.plane.name
 
 def test_page_monitor_1():
     """PageMonitor の単体テスト１"""
