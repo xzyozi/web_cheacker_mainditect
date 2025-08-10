@@ -2,7 +2,7 @@ import re
 from urllib.parse import urlparse
 from dataclasses import dataclass
 from typing import Dict, List, Optional
-from enum import Enum
+from enum import Enum, auto
 
 from dom_treeSt import DOMTreeSt
 
@@ -27,10 +27,15 @@ class WebType(Enum):
         return self.priority == other.priority
 
     @classmethod
-    def from_string(cls, enum_str: str) :
-        _, member_name = enum_str.split(".")  # "WebType.plane" -> "plane"
-        return getattr(cls, member_name)  # WebType.plane を取得
-
+    def from_string(cls, enum_str: str) -> "WebType":
+        if not isinstance(enum_str, str) or not enum_str:
+            return cls.plane
+        
+        member_name = enum_str.split(".")[-1] # "WebType.plane"でも"plane"でも対応
+        try:
+            return cls[member_name.strip()]
+        except KeyError:
+            return cls.plane
     
 
 class PageMonitor:
@@ -94,14 +99,17 @@ class WebTypeCHK() :
 
         
 
-    def webtype_chk(self) -> Optional[str]:
-        ret = self.pagemon.get_watch_url()
-        if ret :
-            self.node.web_type = WebType.page_changer
-            self.next_url = ret
-            return WebType.page_changer
+    def webtype_chk(self) -> str:
+        """
+        Webページのタイプを文字列として返す。
+        """
+        new_watch_url = self.pagemon.get_watch_url()
+        if new_watch_url:
+            self.next_url = new_watch_url
+            #  Enumオブジェクトではなく、その名前（文字列）を返す 
+            return WebType.page_changer.name
         
-        return WebType.plane
+        return WebType.plane.name
 
 def test_page_monitor_1():
     """PageMonitor の単体テスト１"""
