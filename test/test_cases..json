@@ -1,0 +1,26 @@
+[
+    {
+        "name": "GameWith APEX (Full)",
+        "url": "https://gamewith.jp/apexlegends/",
+        "mode": "full",
+        "selector": ""
+    },
+    {
+        "name": "GameWith APEX (Quick)",
+        "url": "https://gamewith.jp/apexlegends/",
+        "mode": "quick",
+        "selector": "div#article-body[id='article-body']"
+    },
+    {
+        "name": "F95zone (Page Changer)",
+        "url": "https://f95zone.to/threads/translation-request-big-breasts-party-ntr.52990/page-600",
+        "mode": "full",
+        "selector": ""
+    },
+    {
+        "name": "Loopholes (Full)",
+        "url": "https://loopholes.site/",
+        "mode": "full",
+        "selector": ""
+    }
+]

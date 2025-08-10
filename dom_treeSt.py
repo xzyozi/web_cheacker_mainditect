@@ -30,6 +30,7 @@ class DOMTreeSt:
     text: str = ""
     score: int = 0
     css_selector: str = ""
+    css_selector_list: List[str] = field(default_factory=list)
     links: List[str] = field(default_factory=list)
     chk_url: str = ""
     web_type: str = ""
@@ -55,6 +56,7 @@ class DOMTreeSt:
             "text": self.text,
             "score": self.score,
             "css_selector": self.css_selector,
+            "css_selector_list": self.css_selector_list,
             "links": self.links,
             "chk_url":self.chk_url,
         }
@@ -69,6 +71,7 @@ class DOMTreeSt:
                 f"    Rect: {child.rect}",
                 f"    Depth: {child.depth}",
                 f"    CSS Selector: {child.css_selector}",
+                f"    CSS Selector List: {child.css_selector_list}",
             ]
             infos.append("\n".join(info) + "\n" + "-" * 60)
         
@@ -85,6 +88,7 @@ class DOMTreeSt:
             f"Rect: {self.rect}",
             f"Depth: {self.depth}",
             f"CSS Selector: {self.css_selector}",
+            f"CSS Selector List: {self.css_selector_list}",
             f"Links: {', '.join(self.links)}" if self.links else "No links found"
         ]
         return "\n".join(info) + "\n" + "-" * 60

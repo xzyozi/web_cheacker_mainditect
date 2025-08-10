@@ -18,7 +18,6 @@ add_process/add_process.py
 get_tree.py
 test/__pycache__/
 .vscode/
-text_struct/__pycache__/text_struct.cpython-310.pyc
 users/jav/cheacker_url.csv
 log/
 debug/
