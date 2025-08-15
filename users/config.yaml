@@ -1,0 +1,29 @@
+# アプリケーションの動作設定
+
+# スキャン設定
+scan:
+  # 同時に実行するワーカースレッドの数
+  worker_threads: 2
+  # URLごとのタイムアウト秒数
+  timeout_per_url: 60
+
+# 通知設定
+notification:
+  # 通知タイプ ('email' または 'none')
+  # 'email' に設定すると、更新時やエラー時にメールを送信します。
+  # 'none' に設定すると、コンソールへのログ出力のみ行います。
+  type: email
+  # エラー発生時に通知メールを送信するか(true/false)
+  notify_on_error: false
+
+screenshot:
+  # 更新があった場合にスクリーンショットを撮るか (通知タイプが 'email' の場合のみ有効)
+  enabled: true
+  # 永続的に保存するディレクトリ
+  permanent_dir: "data/view"
+  # メール送信用に一時的に保存するディレクトリ
+  temporary_dir: "temp_image"
+  # 永続保存する画像の幅 (ピクセル)
+  permanent_width: 1920
+  # メール添付用の画像の幅 (ピクセル)
+  email_width: 500
