@@ -295,21 +295,11 @@ def is_scraping_allowed(robots_txt : str,
     # Check if we are allowed to scrape the target path
     return robot_parser.can_fetch("*", target_path)
 
-async def initialize_browser_and_page(url : str):
-    """ブラウザとページを初期化し、スクレイピングの準備をする"""
-    playwright = await async_playwright().start()
-    try :
-        browser = await playwright.chromium.launch(headless=True)
-        page = await setup_page(url, browser)
-    except Exception as e :
-        playwright.stop()
-        logger.error("playwright stop")
-        return None, None, None
-    return playwright, browser, page
 
 
 
-async def test_main(url : str,
+async def extract_main_content(url: str,
+                    browser: Browser,
                     count : int = 0,
                     arg_webtype : any = None
                     ) -> DOMTreeSt | None:       
@@ -329,16 +319,12 @@ async def test_main(url : str,
             return None
 
 
-    #browser = await p.chromium.launch(headless=False, args=['--start-maximized'])
-    playwright, browser, page = await initialize_browser_and_page(url)
-
+    page = await setup_page(url, browser)
     if not page:
-        await browser.close()
-        await playwright.stop()  # Playwright自体も終了させる
         return None
 
     try:
-
+        max_loop_count = 10
         dimensions = await adjust_page_view(page)
 
         tree = await make_tree(page)
@@ -355,13 +341,11 @@ async def test_main(url : str,
 
         if watch_url and count < 3 :
             logger.info(f"URL updated: {url} -> {watch_url}. Restarting process...")
-            await browser.close()  # 既存のブラウザを閉じる
-            await playwright.stop()
             # 前回時点のwebtypeが存在する場合はそちらを採用する
             if arg_webtype:
-                return await test_main(watch_url, count + 1, arg_webtype=arg_webtype)  # 再帰的に処理を実行
+                return await extract_main_content(watch_url, browser, count + 1, arg_webtype=arg_webtype)  # 再帰的に処理を実行
             else:
-                return await test_main(watch_url, count + 1, arg_webtype=chktype)  # 再帰的に処理を実行
+                return await extract_main_content(watch_url, browser, count + 1, arg_webtype=chktype)  # 再帰的に処理を実行
 
 
         tree = [tree]  # Convert tree to list[Dict]
@@ -451,74 +435,99 @@ async def test_main(url : str,
         print_error_details(e)
 
     finally:
-        await browser.close()
-        await playwright.stop()  # Playwright自体も終了させる
+        if page:
+            await page.close()
 
 
-
-async def choice_content(url: str, 
-                         css_selector_list : list[str],
-                         webtype_str : str,
-                         ):
+async def quick_extract_content(url: str,
+                                browser: Browser,
+                                css_selector_list: list[str],
+                                webtype_str: str,
+                                ):
     
     webtype = WebType.from_string(webtype_str)
     # logger.info(f"chk webtype : {webtype}({type(webtype)}) -- {WebType.page_changer} ({type(WebType.page_changer)})")
     if webtype == WebType.page_changer or webtype == WebType.not_quickscan :
         logger.warning(f"webtype is pagechange full scan process start :{webtype}")
-        return await test_main(url,webtype)
+        return await extract_main_content(url, browser, arg_webtype=webtype)
 
     if webtype in [WebType.page_changer, WebType.not_quickscan]:
         logger.warning(f"webtype is pagechange, starting full scan process: {webtype}")
-        return await test_main(url, arg_webtype=webtype)
+        return await extract_main_content(url, browser, arg_webtype=webtype)
 
     # セレクタリストが空の場合はFullスキャンに移行
     if not css_selector_list:
         logger.warning("No selectors provided for quick scan, starting full scan.")
-        return await test_main(url, arg_webtype=webtype)
+        return await extract_main_content(url, browser, arg_webtype=webtype)
 
+    context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
+    page = await context.new_page()
+    
+    try:
+        found_tree = None
+        # ページ移動と初期待機を簡略化
+        await page.goto(url, wait_until='load', timeout=10000)
+
+        # セレクタをループで試す
+        for selector in css_selector_list:
+            try:
+                # 短いタイムアウトでセレクタの存在を確認
+                await page.wait_for_selector(selector, state='attached', timeout=5000)
+                logger.info(f"Selector found, extracting content with: {selector}")
+                tree = await make_tree(page, selector=selector)
+                if tree:
+                    found_tree = tree
+                    # Quickスキャン成功時は、成功したセレクタをプライマリとし、リストの先頭に持ってくる
+                    css_selector_list.remove(selector)
+                    css_selector_list.insert(0, selector)
+                    found_tree.css_selector_list = css_selector_list
+                    found_tree.css_selector = selector
+                    break # 見つかったらループを抜ける
+            except PlaywrightTimeoutError:
+                logger.debug(f"Selector failed, trying next: {selector}")
+                continue # 次のセレクタへ
+        
+        if not found_tree:
+            logger.warning(f"All selectors failed for URL: {url}. Quick scan failed.")
+            return None # 全て失敗したらNoneを返す
+
+        found_tree.url = url
+        found_tree.web_type = webtype_str
+        return found_tree
+
+    except Exception as e:
+        logger.error(f"Error during content extraction: {str(e)}")
+        return None # Quickスキャン失敗
+    finally:
+        await context.close()
+
+
+async def run_full_scan_standalone(url: str, arg_webtype: any = None):
+    """
+    従来のtest_mainと同様に、単一URLのフルスキャンをスタンドアロンで実行します。
+    ブラウザの起動と終了を内包します。
+    """
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
-        page = await context.new_page()
-        
         try:
-            # ページ移動と初期待機を簡略化
-            await page.goto(url, wait_until='load', timeout=10000)
-
-            found_tree = None
-            # セレクタをループで試す
-            for selector in css_selector_list:
-                try:
-                    # 短いタイムアウトでセレクタの存在を確認
-                    await page.wait_for_selector(selector, state='attached', timeout=5000)
-                    logger.info(f"Selector found, extracting content with: {selector}")
-                    tree = await make_tree(page, selector=selector)
-                    if tree:
-                        found_tree = tree
-                        # Quickスキャン成功時は、成功したセレクタをプライマリとし、リストの先頭に持ってくる
-                        css_selector_list.remove(selector)
-                        css_selector_list.insert(0, selector)
-                        found_tree.css_selector_list = css_selector_list
-                        found_tree.css_selector = selector
-                        break # 見つかったらループを抜ける
-                except PlaywrightTimeoutError:
-                    logger.debug(f"Selector failed, trying next: {selector}")
-                    continue # 次のセレクタへ
-            
-            if not found_tree:
-                logger.warning(f"All selectors failed for URL: {url}. Quick scan failed.")
-                return None # 全て失敗したらNoneを返す
-
-            found_tree.url = url
-            found_tree.web_type = webtype_str
-            return found_tree
-
-        except Exception as e:
-            logger.error(f"Error during content extraction: {str(e)}")
-            return None # Quickスキャン失敗
+            return await extract_main_content(url, browser, arg_webtype=arg_webtype)
         finally:
-            await context.close()
-            await browser.close()
+            if browser:
+                await browser.close()
+
+
+async def run_quick_scan_standalone(url: str, css_selector_list: list[str], webtype_str: str):
+    """
+    従来のchoice_contentと同様に、単一URLのクイックスキャンをスタンドアロンで実行します。
+    ブラウザの起動と終了を内包します。
+    """
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        try:
+            return await quick_extract_content(url, browser, css_selector_list, webtype_str)
+        finally:
+            if browser:
+                await browser.close()
 
 
 if __name__ == "__main__":
@@ -537,11 +546,12 @@ if __name__ == "__main__":
         "--mode",
         choices=["full", "quick"],
         default="full",
-        help="Scan mode to execute. 'full' runs test_main, 'quick' runs choice_content. Default: full"
+        help="Scan mode to execute. 'full' runs full scan, 'quick' runs quick scan. Default: full"
     )
     parser.add_argument(
-        "--selector",
-        help="CSS selector to use for 'quick' mode."
+        "--selectors",
+        nargs='+',
+        help="CSS selector(s) to use for 'quick' mode."
     )
     args = parser.parse_args()
 
@@ -553,18 +563,17 @@ if __name__ == "__main__":
 
     if args.mode == 'full':
         # --- Fullスキャンのテスト ---
-        logger.info("Executing Full Scan (test_main)...")
-        result_obj = asyncio.run(test_main(args.url))
+        logger.info("Executing Full Scan...")
+        result_obj = asyncio.run(run_full_scan_standalone(args.url))
 
     elif args.mode == 'quick':
         # --- Quickスキャンのテスト ---
-        if not args.selector:
-            logger.error("Error: --selector is required for 'quick' mode.")
+        if not args.selectors:
+            logger.error("Error: --selectors is required for 'quick' mode.")
             sys.exit(1)
         
-        logger.info(f"Executing Quick Scan (choice_content) with selector: {args.selector}")
-        # choice_contentはセレクタのリストを要求するため、リストとして渡す
-        result_obj = asyncio.run(choice_content(url=args.url, selectors=[args.selector], webtype_str="plane"))
+        logger.info(f"Executing Quick Scan with selectors: {args.selectors}")
+        result_obj = asyncio.run(run_quick_scan_standalone(url=args.url, css_selector_list=args.selectors, webtype_str="plane"))
 
     end_time = time.time()
     processing_time = end_time - start_time
