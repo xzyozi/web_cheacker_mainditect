@@ -441,7 +441,10 @@ def process_url(url: str,
         if css_selector_list and diff_days < 4:
             logger.info(f"QUICK SCAN URL: {url}, index: {index_num}")
             rescored_candidate = asyncio.run(
-                playwright_mainditect.choice_content(url, css_selector_list, record['web_page_type'])
+                playwright_mainditect.run_quick_scan_standalone(
+                    url=url, 
+                    css_selector_list=css_selector_list, 
+                    webtype_str=record['web_page_type'])
             )
         # ----------------------------------------------------------------
         # --- Fullスキャン (Quickスキャンしなかった、または失敗した場合) ---
@@ -453,7 +456,9 @@ def process_url(url: str,
                 logger.info(f"FULL SCAN URL: {url}, index: {index_num}")
             
             rescored_candidate = asyncio.run(
-                playwright_mainditect.test_main(url=record['url'], arg_webtype=record['web_page_type'])
+                playwright_mainditect.run_full_scan_standalone(
+                    url=record['url'], 
+                    arg_webtype=record['web_page_type'])
             )
             
             if rescored_candidate:
