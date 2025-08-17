@@ -12,6 +12,7 @@ import shutil
 import traceback
 import re
 import json
+import html
 
 # +----------------------------------------------------------------
 # + my module imports
@@ -29,9 +30,6 @@ SCRIPT_PATH = os.path.dirname(os.path.abspath(__file__))
 SAVE_CSV_DIR_PATH = os.path.join(SCRIPT_PATH, "./data/cheacker_url.csv")
 SAVE_JSON_DIR_PATH  = os.path.join(SCRIPT_PATH, "./data/json/")
 USER_DIR_PATH = os.path.join(SCRIPT_PATH, "./user")
-
-WORKER_THREADS_NUM = 2
-PROC_MPL_SEC = 30
 
 # カレントディレクトリをpythonパスに追加する
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -79,6 +77,7 @@ class User:
         util_str.util_handle_path(self.json_dir_path)
 
         self.load_mail_settings()
+        self.load_app_config()
 
     # mail settings
     def load_mail_settings(self):
@@ -87,6 +86,20 @@ class User:
 
         with open(config_pass)as f :
             self.yaml_file = yaml.safe_load(f)
+
+    def load_app_config(self):
+        """アプリケーション全体の設定を読み込む"""
+        config_path = os.path.join(self.directory, "config.yaml")
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                self.config = yaml.safe_load(f)
+                logger.info(f"Loaded app config from {config_path}")
+        except FileNotFoundError:
+            logger.warning(f"App config file not found at {config_path}. Using default behaviors.")
+            self.config = {} # 設定ファイルがなくてもエラーにならないように空の辞書をセット
+        except Exception as e:
+            logger.error(f"Error loading app config: {e}")
+            self.config = {}
 
     def send_resultmail(self, body, body_type, image_list=[]):
         if self.yaml_file is not None:
@@ -100,6 +113,64 @@ class User:
 
         else : logger.warning("not send mail")
 
+
+# +----------------------------------------------------------------
+# + NotificationManager class
+# +----------------------------------------------------------------
+class NotificationManager:
+    def __init__(self, user: User):
+        self.user = user
+        self.config = user.config
+
+    def send_update_notification(self, diff_urls: list):
+        if not diff_urls:
+            return
+
+        logger.info(f"Processing update notifications for {len(diff_urls)} URLs...")
+        
+        notification_type = self.config.get('notification', {}).get('type', 'none')
+        if notification_type != 'email':
+            logger.info("Email notification is disabled in config. Skipping.")
+            return
+
+        # スクリーンショットの生成
+        file_list = []
+        ss_config = self.config.get('screenshot', {})
+        if ss_config.get('enabled', False):
+            temp_dir = ss_config.get('temporary_dir', 'temp_image')
+            perm_dir = ss_config.get('permanent_dir', 'data/view')
+            email_width = ss_config.get('email_width', 500)
+            perm_width = ss_config.get('permanent_width', 1920)
+
+            logger.info(f"Generating screenshots for email to {temp_dir}...")
+            file_list = asyncio.run(playwright_mainditect.save_screenshot(diff_urls, save_dir=temp_dir, width=email_width))
+            logger.info(f"Generating screenshots for permanent storage to {perm_dir}...")
+            asyncio.run(playwright_mainditect.save_screenshot(diff_urls, save_dir=perm_dir, width=perm_width))
+
+        # メール本文の生成と送信
+        logger.info("Generating HTML body for email...")
+        body = text_struct.generate_html(diff_urls, file_list)
+        logger.info("Sending update notification email...")
+        self.user.send_resultmail(body, body_type="html", image_list=file_list)
+
+    def send_error_notification(self, error_list: list):
+        if not error_list:
+            return
+
+        logger.info(f"Processing error notifications for {len(error_list)} errors...")
+        
+        notification_config = self.config.get('notification', {})
+        if notification_config.get('type', 'none') != 'email' or not notification_config.get('notify_on_error', False):
+            logger.info("Error notification via email is disabled in config. Skipping.")
+            return
+
+        error_body_lines = ["<h1>Web Checker Error Report</h1>", "<ul>"]
+        for error_msg in error_list:
+            error_body_lines.append(f"<li>{html.escape(str(error_msg))}</li>")
+        error_body_lines.append("</ul>")
+        
+        logger.info("Sending error report email...")
+        self.user.send_resultmail("\n".join(error_body_lines), body_type="html")
 
 # +----------------------------------------------------------------
 # + json function
@@ -333,7 +404,8 @@ class DataManager:
 def process_url(url: str, 
                 index_num: int, 
                 data_manager: DataManager, 
-                error_list: list
+                error_list: list,
+                config: dict
                 ):
     try:
         # ▼▼▼ 処理開始時刻を記録 ▼▼▼
@@ -405,8 +477,9 @@ def process_url(url: str,
 
         # ▼▼▼ 処理の最後にタイムアウトをチェック ▼▼▼
         duration = (datetime.now() - start_time).total_seconds()
-        if duration > PROC_MPL_SEC:
-            timeout_msg = f"Processing time exceeded {PROC_MPL_SEC} sec -> {duration:.2f} sec"
+        timeout_sec = config.get('scan', {}).get('timeout_per_url', 60)
+        if duration > timeout_sec:
+            timeout_msg = f"Processing time exceeded {timeout_sec} sec -> {duration:.2f} sec"
             logger.warning(f"TIMEOUT for {url}: {timeout_msg}")
             error_list.append([url, timeout_msg])
             
@@ -419,42 +492,51 @@ def process_url(url: str,
 
 def worker( q : queue.Queue,
             data_manager: DataManager,
-            error_list : list
+            error_list : list,
+            config: dict
             ):
     while True:
         try:
             url,index_num = q.get(timeout=10)
         except queue.Empty:
-            logger.debug("Queue is empty, exiting worker")
+            logger.info("Queue is empty, worker is shutting down.")
             break
 
-        process_url(url, index_num, data_manager, error_list)
+        process_url(url, index_num, data_manager, error_list, config)
         q.task_done()
 
 
 def start_workers(q : queue.Queue, 
                   data_manager : DataManager, 
-                  error_list : list 
+                  error_list : list,
+                  config: dict
                   ):
     threads = []
-    for _ in range(WORKER_THREADS_NUM):
-        thread = threading.Thread(target=worker, args=(q, data_manager, error_list))
+    worker_threads_num = config.get('scan', {}).get('worker_threads', 2)
+    logger.info(f"Starting {worker_threads_num} worker threads...")
+    for _ in range(worker_threads_num):
+        thread = threading.Thread(target=worker, args=(q, data_manager, error_list, config))
         thread.daemon = True
         thread.start()
         threads.append(thread)
     for thread in threads:
         thread.join()
+    logger.info("All worker threads have finished.")
 
 
 def main():
-    if os.path.isdir("temp_image"):
-        shutil.rmtree("temp_image")
-    
     user = User("jav")
+    config = user.config
+    notification_manager = NotificationManager(user)
+
+    # 一時フォルダのクリーンアップ
+    temp_dir = config.get('screenshot', {}).get('temporary_dir', 'temp_image')
+    if os.path.isdir(temp_dir):
+        shutil.rmtree(temp_dir)
+
     util_str.util_handle_path(user.data_file_path)
 
     data_manager = DataManager(user.data_file_path)
-    
     error_list = []
     q_pool = queue.Queue()
 
@@ -462,26 +544,25 @@ def main():
         if row['url']:
             q_pool.put((row['url'], index))
 
-    start_workers(q_pool, data_manager, error_list) 
+    start_workers(q_pool, data_manager, error_list, config) 
     
     diff_urls = data_manager.chk_diff()
     data_manager.save_data()
 
-    if diff_urls:
-        file_list = asyncio.run(playwright_mainditect.save_screenshot(diff_urls, save_dir="temp_image"))
-        asyncio.run(playwright_mainditect.save_screenshot(diff_urls, save_dir="data/view", width=1920))
-        body = text_struct.generate_html(diff_urls, file_list)
-        user.send_resultmail(body, body_type="html", image_list=file_list)
+    # --- 通知処理 ---
+    notification_manager.send_update_notification(diff_urls)
 
     if error_list:
         logger.info("-------- ERROR list output -----------")
         for error_msg in error_list:
             logger.warning(error_msg)
-
         traceback.print_exc()
     
-    if os.path.isdir("temp_image"):
-        shutil.rmtree("temp_image")
+    notification_manager.send_error_notification(error_list)
+
+    # 一時フォルダの再クリーンアップ
+    if os.path.isdir(temp_dir):
+        shutil.rmtree(temp_dir)
 
     logger.info(f"{data_manager.df}")
 
