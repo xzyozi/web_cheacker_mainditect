@@ -63,6 +63,15 @@ def save_json(data : dict,
 
 # スクリーンショットを撮り、対象要素に色味をつける
 def highlight_main_content(driver, main_content, filename):
+    """
+    スクリーンショットを撮影し、指定されたメインコンテンツの領域をハイライトします。
+    (注: この関数はSelenium WebDriverを想定しています)
+
+    Args:
+        driver: Selenium WebDriverのインスタンス。
+        main_content (dict): 'rect'キーを含むメインコンテンツの辞書。
+        filename (str): 保存するスクリーンショットのファイル名。
+    """
     # 全画面スクリーンショット
     driver.save_screenshot(filename)
     
@@ -85,41 +94,53 @@ async def save_screenshot(url_list: list,
                           width=500, 
                           height : int | None =None
                           ) -> list:
+    """
+    URLリストを受け取り、各ページのスクリーンショットを指定されたサイズで保存します。
+
+    Args:
+        url_list (list): スクリーンショットを撮るURLのリスト。
+        save_dir (str, optional): 画像を保存するディレクトリ。デフォルトは "temp"。
+        width (int, optional): リサイズ後の画像の幅。デフォルトは 500。
+        height (int | None, optional): リサイズ後の画像の高さ。Noneの場合はアスペクト比を維持します。デフォルトは None。
+
+    Returns:
+        list: 正常に保存されたファイルのパスのリスト。
+    """
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
         page = await context.new_page()
 
         filelist = []
-        os.makedirs(save_dir, exist_ok=True)  # Ensure the folder is created
+        os.makedirs(save_dir, exist_ok=True)  # フォルダがなければ作成
 
         for url in url_list[:]:
-            # Validate the URL
+            # URLを検証
             parsed_url = urlparse(url)
             if not parsed_url.scheme or not parsed_url.netloc:
-                logger.warning(f"Invalid URL skipped: {url}")
+                logger.warning(f"無効なURLのためスキップ: {url}")
                 continue
 
-            domain = parsed_url.netloc.replace(".", "_")  # Generate a safe file name from the domain
+            domain = parsed_url.netloc.replace(".", "_")  # ドメインから安全なファイル名を生成
             filename = generate_filename(url)
             filepath = os.path.join(save_dir, filename)
 
             try:
-                # Navigate to the page and wait for it to load
+                # ページに移動し、読み込みを待つ
                 await page.goto(url, wait_until='load', timeout=50000)
                 await page.screenshot(path=filepath, full_page=True)
 
-                # Resize the image to the specified width and optional height
+                # 指定された幅と高さに画像をリサイズ
                 with Image.open(filepath) as img:
                     aspect_ratio = img.height / img.width
                     new_height = height if height else int(width * aspect_ratio)
                     resized_img = img.resize((width, new_height))
                     resized_img.save(filepath)
 
-                filelist.append(filepath)  # Add to the list only if successful
+                filelist.append(filepath)  # 成功した場合のみリストに追加
             except Exception as e:
-                logger.error(f"Failed to process {url}: {e}")
-                url_list.remove(url)  # Remove from the list on failure
+                logger.error(f"{url} の処理に失敗: {e}")
+                url_list.remove(url)  # 失敗した場合はリストから削除
 
         await browser.close()
 
@@ -148,6 +169,7 @@ def generate_filename(url: str) -> str:
 # debugger 
 # ----------------------------------------------------------------
 def print_content(content : Dict) -> None:
+    """デバッグ用にコンテンツの詳細情報をログに出力します。"""
     if content['score'] > 0:
         logger.info(f"Tag: {content['tag']}, Score: {content['score']}, id: {content['id']}")
         # logger.info(f"children: {content['children']}")
@@ -159,11 +181,12 @@ def print_content(content : Dict) -> None:
         #     logger.info(f"text attributes: {content['text']}")
         if content['links'] :
             logger.info(f"Links: {', '.join(content.get('links', []))}")
-        else : logger.info("no links found")
+        else : logger.info("リンクは見つかりませんでした")
         logger.info("----------------------------------------------------------")
 
 # error chackintg 
 def print_error_details(e : Exception) -> None :
+    """例外オブジェクトから詳細なエラー情報をログに出力します。"""
     logger.error(f"Error type: {type(e).__name__}")
     logger.error(f"Error message: {str(e)}")
     logger.error("Traceback:")
@@ -172,13 +195,13 @@ def print_error_details(e : Exception) -> None :
 
 def update_nodes_with_children(data: Union[Dict[str, Any], List[Dict[str, Any]], DOMTreeSt]) -> Union[List[Dict[str, Any]], List[DOMTreeSt]]:
     """
-    Recursively enrich nodes with their descendant nodes and return the enriched nodes in a list.
+    ノードを再帰的にたどり、すべての子孫ノードを含む平坦なリストを返します。
 
-    Parameters:
-    data (Union[Dict[str, Any], List[Dict[str, Any]]]): The root data structure containing nodes.
+    Args:
+        data (Union[Dict[str, Any], List[Dict[str, Any]], DOMTreeSt]): 処理対象のルートとなるノードデータ。
 
     Returns:
-    List[Dict[str, Any]]: A list of nodes, each enriched with their descendants.
+        Union[List[Dict[str, Any]], List[DOMTreeSt]]: すべてのノードを含むリスト。
     """
     updated_nodes = []
 
@@ -206,6 +229,19 @@ def update_nodes_with_children(data: Union[Dict[str, Any], List[Dict[str, Any]],
 def rescore_main_content_with_children(main_content : DOMTreeSt, 
                                        driver=None
                                        ) -> list[DOMTreeSt]:
+    """
+    メインコンテンツ候補とその子ノードを再評価し、スコアの高い順にソートしたリストを返します。
+
+    Args:
+        main_content (DOMTreeSt): 評価対象のメインコンテンツ候補ノード。
+        driver: (未使用)
+
+    Returns:
+        list[DOMTreeSt]: 再評価され、スコアでソートされたノードのリスト。
+    
+    Raises:
+        TypeError: main_contentがDOMTreeStでない場合に発生します。
+    """
     if not isinstance(main_content, DOMTreeSt):
         raise TypeError("main_content must be a DOMTreeSt")
 
@@ -236,18 +272,29 @@ def rescore_main_content_with_children(main_content : DOMTreeSt,
 async def setup_page(url : str, 
                      browser : Browser
                      ):
+    """
+    指定されたURLのページを準備し、Pageオブジェクトを返します。
+    ページの読み込みとネットワークの安定を待ちます。
+
+    Args:
+        url (str): 読み込むページのURL。
+        browser (Browser): 使用するPlaywrightのBrowserインスタンス。
+
+    Returns:
+        Page | None: 準備が完了したPageオブジェクト。失敗した場合はNone。
+    """
     try:
         context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
         page = await context.new_page()
         await page.goto(url, wait_until='domcontentloaded', timeout=10000)
         await page.wait_for_selector('body', state='attached', timeout=10000)
         try:
-            await page.wait_for_load_state('networkidle', timeout=30000)
+            await page.wait_for_load_state('networkidle', timeout=15000)
         except PlaywrightTimeoutError:
-            logger.warning("Network did not become idle within 30 seconds, continuing anyway.")
+            logger.warning("ネットワークが15秒以内にアイドル状態になりませんでした。処理を続行します。")
         return page
     except Exception as e:
-        logger.error(f"setting up page: {e}")
+        logger.error(f"ページのセットアップ中にエラーが発生: {e}")
         traceback.print_exc()
         return None
 
@@ -272,7 +319,15 @@ async def adjust_page_view(page: Page) -> dict:
 
 
 async def fetch_robots_txt(url):
-    """Fetch robots.txt content from the target website"""
+    """
+    対象ウェブサイトからrobots.txtの内容を取得します。
+
+    Args:
+        url (str): 対象サイトのURL。
+
+    Returns:
+        str | None: robots.txtのテキスト内容。取得失敗時はNone。
+    """
     parsed_url = urlparse(url)
     robots_url = urljoin(f"{parsed_url.scheme}://{parsed_url.netloc}", '/robots.txt')
     
@@ -285,14 +340,23 @@ async def fetch_robots_txt(url):
 def is_scraping_allowed(robots_txt : str, 
                         target_path : str,
                         ) -> bool:
-    """Check if scraping is allowed for the given path based on robots.txt"""
+    """
+    robots.txtの内容に基づき、指定されたパスのスクレイピングが許可されているか確認します。
+
+    Args:
+        robots_txt (str): robots.txtのテキスト内容。
+        target_path (str): 確認するURLのパス。
+
+    Returns:
+        bool: スクレイピングが許可されていればTrue。
+    """
     from urllib.robotparser import RobotFileParser
     from io import StringIO
 
     robot_parser = RobotFileParser()
     robot_parser.parse(StringIO(robots_txt).readlines())
     
-    # Check if we are allowed to scrape the target path
+    # 指定されたパスのスクレイピングが許可されているか確認
     return robot_parser.can_fetch("*", target_path)
 
 
@@ -303,19 +367,29 @@ async def extract_main_content(url: str,
                     count : int = 0,
                     arg_webtype : any = None
                     ) -> DOMTreeSt | None:       
+    """
+    URLからメインコンテンツを抽出し、DOMTreeStオブジェクトとして返します。(Fullスキャン)
+    robots.txtの確認、ページ遷移の検知、コンテンツのスコアリングと再評価を行います。
 
-    max_loop_count = 10
+    Args:
+        url (str): 解析対象のURL。
+        browser (Browser): 使用するPlaywrightのBrowserインスタンス。
+        count (int, optional): ページ遷移の再帰呼び出し回数カウンタ。デフォルトは 0。
+        arg_webtype (any, optional): 前の処理から引き継がれたWebページタイプ。デフォルトは None。
 
-    # Fetch robots.txt
+    Returns:
+        DOMTreeSt | None: 抽出されたメインコンテンツのDOMTreeStオブジェクト。失敗した場合はNone。
+    """
+    # robots.txtを取得
     robots_txt = await fetch_robots_txt(url)
     
     if robots_txt:
-        # Check if scraping is allowed
+        # スクレイピングが許可されているか確認
         parsed_url = urlparse(url)
         target_path = parsed_url.path or "/"
         
         if not is_scraping_allowed(robots_txt, target_path):
-            logger.info(f"Scraping is not allowed on this URL: {url}")
+            logger.info(f"robots.txtにより、このURLのスクレイピングは許可されていません: {url}")
             return None
 
 
@@ -324,7 +398,7 @@ async def extract_main_content(url: str,
         return None
 
     try:
-        max_loop_count = 10
+        max_loop_count = 5
         dimensions = await adjust_page_view(page)
 
         tree = await make_tree(page)
@@ -333,7 +407,7 @@ async def extract_main_content(url: str,
             return None
 
         # ----------------------------------------------------------------
-        # web type cheak
+        # Webページタイプのチェック
         # ----------------------------------------------------------------
         webtype = WebTypeCHK(url, tree)
         chktype = webtype.webtype_chk()
@@ -353,7 +427,7 @@ async def extract_main_content(url: str,
         main_contents = scorer.find_candidates()
 
         if not main_contents:
-            logger.info("No main content detected.")
+            logger.info("メインコンテンツ候補が見つかりませんでした。")
             return {}
 
         logger.info(f"Top candidates:{len(main_contents)}")
@@ -362,12 +436,8 @@ async def extract_main_content(url: str,
 
         if main_contents:
             main_contents = rescore_main_content_with_children(main_contents[0])
-
-            logger.info("main content:")
-            logger.info(main_contents[0])
-            logger.info(main_contents[1])
-
-            # logger.info("pre content diff:")
+            
+            # logger.info("再評価前のコンテンツ差分:")
             # for content in main_contents[:2]:
             #     print_content(content)
 
@@ -378,14 +448,14 @@ async def extract_main_content(url: str,
 
                 main_contents = rescore_main_content_with_children(tmp_main_content)
 
-                logger.info(f" tmp_main selector : {tmp_main_content.css_selector} main selector: {main_contents[0].css_selector}")
-                logger.info(f'tmp_candidates score : {tmp_main_content.score}  & main_contents {main_contents[0].score}')
+                logger.debug(f" tmp_main selector : {tmp_main_content.css_selector} main selector: {main_contents[0].css_selector}")
+                logger.debug(f'tmp_candidates score : {tmp_main_content.score}  & main_contents {main_contents[0].score}')
                 if tmp_main_content.score >= main_contents[0].score:
                     break
 
                 loop_count += 1
                 if loop_count == max_loop_count:
-                    logger.warning("loop count MAX")
+                    logger.warning("再評価ループが上限に達しました。")
                     break
             # while loop end
 
@@ -393,7 +463,7 @@ async def extract_main_content(url: str,
             for child in main_contents[:5]:
                 logger.debug(child)
 
-            logger.info("Selected main content:")
+            logger.info("最終的に選択されたメインコンテンツ:")
             # print_content(tmp_main_content)
             logger.info(tmp_main_content)
 
@@ -421,17 +491,17 @@ async def extract_main_content(url: str,
 
             json_data = tmp_main_content.to_dict()
 
-            # save json
+            # JSONを保存
             save_json(json_data,url)
 
             return tmp_main_content
         else:
-            logger.warning("No main content detected after initial search.")
+            logger.warning("最初の探索でメインコンテンツが見つかりませんでした。")
 
             return None
 
     except Exception as e:
-        logger.error("An error occurred during test_main:")
+        logger.error("extract_main_contentの実行中にエラーが発生しました:")
         print_error_details(e)
 
     finally:
@@ -444,6 +514,19 @@ async def quick_extract_content(url: str,
                                 css_selector_list: list[str],
                                 webtype_str: str,
                                 ):
+    """
+    CSSセレクタリストを使用して、ページから迅速にメインコンテンツを抽出します。(Quickスキャン)
+    セレクタが見つかった場合、その要素をDOMツリーとして返します。
+
+    Args:
+        url (str): 解析対象のURL。
+        browser (Browser): 使用するPlaywrightのBrowserインスタンス。
+        css_selector_list (list[str]): 試行するCSSセレクタのリスト。
+        webtype_str (str): Webページのタイプを示す文字列。
+
+    Returns:
+        DOMTreeSt | None: 抽出されたメインコンテンツのDOMTreeStオブジェクト。失敗した場合はNone。
+    """
     
     webtype = WebType.from_string(webtype_str)
     # logger.info(f"chk webtype : {webtype}({type(webtype)}) -- {WebType.page_changer} ({type(WebType.page_changer)})")
@@ -496,7 +579,7 @@ async def quick_extract_content(url: str,
         return found_tree
 
     except Exception as e:
-        logger.error(f"Error during content extraction: {str(e)}")
+        logger.error(f"コンテンツ抽出中にエラーが発生: {str(e)}")
         return None # Quickスキャン失敗
     finally:
         await context.close()
@@ -562,23 +645,23 @@ if __name__ == "__main__":
     result_obj = None
 
     if args.mode == 'full':
-        # --- Fullスキャンのテスト ---
-        logger.info("Executing Full Scan...")
+        # --- Fullスキャン実行 ---
+        logger.info("Fullスキャンを実行します...")
         result_obj = asyncio.run(run_full_scan_standalone(args.url))
 
     elif args.mode == 'quick':
-        # --- Quickスキャンのテスト ---
+        # --- Quickスキャン実行 ---
         if not args.selectors:
-            logger.error("Error: --selectors is required for 'quick' mode.")
+            logger.error("エラー: 'quick'モードには --selectors が必要です。")
             sys.exit(1)
         
-        logger.info(f"Executing Quick Scan with selectors: {args.selectors}")
+        logger.info(f"Quickスキャンを実行します (セレクタ: {args.selectors})")
         result_obj = asyncio.run(run_quick_scan_standalone(url=args.url, css_selector_list=args.selectors, webtype_str="plane"))
 
     end_time = time.time()
     processing_time = end_time - start_time
 
-    # --- 結果の表示 ---
+    # --- 実行結果の表示 ---
     if result_obj:
         logger.info("Test finished successfully.")
         logger.info(f"Primary CSS Selector: {result_obj.css_selector}")
@@ -586,6 +669,6 @@ if __name__ == "__main__":
         logger.info(f"Extracted Links Count: {len(result_obj.links)}")
         # print(result_obj) # オブジェクト全体を詳細に見たい場合はコメントを外す
     else:
-        logger.warning("Test finished, but no content was extracted.")
+        logger.warning("テストは終了しましたが、コンテンツは抽出されませんでした。")
 
-    logger.info(f"Total processing time: {processing_time:.2f} seconds.")
+    logger.info(f"総処理時間: {processing_time:.2f} 秒")
