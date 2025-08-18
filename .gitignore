@@ -22,3 +22,5 @@ users/jav/cheacker_url.csv
 log/
 debug/
 users/j*
+content_extractor/__pycache__/*
+utils/__pycache__/*
