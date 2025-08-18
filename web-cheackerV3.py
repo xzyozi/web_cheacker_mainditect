@@ -17,12 +17,13 @@ import html
 # +----------------------------------------------------------------
 # + my module imports
 # +----------------------------------------------------------------
-import playwright_mainditect_v3 as playwright_mainditect
+from content_extractor import run_full_scan_standalone, run_quick_scan_standalone
 from mail import send_email
 from text_struct import text_struct
 import util_str
-from dom_treeSt import DOMTreeSt, BoundingBox
+from content_extractor import DOMTreeSt, BoundingBox
 from setup_logger import setup_logger
+from utils import save_screenshot
 # +----------------------------------------------------------------
 # + Constant definition
 # +----------------------------------------------------------------
@@ -143,9 +144,9 @@ class NotificationManager:
             perm_width = ss_config.get('permanent_width', 1920)
 
             logger.info(f"Generating screenshots for email to {temp_dir}...")
-            file_list = asyncio.run(playwright_mainditect.save_screenshot(diff_urls, save_dir=temp_dir, width=email_width))
+            file_list = asyncio.run(save_screenshot(diff_urls, save_dir=temp_dir, width=email_width))
             logger.info(f"Generating screenshots for permanent storage to {perm_dir}...")
-            asyncio.run(playwright_mainditect.save_screenshot(diff_urls, save_dir=perm_dir, width=perm_width))
+            asyncio.run(save_screenshot(diff_urls, save_dir=perm_dir, width=perm_width))
 
         # メール本文の生成と送信
         logger.info("Generating HTML body for email...")
@@ -441,7 +442,10 @@ def process_url(url: str,
         if css_selector_list and diff_days < 4:
             logger.info(f"QUICK SCAN URL: {url}, index: {index_num}")
             rescored_candidate = asyncio.run(
-                playwright_mainditect.choice_content(url, css_selector_list, record['web_page_type'])
+                run_quick_scan_standalone(
+                    url=url, 
+                    css_selector_list=css_selector_list, 
+                    webtype_str=record['web_page_type'])
             )
         # ----------------------------------------------------------------
         # --- Fullスキャン (Quickスキャンしなかった、または失敗した場合) ---
@@ -453,7 +457,9 @@ def process_url(url: str,
                 logger.info(f"FULL SCAN URL: {url}, index: {index_num}")
             
             rescored_candidate = asyncio.run(
-                playwright_mainditect.test_main(url=record['url'], arg_webtype=record['web_page_type'])
+                run_full_scan_standalone(
+                    url=record['url'], 
+                    arg_webtype=record['web_page_type'])
             )
             
             if rescored_candidate:
