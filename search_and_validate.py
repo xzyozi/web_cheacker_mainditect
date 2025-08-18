@@ -62,7 +62,7 @@ async def main(search_keyword: str):
             logger.info(f"Analyzing URL: {url}")
             try:
                 # 3. リファクタリングした関数でメインコンテンツを抽出
-                content_node = await extract_main_content(url, browser)
+                content_node = await extract_main_content(url, browser, search_query=search_keyword)
 
                 if content_node and content_node.is_empty_result:
                     logger.warning(f"  -> EMPTY: Page identified as 'no results' for {url}")
