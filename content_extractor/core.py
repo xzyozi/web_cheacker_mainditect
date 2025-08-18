@@ -3,6 +3,7 @@ from typing import Dict, List, Any, Union , Optional
 import os
 from collections import Counter
 import asyncio
+import numpy as np
 from playwright.async_api import async_playwright, Page, Browser, TimeoutError as PlaywrightTimeoutError
 
 import traceback
@@ -317,30 +318,33 @@ def quantify_search_results(main_content_node: DOMTreeSt) -> DOMTreeSt:
     結果コンテナを特定し、有効なアイテムを数えてDOMTreeStオブジェクトを更新します。
     """
     # 1. 結果コンテナの絞り込み
-    result_container = _find_result_container(main_content_node)
+    container = _find_result_container(main_content_node)
 
-    if not result_container:
+    if not container:
         logger.info("結果コンテナが見つかりませんでした。")
         main_content_node.result_count = 0
+        main_content_node.result_items = []
         return main_content_node
 
-    logger.info(f"結果コンテナを特定しました: <{result_container.tag} id='{result_container.id}' class='{result_container.attributes.get('class')}'>")
+    logger.info(f"結果コンテナを特定しました: <{container.tag} id='{container.id}' class='{container.attributes.get('class')}'>")
 
     # 2. 個別アイテムの検証と計数
-    valid_item_count = 0
-    for item in result_container.children:
+    valid_items = []
+    for item in container.children:
         if _is_valid_result_item(item):
-            valid_item_count += 1
+            valid_items.append(item)
     
-    main_content_node.result_count = valid_item_count
-    logger.info(f"有効な検索結果アイテムを {valid_item_count} 件検出しました。")
+    main_content_node.result_items = valid_items
+    main_content_node.result_count = len(valid_items)
+    logger.info(f"有効な検索結果アイテムを {main_content_node.result_count} 件検出しました。")
     return main_content_node
 
 
 async def extract_main_content(url: str,
                     browser: Browser,
                     count : int = 0,
-                    arg_webtype : any = None
+                    arg_webtype : any = None,
+                    search_query: Optional[str] = None
                     ) -> DOMTreeSt | None:       
     """
     URLからメインコンテンツを抽出し、DOMTreeStオブジェクトとして返します。(Fullスキャン)
@@ -351,6 +355,7 @@ async def extract_main_content(url: str,
         browser (Browser): 使用するPlaywrightのBrowserインスタンス。
         count (int, optional): ページ遷移の再帰呼び出し回数カウンタ。デフォルトは 0。
         arg_webtype (any, optional): 前の処理から引き継がれたWebページタイプ。デフォルトは None。
+        search_query (Optional[str], optional): 関連性スコア計算のための検索クエリ。デフォルトは None。
 
     Returns:
         DOMTreeSt | None: 抽出されたメインコンテンツのDOMTreeStオブジェクト。失敗した場合はNone。
@@ -452,6 +457,23 @@ async def extract_main_content(url: str,
 
             # フェーズ2: 検索結果アイテムの定量化
             final_content = quantify_search_results(tmp_main_content)
+
+            # フェーズ3: 結果の関連性スコアリング (検索クエリが指定されている場合のみ実行)
+            if search_query and final_content.result_count > 0:
+                # sentence-transformersは重いので遅延インポート
+                from .relevance_scorer import RelevanceScorer
+                
+                logger.info(f"検索クエリ '{search_query}' との関連性スコアリングを開始します。")
+                scorer = RelevanceScorer()
+                scored_items = scorer.score_relevance(search_query, final_content.result_items)
+                final_content.result_items = scored_items
+
+                if scored_items:
+                    scores = [item.relevance_score for item in scored_items]
+                    final_content.avg_relevance = np.mean(scores)
+                    final_content.relevance_variance = np.var(scores)
+                    final_content.max_relevance = np.max(scores)
+                    logger.info(f"関連性スコアを計算しました: Avg={final_content.avg_relevance:.2f}, Var={final_content.relevance_variance:.2f}, Max={final_content.max_relevance:.2f}")
 
             # 定量化の結果、有効なアイテムが0件だった場合も「結果なし」と見なす
             if final_content.result_count == 0:

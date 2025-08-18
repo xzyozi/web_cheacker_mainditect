@@ -35,6 +35,11 @@ class DOMTreeSt:
     chk_url: str = ""
     web_type: str = ""
     result_count: int = 0
+    result_items: List["DOMTreeSt"] = field(default_factory=list)
+    relevance_score: float = 0.0
+    avg_relevance: float = 0.0
+    relevance_variance: float = 0.0
+    max_relevance: float = 0.0
     is_empty_result: bool = False # 新しく追加するフィールド
 
     def add_child(self, child: "DOMTreeSt") -> None:
@@ -62,6 +67,11 @@ class DOMTreeSt:
             "links": self.links,
             "chk_url":self.chk_url,
             "result_count": self.result_count,
+            "result_items": [item.to_dict() for item in self.result_items],
+            "relevance_score": self.relevance_score,
+            "avg_relevance": self.avg_relevance,
+            "relevance_variance": self.relevance_variance,
+            "max_relevance": self.max_relevance,
             "is_empty_result": self.is_empty_result,
         }
     
