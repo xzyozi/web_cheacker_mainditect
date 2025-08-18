@@ -64,7 +64,10 @@ async def main(search_keyword: str):
                 # 3. リファクタリングした関数でメインコンテンツを抽出
                 content_node = await extract_main_content(url, browser)
 
-                if content_node and content_node.text:
+                if content_node and content_node.is_empty_result:
+                    logger.warning(f"  -> EMPTY: Page identified as 'no results' for {url}")
+                    # ここで空の結果ページに対する処理を行う (例: valid_pagesには追加しない)
+                elif content_node and content_node.text:
                     # 4. 妥当性チェック (コンテンツ内にキーワードが含まれるか)
                     if search_keyword.lower() in content_node.text.lower():
                         logger.info(f"  -> VALID: Keyword found in main content.")

@@ -34,6 +34,7 @@ class DOMTreeSt:
     links: List[str] = field(default_factory=list)
     chk_url: str = ""
     web_type: str = ""
+    is_empty_result: bool = False # 新しく追加するフィールド
 
     def add_child(self, child: "DOMTreeSt") -> None:
         """子ノードを追加する"""
@@ -59,6 +60,7 @@ class DOMTreeSt:
             "css_selector_list": self.css_selector_list,
             "links": self.links,
             "chk_url":self.chk_url,
+            "is_empty_result": self.is_empty_result,
         }
     
     def print_children(self) -> str:
