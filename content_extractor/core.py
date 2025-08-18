@@ -1,6 +1,7 @@
 from typing import Dict, List, Any, Union , Optional
 
 import os
+from collections import Counter
 import asyncio
 from playwright.async_api import async_playwright, Page, Browser, TimeoutError as PlaywrightTimeoutError
 
@@ -263,6 +264,79 @@ async def is_no_results_page(page: Page, dom_tree: DOMTreeSt) -> bool:
     return True # どの「結果なし」条件も満たさず、かつ期待されるコンテナが見つからなかった場合
 
 
+def _is_valid_result_item(item_node: DOMTreeSt) -> bool:
+    """
+    個々のノードが有効な検索結果アイテムであるかを検証します。
+    - ハイパーリンクを1つ以上含んでいる
+    - 10単語以上のテキストコンテンツを持つ
+    """
+    has_link = len(item_node.links) > 0
+    has_enough_text = len(item_node.text.split()) >= 10
+    
+    # ここに「見出しタグを含むか」などの追加条件を実装可能
+    
+    return has_link and has_enough_text
+
+def _find_result_container(main_content_node: DOMTreeSt) -> Optional[DOMTreeSt]:
+    """
+    メインコンテンツノードの子孫から、最も繰り返し構造を持つ要素を結果コンテナとして特定します。
+    """
+    best_container = None
+    max_repetition_score = 0
+
+    # update_nodes_with_children を使って全子孫ノードをフラットリストで取得
+    candidate_nodes = update_nodes_with_children(main_content_node)
+
+    for node in candidate_nodes:
+        if not node.children or len(node.children) < 2:
+            continue
+
+        # 子要素のクラス名をカウント
+        class_counts = Counter(
+            child.attributes.get('class') for child in node.children if child.attributes.get('class')
+        )
+        
+        if not class_counts:
+            continue
+
+        # 最も頻繁に出現するクラス名とその回数を取得
+        most_common_class, count = class_counts.most_common(1)[0]
+        
+        # 繰り返しスコアを計算（繰り返し回数 * 繰り返し要素の割合）
+        repetition_score = count * (count / len(node.children))
+
+        if repetition_score > max_repetition_score:
+            max_repetition_score = repetition_score
+            best_container = node
+            
+    return best_container
+
+def quantify_search_results(main_content_node: DOMTreeSt) -> DOMTreeSt:
+    """
+    フェーズ2：検索結果アイテムの定量化を実行します。
+    結果コンテナを特定し、有効なアイテムを数えてDOMTreeStオブジェクトを更新します。
+    """
+    # 1. 結果コンテナの絞り込み
+    result_container = _find_result_container(main_content_node)
+
+    if not result_container:
+        logger.info("結果コンテナが見つかりませんでした。")
+        main_content_node.result_count = 0
+        return main_content_node
+
+    logger.info(f"結果コンテナを特定しました: <{result_container.tag} id='{result_container.id}' class='{result_container.attributes.get('class')}'>")
+
+    # 2. 個別アイテムの検証と計数
+    valid_item_count = 0
+    for item in result_container.children:
+        if _is_valid_result_item(item):
+            valid_item_count += 1
+    
+    main_content_node.result_count = valid_item_count
+    logger.info(f"有効な検索結果アイテムを {valid_item_count} 件検出しました。")
+    return main_content_node
+
+
 async def extract_main_content(url: str,
                     browser: Browser,
                     count : int = 0,
@@ -376,6 +450,15 @@ async def extract_main_content(url: str,
             # print_content(tmp_main_content)
             logger.info(tmp_main_content)
 
+            # フェーズ2: 検索結果アイテムの定量化
+            final_content = quantify_search_results(tmp_main_content)
+
+            # 定量化の結果、有効なアイテムが0件だった場合も「結果なし」と見なす
+            if final_content.result_count == 0:
+                logger.info(f"URL: {url} は有効な検索結果アイテムを含まないと判定されました。")
+                final_content.is_empty_result = True
+                return final_content
+
             # css_selector_list setting
             # 堅牢なセレクタ候補を上位3つまで取得（空のセレクタは除外）
             selector_candidates = [node.css_selector for node in main_contents[:3] if node.css_selector]
@@ -385,26 +468,26 @@ async def extract_main_content(url: str,
                 selector_candidates.insert(0, tmp_main_content.css_selector)
 
             # 最終的に選ばれたコンテンツに、セレクタ候補リストとプライマリセレクタを格納
-            tmp_main_content.css_selector_list = selector_candidates
+            final_content.css_selector_list = selector_candidates
             if selector_candidates:
-                tmp_main_content.css_selector = selector_candidates[0]
+                final_content.css_selector = selector_candidates[0]
             # css_selector_list setting end
 
-            tmp_main_content.url = url
+            final_content.url = url
 
             # web_type setting 再帰処理後であれば前回時点
             if arg_webtype :
-                tmp_main_content.web_type = arg_webtype
+                final_content.web_type = arg_webtype
             else : 
-                tmp_main_content.web_type = chktype
-            tmp_main_content.is_empty_result = False # 明示的にFalseを設定
+                final_content.web_type = chktype
+            final_content.is_empty_result = False # 明示的にFalseを設定
 
-            json_data = tmp_main_content.to_dict()
+            json_data = final_content.to_dict()
 
             # JSONを保存
             save_json(json_data,url)
 
-            return tmp_main_content
+            return final_content
         else:
             logger.warning("最初の探索でメインコンテンツが見つかりませんでした。")
 
