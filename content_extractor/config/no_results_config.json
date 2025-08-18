@@ -1,0 +1,23 @@
+{
+    "keywords": [
+        "検索結果がありません",
+        "該当する情報は見つかりませんでした",
+        "no results found",
+        "nothing found",
+        "we couldn't find anything",
+        "お探しのページは見つかりませんでした",
+        "ページが見つかりません",
+        "404 not found"
+    ],
+    "no_results_selectors": [
+        ".no-results",
+        "#no-results-message",
+        "[data-qa='no-results-found']",
+        ".empty-state"
+    ],
+    "expected_results_selectors": [
+        ".search-results",
+        ".results-list",
+        "#search-results-container"
+    ]
+}
