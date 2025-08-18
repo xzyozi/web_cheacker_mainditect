@@ -17,12 +17,12 @@ import hashlib
 from datetime import datetime
 
 # my module 
-import util_str
-from make_tree import make_tree
-from scorer import MainContentScorer
-from web_type_chk import WebTypeCHK, WebType
-from dom_treeSt import DOMTreeSt, BoundingBox
+from .scorer import MainContentScorer
+from .make_tree import make_tree
+from .web_type_chk import WebTypeCHK, WebType
+from .dom_treeSt import DOMTreeSt, BoundingBox
 from setup_logger import setup_logger
+from utils.file_handler import save_json
 
 asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
@@ -31,139 +31,6 @@ LOGGER_DATEFORMAT = "%Y%m%d_%H%M%S"
 nowtime = datetime.now()
 formatted_now = nowtime.strftime(LOGGER_DATEFORMAT)
 logger = setup_logger("web-cheacker",log_file=f"./log/web-chk_{formatted_now}.log")
-
-# + ----------------------------------------------------------------
-# + save json file
-# + ---------------------------------------------------------------
-import json
-def save_json(data : dict, 
-              url : str, 
-              directory="data"):
-    """
-    辞書型のデータをJSONファイルとして保存する
-    
-    Args:
-        data (dict): 保存するデータ
-        url (str): データに対応するURL
-        directory (str): JSONファイルを保存するディレクトリのパス
-    Retrun: 
-        None
-    """
-    domain = util_str.get_domain(url)
-    file_path = os.path.join(directory, f"{domain}.json")
-    util_str.util_handle_path(file_path)  # ファイルを作成または取得する
-    
-    with open(file_path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
-
-
-# + ----------------------------------------------------------------
-#  screen shot function
-# + ----------------------------------------------------------------
-
-# スクリーンショットを撮り、対象要素に色味をつける
-def highlight_main_content(driver, main_content, filename):
-    """
-    スクリーンショットを撮影し、指定されたメインコンテンツの領域をハイライトします。
-    (注: この関数はSelenium WebDriverを想定しています)
-
-    Args:
-        driver: Selenium WebDriverのインスタンス。
-        main_content (dict): 'rect'キーを含むメインコンテンツの辞書。
-        filename (str): 保存するスクリーンショットのファイル名。
-    """
-    # 全画面スクリーンショット
-    driver.save_screenshot(filename)
-    
-    # スクリーンショットに色味をつける
-    img = Image.open(filename)
-    draw = ImageDraw.Draw(img)
-    rect = main_content["rect"]
-    
-    # メインコンテンツの位置を調整
-    x, y = driver.execute_script("return [window.scrollX, window.scrollY];")
-    rect["x"] -= x
-    rect["y"] -= y
-    
-    draw.rectangle(((rect["x"], rect["y"]), (rect["x"] + rect["width"], rect["y"] + rect["height"])), outline=(126, 185, 255), width=5)
-    img.save(filename)
-
-
-async def save_screenshot(url_list: list, 
-                          save_dir="temp", 
-                          width=500, 
-                          height : int | None =None
-                          ) -> list:
-    """
-    URLリストを受け取り、各ページのスクリーンショットを指定されたサイズで保存します。
-
-    Args:
-        url_list (list): スクリーンショットを撮るURLのリスト。
-        save_dir (str, optional): 画像を保存するディレクトリ。デフォルトは "temp"。
-        width (int, optional): リサイズ後の画像の幅。デフォルトは 500。
-        height (int | None, optional): リサイズ後の画像の高さ。Noneの場合はアスペクト比を維持します。デフォルトは None。
-
-    Returns:
-        list: 正常に保存されたファイルのパスのリスト。
-    """
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
-        page = await context.new_page()
-
-        filelist = []
-        os.makedirs(save_dir, exist_ok=True)  # フォルダがなければ作成
-
-        for url in url_list[:]:
-            # URLを検証
-            parsed_url = urlparse(url)
-            if not parsed_url.scheme or not parsed_url.netloc:
-                logger.warning(f"無効なURLのためスキップ: {url}")
-                continue
-
-            domain = parsed_url.netloc.replace(".", "_")  # ドメインから安全なファイル名を生成
-            filename = generate_filename(url)
-            filepath = os.path.join(save_dir, filename)
-
-            try:
-                # ページに移動し、読み込みを待つ
-                await page.goto(url, wait_until='load', timeout=50000)
-                await page.screenshot(path=filepath, full_page=True)
-
-                # 指定された幅と高さに画像をリサイズ
-                with Image.open(filepath) as img:
-                    aspect_ratio = img.height / img.width
-                    new_height = height if height else int(width * aspect_ratio)
-                    resized_img = img.resize((width, new_height))
-                    resized_img.save(filepath)
-
-                filelist.append(filepath)  # 成功した場合のみリストに追加
-            except Exception as e:
-                logger.error(f"{url} の処理に失敗: {e}")
-                url_list.remove(url)  # 失敗した場合はリストから削除
-
-        await browser.close()
-
-    return filelist
-
-def generate_filename(url: str) -> str:
-    """URL から一意なファイル名を生成"""
-    parsed_url = urlparse(url)
-    
-    # ドメイン部分
-    domain = parsed_url.netloc.replace(".", "_")
-
-    # パス部分（最後のスラッシュ以降）
-    path = parsed_url.path.rstrip("/")  # 最後の `/` を削除
-    if "/" in path:
-        last_part = path.rsplit("/", 1)[-1]  # 最後の `/` 以降を取得
-    else:
-        last_part = "index"  # ルートの場合は `index`
-
-    #hash_part = hashlib.md5(url.encode()).hexdigest()[:8]  # MD5の先頭8文字
-    filename = f"{domain}_{last_part}.png"
-
-    return filename
 
 # ----------------------------------------------------------------
 # debugger 

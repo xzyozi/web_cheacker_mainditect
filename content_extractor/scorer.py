@@ -2,7 +2,7 @@ import math
 from typing import Dict, List, Any, Union , Optional
 from scipy import stats
 
-from dom_treeSt import DOMTreeSt, BoundingBox
+from .dom_treeSt import DOMTreeSt, BoundingBox
 
 class MainContentScorer:
     def __init__(self,

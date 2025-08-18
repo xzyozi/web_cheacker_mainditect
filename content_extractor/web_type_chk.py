@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 from enum import Enum, auto
 
-from dom_treeSt import DOMTreeSt
+from .dom_treeSt import DOMTreeSt
 
 
 class WebType(Enum):

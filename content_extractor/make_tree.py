@@ -3,7 +3,7 @@ from playwright.async_api import Page, ElementHandle, async_playwright
 import json
 from datetime import datetime
 # my module
-from dom_treeSt import DOMTreeSt, BoundingBox
+from .dom_treeSt import DOMTreeSt, BoundingBox
 from setup_logger import setup_logger
 
 
