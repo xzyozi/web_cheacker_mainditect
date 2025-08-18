@@ -40,6 +40,8 @@ class DOMTreeSt:
     avg_relevance: float = 0.0
     relevance_variance: float = 0.0
     max_relevance: float = 0.0
+    sqs_score: float = 0.0
+    quality_category: str = ""
     is_empty_result: bool = False # 新しく追加するフィールド
 
     def add_child(self, child: "DOMTreeSt") -> None:
@@ -72,6 +74,8 @@ class DOMTreeSt:
             "avg_relevance": self.avg_relevance,
             "relevance_variance": self.relevance_variance,
             "max_relevance": self.max_relevance,
+            "sqs_score": self.sqs_score,
+            "quality_category": self.quality_category,
             "is_empty_result": self.is_empty_result,
         }
     

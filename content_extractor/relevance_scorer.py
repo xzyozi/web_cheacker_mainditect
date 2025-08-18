@@ -1,3 +1,4 @@
+import math
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -5,6 +6,7 @@ from sentence_transformers import SentenceTransformer
 from typing import List
 
 from .dom_treeSt import DOMTreeSt
+from .config import QUALITY_SCORING_CONFIG
 from setup_logger import setup_logger
 
 logger = setup_logger("relevance_scorer")
@@ -65,3 +67,36 @@ class RelevanceScorer:
             item.relevance_score = relevance_score
         
         return items
+
+    def calculate_sqs(self, node: DOMTreeSt) -> DOMTreeSt:
+        """SQSを計算し、品質カテゴリを判定してノードを更新します。"""
+        if node.result_count == 0:
+            node.sqs_score = 0
+            node.quality_category = "Invalid/Empty"
+            return node
+
+        weights = QUALITY_SCORING_CONFIG['sqs_weights']
+        thresholds = QUALITY_SCORING_CONFIG['sqs_thresholds']
+
+        # SQS計算式の各項を計算
+        # log(ResultCount + 1) は結果数が少なくてもスコアが発散しないようにするため
+        count_score = math.log(node.result_count + 1) * weights['result_count']
+        avg_rel_score = node.avg_relevance * weights['avg_relevance']
+        variance_penalty = node.relevance_variance * weights['relevance_variance']
+        max_rel_score = node.max_relevance * weights['max_relevance']
+
+        # SQSを計算 (スケールを100点満点に調整)
+        sqs = (count_score + avg_rel_score - variance_penalty + max_rel_score) * 100
+        node.sqs_score = max(0, sqs) # 負の値にならないようにする
+
+        # 最終分類
+        if node.sqs_score >= thresholds['valid']:
+            node.quality_category = "Valid"
+        elif node.sqs_score >= thresholds['low_quality']:
+            node.quality_category = "Low Quality"
+        else:
+            node.quality_category = "Invalid/Empty"
+        
+        logger.info(f"SQS: {node.sqs_score:.2f}, Category: {node.quality_category}")
+        
+        return node
