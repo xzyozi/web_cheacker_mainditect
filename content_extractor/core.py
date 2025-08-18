@@ -1,14 +1,10 @@
 from typing import Dict, List, Any, Union , Optional
-from concurrent.futures import ThreadPoolExecutor
 
 import os
 import asyncio
 from playwright.async_api import async_playwright, Page, Browser, TimeoutError as PlaywrightTimeoutError
 
 import traceback
-
-import numpy as np
-from PIL import Image, ImageDraw
 from urllib.parse import urlparse, urljoin
 import aiohttp
 import sys
@@ -20,6 +16,7 @@ from datetime import datetime
 from .scorer import MainContentScorer
 from .make_tree import make_tree
 from .web_type_chk import WebTypeCHK, WebType
+from .config import NO_RESULTS_CONFIG
 from .dom_treeSt import DOMTreeSt, BoundingBox
 from setup_logger import setup_logger
 from utils.file_handler import save_json
@@ -31,6 +28,7 @@ LOGGER_DATEFORMAT = "%Y%m%d_%H%M%S"
 nowtime = datetime.now()
 formatted_now = nowtime.strftime(LOGGER_DATEFORMAT)
 logger = setup_logger("web-cheacker",log_file=f"./log/web-chk_{formatted_now}.log")
+
 
 # ----------------------------------------------------------------
 # debugger 
@@ -227,6 +225,42 @@ def is_scraping_allowed(robots_txt : str,
     return robot_parser.can_fetch("*", target_path)
 
 
+async def is_no_results_page(page: Page, dom_tree: DOMTreeSt) -> bool:
+    """
+    ページが「結果なし」ページであるかを高速で判定します。
+    テキストキーワード、特定のCSSセレクタの存在、または期待される結果コンテナの不在をチェックします。
+
+    Args:
+        page (Page): PlaywrightのPageオブジェクト。
+        dom_tree (DOMTreeSt): 抽出されたメインコンテンツのDOMTreeStオブジェクト。
+
+    Returns:
+        bool: ページが「結果なし」であると判定された場合はTrue、それ以外はFalse。
+    """
+    # 1. テキストベースの検出
+    main_content_text = dom_tree.text.lower()
+    for keyword in NO_RESULTS_CONFIG["keywords"]:
+        if keyword.lower() in main_content_text:
+            logger.info(f"「結果なし」キーワード '{keyword}' を検出しました。")
+            return True
+
+    # 2. HTML構造ベースの検出 (「結果なし」を示すセレクタの存在)
+    for selector in NO_RESULTS_CONFIG["no_results_selectors"]:
+        try:
+            if await page.locator(selector).count() > 0:
+                logger.info(f"「結果なし」セレクタ '{selector}' を検出しました。")
+                return True
+        except Exception as e:
+            logger.debug(f"セレクタ '{selector}' のチェック中にエラー: {e}")
+            continue # エラーが発生しても他のセレクタのチェックを続行
+
+    # 3. HTML構造ベースの検出 (期待される結果コンテナの不在)
+    # 期待されるセレクタが一つでも存在すれば、結果がある可能性が高い
+    for selector in NO_RESULTS_CONFIG["expected_results_selectors"]:
+        if await page.locator(selector).count() > 0:
+            return False # 期待される結果コンテナが見つかったので、「結果なし」ではない
+
+    return True # どの「結果なし」条件も満たさず、かつ期待されるコンテナが見つからなかった場合
 
 
 async def extract_main_content(url: str,
@@ -272,6 +306,14 @@ async def extract_main_content(url: str,
         if not tree:
             logger.info("Error: Empty tree structure returned")
             return None
+
+        # フェーズ1: 「結果なし」ページの高速トリアージ
+        if await is_no_results_page(page, tree):
+            logger.info(f"URL: {url} は「結果なし」ページと判定されました。")
+            # 空の結果であることを示すDOMTreeStを返す
+            tree.is_empty_result = True
+            tree.url = url # URLも設定しておく
+            return tree
 
         # ----------------------------------------------------------------
         # Webページタイプのチェック
@@ -355,6 +397,7 @@ async def extract_main_content(url: str,
                 tmp_main_content.web_type = arg_webtype
             else : 
                 tmp_main_content.web_type = chktype
+            tmp_main_content.is_empty_result = False # 明示的にFalseを設定
 
             json_data = tmp_main_content.to_dict()
 
