@@ -3,23 +3,22 @@ from typing import Dict, List, Any, Union , Optional
 import os
 from collections import Counter
 import asyncio
-import numpy as np
 from playwright.async_api import async_playwright, Page, Browser, TimeoutError as PlaywrightTimeoutError
 
 import traceback
-from urllib.parse import urlparse, urljoin
-import aiohttp
 import sys
-from urllib.parse import urlparse
 import hashlib
 from datetime import datetime
+import numpy as np
 
 # my module 
 from .scorer import MainContentScorer
 from .make_tree import make_tree
 from .web_type_chk import WebTypeCHK, WebType
-from .config import NO_RESULTS_CONFIG
 from .dom_treeSt import DOMTreeSt, BoundingBox
+from .dom_utils import update_nodes_with_children, rescore_main_content_with_children
+from .playwright_helpers import setup_page, adjust_page_view, fetch_robots_txt, is_scraping_allowed
+from .quality_evaluator import is_no_results_page, quantify_search_results
 from setup_logger import setup_logger
 from utils.file_handler import save_json
 
@@ -35,22 +34,6 @@ logger = setup_logger("web-cheacker",log_file=f"./log/web-chk_{formatted_now}.lo
 # ----------------------------------------------------------------
 # debugger 
 # ----------------------------------------------------------------
-def print_content(content : Dict) -> None:
-    """デバッグ用にコンテンツの詳細情報をログに出力します。"""
-    if content['score'] > 0:
-        logger.info(f"Tag: {content['tag']}, Score: {content['score']}, id: {content['id']}")
-        # logger.info(f"children: {content['children']}")
-        logger.info(f"attributes: {content['attributes']}")
-        logger.info(f"Rect: {content['rect']}")
-        logger.info(f"depth: {content['depth']}")
-        logger.info(f"css_selector: {content['css_selector']}")
-        # if len(content['children']) < 50 :
-        #     logger.info(f"text attributes: {content['text']}")
-        if content['links'] :
-            logger.info(f"Links: {', '.join(content.get('links', []))}")
-        else : logger.info("リンクは見つかりませんでした")
-        logger.info("----------------------------------------------------------")
-
 # error chackintg 
 def print_error_details(e : Exception) -> None :
     """例外オブジェクトから詳細なエラー情報をログに出力します。"""
@@ -58,286 +41,6 @@ def print_error_details(e : Exception) -> None :
     logger.error(f"Error message: {str(e)}")
     logger.error("Traceback:")
     traceback.print_exc(file=sys.stdout)
-
-
-def update_nodes_with_children(data: Union[Dict[str, Any], List[Dict[str, Any]], DOMTreeSt]) -> Union[List[Dict[str, Any]], List[DOMTreeSt]]:
-    """
-    ノードを再帰的にたどり、すべての子孫ノードを含む平坦なリストを返します。
-
-    Args:
-        data (Union[Dict[str, Any], List[Dict[str, Any]], DOMTreeSt]): 処理対象のルートとなるノードデータ。
-
-    Returns:
-        Union[List[Dict[str, Any]], List[DOMTreeSt]]: すべてのノードを含むリスト。
-    """
-    updated_nodes = []
-
-    if isinstance(data, list):
-        for node in data:
-            updated_nodes.extend(update_nodes_with_children(node))
-    elif isinstance(data, dict):
-        # all_children = get_all_children(data)
-        # data['all_children'] = all_children
-        updated_nodes.append(data)
-        if 'children' in data:
-            updated_nodes.extend(update_nodes_with_children(data['children']))
-
-    elif isinstance(data, DOMTreeSt):
-        updated_nodes.append(data)
-        if data.children :
-            updated_nodes.extend(update_nodes_with_children(data.children))
-
-    else :
-        logger.info(f"type error : {type(data)} -> {data}")
-
-    return updated_nodes
-
-
-def rescore_main_content_with_children(main_content : DOMTreeSt, 
-                                       driver=None
-                                       ) -> list[DOMTreeSt]:
-    """
-    メインコンテンツ候補とその子ノードを再評価し、スコアの高い順にソートしたリストを返します。
-
-    Args:
-        main_content (DOMTreeSt): 評価対象のメインコンテンツ候補ノード。
-        driver: (未使用)
-
-    Returns:
-        list[DOMTreeSt]: 再評価され、スコアでソートされたノードのリスト。
-    
-    Raises:
-        TypeError: main_contentがDOMTreeStでない場合に発生します。
-    """
-    if not isinstance(main_content, DOMTreeSt):
-        raise TypeError("main_content must be a DOMTreeSt")
-
-    # メインコンテンツのサイズを取得
-    main_rect = main_content.rect
-    main_width = main_rect.width
-    main_height = main_rect.height
-
-
-    # 親ノードとその子ノードのlistを作成
-    scorer_list = update_nodes_with_children(main_content)
-
-    # 子ノードに対してスコアリングを行う
-    scorer = MainContentScorer(scorer_list, main_width, main_height)
-
-    # 親ノードとその子ノードのスコアを比較する
-    scored_nodes = scorer.score_parent_and_children()
-
-    # スコアをチェック
-    # for node in scored_nodes:
-    #     logger.info(f"Tag: {node['tag']}, Score: {node['score']}")
-
-    # スコアの高い順に子ノードを並べ替える
-    scored_nodes.sort(key=lambda x: x.score, reverse=True)
-
-    return scored_nodes
-
-async def setup_page(url : str, 
-                     browser : Browser
-                     ):
-    """
-    指定されたURLのページを準備し、Pageオブジェクトを返します。
-    ページの読み込みとネットワークの安定を待ちます。
-
-    Args:
-        url (str): 読み込むページのURL。
-        browser (Browser): 使用するPlaywrightのBrowserインスタンス。
-
-    Returns:
-        Page | None: 準備が完了したPageオブジェクト。失敗した場合はNone。
-    """
-    try:
-        context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
-        page = await context.new_page()
-        await page.goto(url, wait_until='domcontentloaded', timeout=10000)
-        await page.wait_for_selector('body', state='attached', timeout=10000)
-        try:
-            await page.wait_for_load_state('networkidle', timeout=15000)
-        except PlaywrightTimeoutError:
-            logger.warning("ネットワークが15秒以内にアイドル状態になりませんでした。処理を続行します。")
-        return page
-    except Exception as e:
-        logger.error(f"ページのセットアップ中にエラーが発生: {e}")
-        traceback.print_exc()
-        return None
-
-async def adjust_page_view(page: Page) -> dict:
-    """ページのサイズを調整し、スクロールを実行"""
-    dimensions = await page.evaluate('''() => {
-        return {
-            width: Math.max(document.body.scrollWidth, document.body.offsetWidth, 
-                            document.documentElement.clientWidth, document.documentElement.scrollWidth, 
-                            document.documentElement.offsetWidth),
-            height: Math.max(document.body.scrollHeight, document.body.offsetHeight, 
-                             document.documentElement.clientHeight, document.documentElement.scrollHeight, 
-                             document.documentElement.offsetHeight)
-        }
-    }''')
-
-    await page.set_viewport_size({"width": dimensions['width'], "height": dimensions['height']})
-    await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
-    await page.wait_for_timeout(2000)
-
-    return dimensions
-
-
-async def fetch_robots_txt(url):
-    """
-    対象ウェブサイトからrobots.txtの内容を取得します。
-
-    Args:
-        url (str): 対象サイトのURL。
-
-    Returns:
-        str | None: robots.txtのテキスト内容。取得失敗時はNone。
-    """
-    parsed_url = urlparse(url)
-    robots_url = urljoin(f"{parsed_url.scheme}://{parsed_url.netloc}", '/robots.txt')
-    
-    async with aiohttp.ClientSession() as session:
-        async with session.get(robots_url) as response:
-            if response.status == 200:
-                return await response.text()
-            return None
-
-def is_scraping_allowed(robots_txt : str, 
-                        target_path : str,
-                        ) -> bool:
-    """
-    robots.txtの内容に基づき、指定されたパスのスクレイピングが許可されているか確認します。
-
-    Args:
-        robots_txt (str): robots.txtのテキスト内容。
-        target_path (str): 確認するURLのパス。
-
-    Returns:
-        bool: スクレイピングが許可されていればTrue。
-    """
-    from urllib.robotparser import RobotFileParser
-    from io import StringIO
-
-    robot_parser = RobotFileParser()
-    robot_parser.parse(StringIO(robots_txt).readlines())
-    
-    # 指定されたパスのスクレイピングが許可されているか確認
-    return robot_parser.can_fetch("*", target_path)
-
-
-async def is_no_results_page(page: Page, dom_tree: DOMTreeSt) -> bool:
-    """
-    ページが「結果なし」ページであるかを高速で判定します。
-    テキストキーワード、特定のCSSセレクタの存在、または期待される結果コンテナの不在をチェックします。
-
-    Args:
-        page (Page): PlaywrightのPageオブジェクト。
-        dom_tree (DOMTreeSt): 抽出されたメインコンテンツのDOMTreeStオブジェクト。
-
-    Returns:
-        bool: ページが「結果なし」であると判定された場合はTrue、それ以外はFalse。
-    """
-    # 1. テキストベースの検出
-    main_content_text = dom_tree.text.lower()
-    for keyword in NO_RESULTS_CONFIG["keywords"]:
-        if keyword.lower() in main_content_text:
-            logger.info(f"「結果なし」キーワード '{keyword}' を検出しました。")
-            return True
-
-    # 2. HTML構造ベースの検出 (「結果なし」を示すセレクタの存在)
-    for selector in NO_RESULTS_CONFIG["no_results_selectors"]:
-        try:
-            if await page.locator(selector).count() > 0:
-                logger.info(f"「結果なし」セレクタ '{selector}' を検出しました。")
-                return True
-        except Exception as e:
-            logger.debug(f"セレクタ '{selector}' のチェック中にエラー: {e}")
-            continue # エラーが発生しても他のセレクタのチェックを続行
-
-    # 3. HTML構造ベースの検出 (期待される結果コンテナの不在)
-    # 期待されるセレクタが一つでも存在すれば、結果がある可能性が高い
-    for selector in NO_RESULTS_CONFIG["expected_results_selectors"]:
-        if await page.locator(selector).count() > 0:
-            return False # 期待される結果コンテナが見つかったので、「結果なし」ではない
-
-    return True # どの「結果なし」条件も満たさず、かつ期待されるコンテナが見つからなかった場合
-
-
-def _is_valid_result_item(item_node: DOMTreeSt) -> bool:
-    """
-    個々のノードが有効な検索結果アイテムであるかを検証します。
-    - ハイパーリンクを1つ以上含んでいる
-    - 10単語以上のテキストコンテンツを持つ
-    """
-    has_link = len(item_node.links) > 0
-    has_enough_text = len(item_node.text.split()) >= 10
-    
-    # ここに「見出しタグを含むか」などの追加条件を実装可能
-    
-    return has_link and has_enough_text
-
-def _find_result_container(main_content_node: DOMTreeSt) -> Optional[DOMTreeSt]:
-    """
-    メインコンテンツノードの子孫から、最も繰り返し構造を持つ要素を結果コンテナとして特定します。
-    """
-    best_container = None
-    max_repetition_score = 0
-
-    # update_nodes_with_children を使って全子孫ノードをフラットリストで取得
-    candidate_nodes = update_nodes_with_children(main_content_node)
-
-    for node in candidate_nodes:
-        if not node.children or len(node.children) < 2:
-            continue
-
-        # 子要素のクラス名をカウント
-        class_counts = Counter(
-            child.attributes.get('class') for child in node.children if child.attributes.get('class')
-        )
-        
-        if not class_counts:
-            continue
-
-        # 最も頻繁に出現するクラス名とその回数を取得
-        most_common_class, count = class_counts.most_common(1)[0]
-        
-        # 繰り返しスコアを計算（繰り返し回数 * 繰り返し要素の割合）
-        repetition_score = count * (count / len(node.children))
-
-        if repetition_score > max_repetition_score:
-            max_repetition_score = repetition_score
-            best_container = node
-            
-    return best_container
-
-def quantify_search_results(main_content_node: DOMTreeSt) -> DOMTreeSt:
-    """
-    フェーズ2：検索結果アイテムの定量化を実行します。
-    結果コンテナを特定し、有効なアイテムを数えてDOMTreeStオブジェクトを更新します。
-    """
-    # 1. 結果コンテナの絞り込み
-    container = _find_result_container(main_content_node)
-
-    if not container:
-        logger.info("結果コンテナが見つかりませんでした。")
-        main_content_node.result_count = 0
-        main_content_node.result_items = []
-        return main_content_node
-
-    logger.info(f"結果コンテナを特定しました: <{container.tag} id='{container.id}' class='{container.attributes.get('class')}'>")
-
-    # 2. 個別アイテムの検証と計数
-    valid_items = []
-    for item in container.children:
-        if _is_valid_result_item(item):
-            valid_items.append(item)
-    
-    main_content_node.result_items = valid_items
-    main_content_node.result_count = len(valid_items)
-    logger.info(f"有効な検索結果アイテムを {main_content_node.result_count} 件検出しました。")
-    return main_content_node
 
 
 async def extract_main_content(url: str,
@@ -363,6 +66,7 @@ async def extract_main_content(url: str,
     
     if robots_txt:
         # スクレイピングが許可されているか確認
+        from urllib.parse import urlparse
         parsed_url = urlparse(url)
         target_path = parsed_url.path or "/"
         
