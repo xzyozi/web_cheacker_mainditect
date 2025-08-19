@@ -10,6 +10,7 @@ import traceback
 import re
 import json
 import html
+import requests
 
 # +----------------------------------------------------------------
 # + my module imports
