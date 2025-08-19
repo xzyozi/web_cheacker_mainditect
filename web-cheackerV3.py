@@ -23,7 +23,7 @@ from text_struct import text_struct
 import util_str
 from content_extractor import DOMTreeSt, BoundingBox
 from setup_logger import setup_logger
-from utils import save_screenshot
+from content_extractor import save_screenshot
 # +----------------------------------------------------------------
 # + Constant definition
 # +----------------------------------------------------------------
@@ -463,10 +463,16 @@ def process_url(url: str,
             )
             
             if rescored_candidate:
+                if rescored_candidate.is_empty_result:
+                    logger.info(f"Full scan identified {url} as an empty result page.")
+                    error_list.append([url, "Empty result page detected"])
+                    data_manager.clear_scan_data(index_num) # 次回もFullスキャンさせる
+                    return
                 data_manager.update_full_scan_timestamp(index_num)
             else:
                 logger.info("Full scan returned None")
                 error_list.append([url, "Full scan returned None"])
+                data_manager.clear_scan_data(index_num) # 次回もFullスキャンさせる
                 return
 
         # ----------------------------------------------------------------
@@ -474,6 +480,11 @@ def process_url(url: str,
         # ----------------------------------------------------------------
         if rescored_candidate:
             new_hash = hashlib.sha256(str(rescored_candidate.links).encode()).hexdigest()
+            if rescored_candidate.is_empty_result:
+                logger.info(f"Quick scan identified {url} as an empty result page.")
+                error_list.append([url, "Empty result page detected"])
+                data_manager.clear_scan_data(index_num) # 次回もFullスキャンさせる
+                return
             if record['result_vl'] != new_hash:
                 data_manager.update_scan_result(index_num, rescored_candidate)
         else:
