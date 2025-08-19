@@ -9,9 +9,9 @@ def _load_json_config(filename: str, default_config: dict) -> dict:
     指定されたJSON設定ファイルを読み込みます。
     失敗した場合はハードコードされたデフォルト値を返します。
     """
-    # このファイルの場所から2つ上のディレクトリ（main）に移動し、そこからの相対パスでconfigを指定
-    PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    CONFIG_FILE_PATH = os.path.join(PROJECT_ROOT, 'config', filename)
+    # このファイルの親ディレクトリ（content_extractor）内にある'config'ディレクトリを参照
+    MODULE_ROOT = os.path.dirname(os.path.abspath(__file__))
+    CONFIG_FILE_PATH = os.path.join(MODULE_ROOT, 'config', filename)
     try:
         with open(CONFIG_FILE_PATH, 'r', encoding='utf-8') as f:
             config = json.load(f)

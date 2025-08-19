@@ -23,7 +23,7 @@ from text_struct import text_struct
 import util_str
 from content_extractor import DOMTreeSt, BoundingBox
 from setup_logger import setup_logger
-from utils import save_screenshot
+from content_extractor import save_screenshot
 # +----------------------------------------------------------------
 # + Constant definition
 # +----------------------------------------------------------------
