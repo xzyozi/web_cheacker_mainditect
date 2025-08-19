@@ -3,10 +3,7 @@ import pandas as pd
 import json
 import os , sys
 import hashlib
-import queue
 import threading
-import numpy as np
-import requests
 import asyncio
 import shutil
 import traceback
@@ -123,7 +120,7 @@ class NotificationManager:
         self.user = user
         self.config = user.config
 
-    def send_update_notification(self, diff_urls: list):
+    async def send_update_notification(self, diff_urls: list):
         if not diff_urls:
             return
 
@@ -144,9 +141,9 @@ class NotificationManager:
             perm_width = ss_config.get('permanent_width', 1920)
 
             logger.info(f"Generating screenshots for email to {temp_dir}...")
-            file_list = asyncio.run(save_screenshot(diff_urls, save_dir=temp_dir, width=email_width))
+            file_list = await save_screenshot(diff_urls, save_dir=temp_dir, width=email_width)
             logger.info(f"Generating screenshots for permanent storage to {perm_dir}...")
-            asyncio.run(save_screenshot(diff_urls, save_dir=perm_dir, width=perm_width))
+            await save_screenshot(diff_urls, save_dir=perm_dir, width=perm_width)
 
         # メール本文の生成と送信
         logger.info("Generating HTML body for email...")
@@ -401,147 +398,97 @@ class DataManager:
 # csv function end ---------------------------------------------------------------- 
 
 
-# Worker function to process a single URL
-def process_url(url: str, 
-                index_num: int, 
-                data_manager: DataManager, 
-                error_list: list,
-                config: dict
-                ):
-    try:
-        # ▼▼▼ 処理開始時刻を記録 ▼▼▼
-        start_time = datetime.now()
-        
-        record = data_manager.get_record_as_dict(index_num)
-
-        # Last-Modifiedによる高速チェック
-        # last_modified = get_last_modified(url)
-        # if last_modified:
-        #     if record.get('result_vl') != last_modified:
-        #         data_manager.update_with_last_modified(index_num, last_modified)
-        #         return 
-        #     else:
-        #         logger.debug(f"Skipping DOM check for {url} due to unchanged Last-Modified header.")
-        #         return
-        
-        # --- Last-Modifiedが利用できない場合、通常のDOMスキャン処理に進む ---
-        css_selector_list = record.get('css_selector_list', [])
-        full_scan_datetime_str = record.get('full_scan_datetime', '')
-
-        diff_days = 99
-        if full_scan_datetime_str:
-            try:
-                diff_days = (datetime.now() - safe_parse_datetime(full_scan_datetime_str)).days
-            except TypeError:
-                logger.warning(f"Could not parse datetime: {full_scan_datetime_str}")
-
-        rescored_candidate = None
-        # ----------------------------------------------------------------
-        # --- Quickスキャン試行 ---
-        # ----------------------------------------------------------------
-        if css_selector_list and diff_days < 4:
-            logger.info(f"QUICK SCAN URL: {url}, index: {index_num}")
-            rescored_candidate = asyncio.run(
-                run_quick_scan_standalone(
-                    url=url, 
-                    css_selector_list=css_selector_list, 
-                    webtype_str=record['web_page_type'])
-            )
-        # ----------------------------------------------------------------
-        # --- Fullスキャン (Quickスキャンしなかった、または失敗した場合) ---
-        # ----------------------------------------------------------------
-        if not rescored_candidate:
-            if css_selector_list:
-                logger.info(f"Quick scan failed. Falling back to FULL SCAN for URL: {url}")
-            else:
-                logger.info(f"FULL SCAN URL: {url}, index: {index_num}")
-            
-            rescored_candidate = asyncio.run(
-                run_full_scan_standalone(
-                    url=record['url'], 
-                    arg_webtype=record['web_page_type'])
-            )
-            
-            if rescored_candidate:
-                if rescored_candidate.is_empty_result:
-                    logger.info(f"Full scan identified {url} as an empty result page.")
-                    error_list.append([url, "Empty result page detected"])
-                    data_manager.clear_scan_data(index_num) # 次回もFullスキャンさせる
-                    return
-                data_manager.update_full_scan_timestamp(index_num)
-            else:
-                logger.info("Full scan returned None")
-                error_list.append([url, "Full scan returned None"])
-                data_manager.clear_scan_data(index_num) # 次回もFullスキャンさせる
-                return
-
-        # ----------------------------------------------------------------
-        # --- 結果処理 (共通) ---
-        # ----------------------------------------------------------------
-        if rescored_candidate:
-            new_hash = hashlib.sha256(str(rescored_candidate.links).encode()).hexdigest()
-            if rescored_candidate.is_empty_result:
-                logger.info(f"Quick scan identified {url} as an empty result page.")
-                error_list.append([url, "Empty result page detected"])
-                data_manager.clear_scan_data(index_num) # 次回もFullスキャンさせる
-                return
-            if record['result_vl'] != new_hash:
-                data_manager.update_scan_result(index_num, rescored_candidate)
-        else:
-            logger.error(f"Scan process resulted in None for URL: {url}")
-            error_list.append([url, "Scan process resulted in None"])
-            data_manager.clear_scan_data(index_num)
-
-        # ▼▼▼ 処理の最後にタイムアウトをチェック ▼▼▼
-        duration = (datetime.now() - start_time).total_seconds()
-        timeout_sec = config.get('scan', {}).get('timeout_per_url', 60)
-        if duration > timeout_sec:
-            timeout_msg = f"Processing time exceeded {timeout_sec} sec -> {duration:.2f} sec"
-            logger.warning(f"TIMEOUT for {url}: {timeout_msg}")
-            error_list.append([url, timeout_msg])
-            
-    except Exception as e:
-        tb = traceback.extract_tb(e.__traceback__)
-        last_entry = tb[-1]
-        logger.error(f"Error processing URL {url}: {e} at line {last_entry.lineno}")
-        error_list.append([url, e, last_entry.line, last_entry.lineno])
-
-
-def worker( q : queue.Queue,
-            data_manager: DataManager,
-            error_list : list,
-            config: dict
-            ):
-    while True:
+async def process_url_async(url: str,
+                            index_num: int,
+                            data_manager: DataManager,
+                            error_list: list,
+                            config: dict,
+                            semaphore: asyncio.Semaphore):
+    """
+    非同期で単一のURLを処理するワーカー関数。
+    セマフォを使用して同時実行数を制御します。
+    """
+    async with semaphore:
         try:
-            url,index_num = q.get(timeout=10)
-        except queue.Empty:
-            logger.info("Queue is empty, worker is shutting down.")
-            break
+            start_time = datetime.now()
+            record = data_manager.get_record_as_dict(index_num)
 
-        process_url(url, index_num, data_manager, error_list, config)
-        q.task_done()
+            css_selector_list = record.get('css_selector_list', [])
+            full_scan_datetime_str = record.get('full_scan_datetime', '')
+
+            diff_days = 99
+            if full_scan_datetime_str:
+                try:
+                    diff_days = (datetime.now() - safe_parse_datetime(full_scan_datetime_str)).days
+                except TypeError:
+                    logger.warning(f"Could not parse datetime: {full_scan_datetime_str}")
+
+            rescored_candidate = None
+            # Quickスキャン試行
+            if css_selector_list and diff_days < 4:
+                logger.info(f"QUICK SCAN URL: {url}, index: {index_num}")
+                rescored_candidate = await run_quick_scan_standalone(
+                    url=url,
+                    css_selector_list=css_selector_list,
+                    webtype_str=record['web_page_type']
+                )
+
+            # Fullスキャン (Quickスキャンしなかった、または失敗した場合)
+            if not rescored_candidate:
+                if css_selector_list:
+                    logger.info(f"Quick scan failed. Falling back to FULL SCAN for URL: {url}")
+                else:
+                    logger.info(f"FULL SCAN URL: {url}, index: {index_num}")
+
+                rescored_candidate = await run_full_scan_standalone(
+                    url=record['url'],
+                    arg_webtype=record['web_page_type']
+                )
+
+                if rescored_candidate:
+                    if rescored_candidate.is_empty_result:
+                        logger.info(f"Full scan identified {url} as an empty result page.")
+                        error_list.append([url, "Empty result page detected"])
+                        data_manager.clear_scan_data(index_num)
+                        return
+                    data_manager.update_full_scan_timestamp(index_num)
+                else:
+                    logger.info("Full scan returned None")
+                    error_list.append([url, "Full scan returned None"])
+                    data_manager.clear_scan_data(index_num)
+                    return
+
+            # 結果処理 (共通)
+            if rescored_candidate:
+                new_hash = hashlib.sha256(str(rescored_candidate.links).encode()).hexdigest()
+                if rescored_candidate.is_empty_result:
+                    logger.info(f"Quick scan identified {url} as an empty result page.")
+                    error_list.append([url, "Empty result page detected"])
+                    data_manager.clear_scan_data(index_num)
+                    return
+                if record['result_vl'] != new_hash:
+                    data_manager.update_scan_result(index_num, rescored_candidate)
+            else:
+                logger.error(f"Scan process resulted in None for URL: {url}")
+                error_list.append([url, "Scan process resulted in None"])
+                data_manager.clear_scan_data(index_num)
+
+            # タイムアウトチェック
+            duration = (datetime.now() - start_time).total_seconds()
+            timeout_sec = config.get('scan', {}).get('timeout_per_url', 60)
+            if duration > timeout_sec:
+                timeout_msg = f"Processing time exceeded {timeout_sec} sec -> {duration:.2f} sec"
+                logger.warning(f"TIMEOUT for {url}: {timeout_msg}")
+                error_list.append([url, timeout_msg])
+
+        except Exception as e:
+            tb = traceback.extract_tb(e.__traceback__)
+            last_entry = tb[-1]
+            logger.error(f"Error processing URL {url}: {e} at line {last_entry.lineno}")
+            error_list.append([url, e, last_entry.line, last_entry.lineno])
 
 
-def start_workers(q : queue.Queue, 
-                  data_manager : DataManager, 
-                  error_list : list,
-                  config: dict
-                  ):
-    threads = []
-    worker_threads_num = config.get('scan', {}).get('worker_threads', 2)
-    logger.info(f"Starting {worker_threads_num} worker threads...")
-    for _ in range(worker_threads_num):
-        thread = threading.Thread(target=worker, args=(q, data_manager, error_list, config))
-        thread.daemon = True
-        thread.start()
-        threads.append(thread)
-    for thread in threads:
-        thread.join()
-    logger.info("All worker threads have finished.")
-
-
-def main():
+async def main():
     user = User("jav")
     config = user.config
     notification_manager = NotificationManager(user)
@@ -555,19 +502,30 @@ def main():
 
     data_manager = DataManager(user.data_file_path)
     error_list = []
-    q_pool = queue.Queue()
 
+    # 同時実行数を設定から取得
+    worker_count = config.get('scan', {}).get('worker_threads', 2)
+    semaphore = asyncio.Semaphore(worker_count)
+    logger.info(f"Starting {worker_count} async workers...")
+
+    tasks = []
     for index, row in data_manager.df.iterrows():
         if row['url']:
-            q_pool.put((row['url'], index))
+            task = asyncio.create_task(
+                process_url_async(row['url'], index, data_manager, error_list, config, semaphore)
+            )
+            tasks.append(task)
 
-    start_workers(q_pool, data_manager, error_list, config) 
-    
+    # 全てのタスクが完了するのを待つ
+    await asyncio.gather(*tasks)
+    logger.info("All async workers have finished.")
+
+    # --- 差分チェックと保存 ---
     diff_urls = data_manager.chk_diff()
     data_manager.save_data()
 
     # --- 通知処理 ---
-    notification_manager.send_update_notification(diff_urls)
+    await notification_manager.send_update_notification(diff_urls)
 
     if error_list:
         logger.info("-------- ERROR list output -----------")
@@ -584,6 +542,6 @@ def main():
     logger.info(f"{data_manager.df}")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
 
  
