@@ -1,12 +1,10 @@
-/mail/__pycache__
+**/__pycache__/
 /mail/mail.yaml
 /mail/test_send_mail.py:
 /web-update-cheacker.srctrlbm
 /web-update-cheacker.srctrldb
 /web-update-cheacker.srctrlprj
-/__pycache__
 data/json/
-text_struct/__pycache__/
 web_update_cheacker2.srctrlbm
 web_update_cheacker2.srctrldb
 web_update_cheacker2.srctrlprj
@@ -16,11 +14,9 @@ add_process/add.bat
 add_process/config.ini
 add_process/add_process.py
 get_tree.py
-test/__pycache__/
 .vscode/
 users/jav/cheacker_url.csv
 log/
 debug/
 users/j*
-content_extractor/__pycache__/*
-utils/__pycache__/*
+text_struct/__pycache__/text_struct.cpython-310.pyc
