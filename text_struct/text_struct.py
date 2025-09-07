@@ -51,12 +51,17 @@ def generate_notification(urls : list):
 def generate_html(url_list, image_list):
     """
     指定されたURLと画像リストを元にHTMLを生成する。
+    画像リストの要素がNoneの場合は、画像なしでHTMLを生成する。
     """
-    if len(url_list) != len(image_list):
-        # print(f"url_list {len(url_list)} image_list {len(image_list)}") 
-        for url, image in zip_longest(url_list, image_list, fillvalue="None"):
-            print(f"url {url} image {image}")
-        raise ValueError("URLリストと画像リストの長さが一致していません。")
+    items = []
+    # image_list内のNoneでないパスに対応するcidを生成
+    cids = {path: f"image_{i}" for i, path in enumerate(image_list) if path}
+
+    for url, image_path in zip_longest(url_list, image_list):
+        item = {'url': url, 'cid': None}
+        if image_path and image_path in cids:
+            item['cid'] = cids[image_path]
+        items.append(item)
 
     # 画像をBase64エンコード
     # images_base64 = []
@@ -71,18 +76,21 @@ def generate_html(url_list, image_list):
     #         images_base64.append(f"data:{mime_type};base64,{encoded_image}")
 
     # Jinja2テンプレート
-    # Jinja2テンプレート
     template = jinja2.Template("""
     <html>
         <body>
-            <h2>更新ページ一覧 </h2>
+            <h2>更新ページ一覧</h2>
             
             <ul>
-            {% for url, cid in items %}
+            {% for item in items %}
                 <li>
-                    <p>"{{ url }}"</p>
-                    <a href="{{ url }}" target="_blank">リンクを開く</a><br>
-                    <img src="cid:{{ cid }}" style="max-width:500px;">
+                    <p>"{{ item.url }}"</p>
+                    <a href="{{ item.url }}" target="_blank">リンクを開く</a><br>
+                    {% if item.cid %}
+                    <img src="cid:{{ item.cid }}" style="max-width:500px;">
+                    {% else %}
+                    <p>(スクリーンショット取得失敗)</p>
+                    {% endif %}
                 </li>
             {% endfor %}
             </ul>
@@ -90,17 +98,12 @@ def generate_html(url_list, image_list):
     </html>
     """)
 
-    # Content-IDリストを生成（image_0, image_1, ...）
-    cid_list = [f"image_{i}" for i in range(len(image_list))]
+    html_content = template.render(items=items)
     
-    # URLとContent-IDのペアをテンプレートに渡す
-    html_content = template.render(items=zip(url_list, cid_list))
-    return html_content
-
-
     # URLとBase64画像のペアをテンプレートに渡す
     #html_content = template.render(items=zip(url_list, images_base64))
-    html_content = template.render(items=zip(url_list, [f"image_{i}" for i in range(len(image_list))]))
+    # html_content = template.render(items=zip(url_list, [f"image_{i}" for i in range(len(image_list))]))
+    
     return html_content
 
 
