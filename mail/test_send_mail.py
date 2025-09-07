@@ -36,6 +36,8 @@ def send_email(config_file,
 
     # 画像を添付
     for i, image_path in enumerate(image_list):
+        if not image_path:
+            continue
         file_ext = os.path.splitext(image_path)[1].lower()
         ext = file_ext[1:]
         with open(image_path, "rb") as img_file:
