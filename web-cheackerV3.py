@@ -416,6 +416,7 @@ async def process_url_async(url: str,
 
             css_selector_list = record.get('css_selector_list', [])
             full_scan_datetime_str = record.get('full_scan_datetime', '')
+            web_page_type = record.get('web_page_type', '')
 
             diff_days = 99
             if full_scan_datetime_str:
@@ -426,24 +427,25 @@ async def process_url_async(url: str,
 
             rescored_candidate = None
             # Quickスキャン試行
-            if css_selector_list and diff_days < 4:
+            if css_selector_list and diff_days < 4 and web_page_type:
                 logger.info(f"QUICK SCAN URL: {url}, index: {index_num}")
                 rescored_candidate = await run_quick_scan_standalone(
                     url=url,
                     css_selector_list=css_selector_list,
-                    webtype_str=record['web_page_type']
+                    webtype_str=web_page_type
                 )
 
             # Fullスキャン (Quickスキャンしなかった、または失敗した場合)
             if not rescored_candidate:
                 if css_selector_list:
-                    logger.info(f"Quick scan failed. Falling back to FULL SCAN for URL: {url}")
-                else:
-                    logger.info(f"FULL SCAN URL: {url}, index: {index_num}")
+                    # logger.info(f"Quick scan failed. Falling back to FULL SCAN for URL: {url}")
+                    pass
+                #else:
+                logger.info(f"FULL SCAN URL: {url}, index: {index_num}")
 
                 rescored_candidate = await run_full_scan_standalone(
                     url=record['url'],
-                    arg_webtype=record['web_page_type']
+                    arg_webtype=web_page_type
                 )
 
                 if rescored_candidate:
@@ -467,7 +469,7 @@ async def process_url_async(url: str,
                     error_list.append([url, "Empty result page detected"])
                     data_manager.clear_scan_data(index_num)
                     return
-                if record['result_vl'] != new_hash:
+                if not web_page_type or record['result_vl'] != new_hash:
                     data_manager.update_scan_result(index_num, rescored_candidate)
             else:
                 logger.error(f"Scan process resulted in None for URL: {url}")
