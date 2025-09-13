@@ -68,6 +68,7 @@ class DOMTreeSt:
             "css_selector_list": self.css_selector_list,
             "links": self.links,
             "chk_url":self.chk_url,
+            "web_type": self.web_type,
             "result_count": self.result_count,
             "result_items": [item.to_dict() for item in self.result_items],
             "relevance_score": self.relevance_score,

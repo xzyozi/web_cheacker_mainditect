@@ -169,11 +169,16 @@ async def extract_main_content(url: str,
 
             final_content.url = url
 
-            # web_type setting 再帰処理後であれば前回時点
-            if arg_webtype :
-                final_content.web_type = arg_webtype
-            else : 
-                final_content.web_type = chktype
+            # web_type setting
+            current_type = WebType.from_string(chktype)
+            if arg_webtype:
+                previous_type = WebType.from_string(arg_webtype)
+                if current_type.priority > previous_type.priority:
+                    final_content.web_type = current_type.name
+                else:
+                    final_content.web_type = previous_type.name
+            else:
+                final_content.web_type = current_type.name
             final_content.is_empty_result = False # 明示的にFalseを設定
 
             json_data = final_content.to_dict()

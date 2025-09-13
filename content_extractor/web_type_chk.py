@@ -103,12 +103,18 @@ class WebTypeCHK() :
         """
         Webページのタイプを文字列として返す。
         """
-        new_watch_url = self.pagemon.get_watch_url()
-        if new_watch_url:
-            self.next_url = new_watch_url
-            #  Enumオブジェクトではなく、その名前（文字列）を返す 
-            return WebType.page_changer.name
+        # ページャー形式のリンクから新しいURLを決定しようと試みる
+        new_watch_url = self.pagemon.determine_watch_page()
         
+        # 新しいページが見つかり、それが現在のURLと異なる場合
+        if new_watch_url and new_watch_url != self.pagemon.base_url:
+            self.next_url = new_watch_url
+            return WebType.page_changer.name
+
+        # 新しいページが見つからなくても、現在のURL自体がページャー形式の場合
+        if re.search(r"page[-=/]?\d+", self.pagemon.base_url):
+            return WebType.page_changer.name
+            
         return WebType.plane.name
 
 def test_page_monitor_1():
