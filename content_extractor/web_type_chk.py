@@ -6,6 +6,19 @@ from enum import Enum, auto
 
 from .dom_treeSt import DOMTreeSt
 
+# --- Regex Constants ---
+# Matches 'page' followed by an optional separator (-, =, /) and digits.
+# Used to identify URLs that are part of a paginated series.
+PAGINATED_URL_REGEX = re.compile(r"page[-=/]?\d+")
+
+# Matches 'page' followed by a required separator (-, =) and digits.
+# Used to check for pagination links within a page.
+PAGINATION_LINK_REGEX = re.compile(r"page[-=]\d+")
+
+# Captures the page format (e.g., "page-", "page/") and the page number.
+# Used to determine the latest page number from links.
+PAGE_NUMBER_CAPTURE_REGEX = re.compile(r"(page[-=/]?)(\d+)")
+
 
 class WebType(Enum):
     plane = ("plane", 1)
@@ -48,10 +61,10 @@ class PageMonitor:
 
     def should_check_update(self):
         """ページ更新チェックを実行すべきか判定"""
-        if re.search(r"page[-=/]?\d+", self.base_url) :
+        if PAGINATED_URL_REGEX.search(self.base_url) :
 
             for link in self.node.links:
-                if re.search(r"page[-=]\d+", link):
+                if PAGINATION_LINK_REGEX.search(link):
                     return True  # ページ番号を含むリンクがあれば更新チェックが必要
         return False  # 該当リンクなし → 更新不要
 
@@ -60,7 +73,7 @@ class PageMonitor:
         page_numbers = []
         page_format = None  # "page-" or "page=" の形式を保持
         for link in self.node.links:
-            match = re.search(r"(page[-=/]?)(\d+)", link)
+            match = PAGE_NUMBER_CAPTURE_REGEX.search(link)
             if match:
                 page_numbers.append(int(match.group(2)))
                 if page_format is None:
@@ -112,7 +125,7 @@ class WebTypeCHK() :
             return WebType.page_changer.name
 
         # 新しいページが見つからなくても、現在のURL自体がページャー形式の場合
-        if re.search(r"page[-=/]?\d+", self.pagemon.base_url):
+        if PAGINATED_URL_REGEX.search(self.pagemon.base_url):
             return WebType.page_changer.name
             
         return WebType.plane.name
