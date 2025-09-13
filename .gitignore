@@ -1,10 +1,6 @@
 **/__pycache__/
 /mail/mail.yaml
-/mail/test_send_mail.py:
-/web-update-cheacker.srctrlbm
-/web-update-cheacker.srctrldb
-/web-update-cheacker.srctrlprj
-data/json/
+/mail/test_send_mail.py
 web_update_cheacker2.srctrlbm
 web_update_cheacker2.srctrldb
 web_update_cheacker2.srctrlprj
@@ -20,3 +16,4 @@ log/
 debug/
 users/j*
 text_struct/__pycache__/text_struct.cpython-310.pyc
+users/jav/cheacker_url.csv
