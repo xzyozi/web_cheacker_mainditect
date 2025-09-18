@@ -122,7 +122,7 @@ class WebTypeCHK() :
         # 新しいページが見つかり、それが現在のURLと異なる場合
         if new_watch_url and new_watch_url != self.pagemon.base_url:
             self.next_url = new_watch_url
-            return WebType.page_changer.name
+            # webtypeはURL自体で判定するため、ここでは変更しない
 
         # 新しいページが見つからなくても、現在のURL自体がページャー形式の場合
         if PAGINATED_URL_REGEX.search(self.pagemon.base_url):
