@@ -1,0 +1,8 @@
+# Dependencies for the high-precision search system
+duckduckgo-search
+backoff
+rank_bm25
+sentence-transformers
+torch
+trafilatura
+lxml
