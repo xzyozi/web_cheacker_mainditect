@@ -66,7 +66,7 @@ class User:
         self.directory = os.path.join("users",directory)
 
 
-        self.data_file_path = os.path.join(self.directory, "cheacker_url.jsonl")
+        self.data_file_path = os.path.join(self.directory, "cheacker_url.json")
         self.data_file_path = os.path.abspath(self.data_file_path)
         self.data_file_path = self.data_file_path.replace(r"\\", "/")
 
@@ -310,7 +310,7 @@ CSV_COLUMN = { "url" : 0, # scraping url
                "result_vl" : 2 ,  
                "updated_datetime" : 3, 
                "full_scan_datetime"  : 4, 
-               "css_selector" : 5,
+               "css_selector_list" : 5,
                "web_page_type" : 6,
 }
 
@@ -321,7 +321,7 @@ class DataManager:
         self.lock = threading.Lock()
         try:
             with self.lock:
-                self.df = pd.read_json(self.file_path, lines=True, orient='records')
+                self.df = pd.read_json(self.file_path, orient='records', encoding='utf-8')
         except (FileNotFoundError, ValueError):
             self.df = pd.DataFrame(columns=[
                 "url", "run_code", "result_vl", "updated_datetime", 
@@ -387,7 +387,7 @@ class DataManager:
     def save_data(self):
         with self.lock:
             self.df['run_code'] = get_Strdatetime()
-            self.df.to_json(self.file_path, orient='records', lines=True, force_ascii=False)
+            self.df.to_json(self.file_path, orient='records', force_ascii=False, indent=4)
 
     def chk_diff(self) -> list:
         # result_vl列を比較して差分を検出
