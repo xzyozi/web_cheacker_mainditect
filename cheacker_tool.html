@@ -143,8 +143,8 @@
         
         // [追加] 読み込み対象ファイルの優先順位定義
         const DATA_FILE_NAMES = [
-            'cheacker_url.jsonl', // 最優先
-            'materials.json',
+            'cheacker_url.json', // 最優先
+             // 'materials.json',
             'prompts.json'
         ];     
         
@@ -1677,6 +1677,14 @@
                         };
                     });
                     setItems(normalizedData);
+                    setFileSystem({
+                        root: rootHandle,
+                        dataDir: rootHandle, // ファイル保存先はルート直下
+                        imagesDir,
+                        jsonFile: jsonHandle,
+                        rootName: rootHandle.name, // フォルダ名
+                        fileName: jsonHandle.name  // ファイル名
+                    });
                     
                     // Save handle for next time
                     await LocalDatabase.saveHandle(rootHandle);
@@ -1684,6 +1692,15 @@
 
                 } catch (error) {
                     alert(`初期化エラー: ${error.message}`);
+                    // エラー時は状態をリセットして未接続状態に戻す
+                    setFileSystem({
+                        root: null,
+                        dataDir: null,
+                        imagesDir: null,
+                        jsonFile: null,
+                        rootName: null,
+                        fileName: null
+                    });
                 }
             };
 
@@ -1879,6 +1896,14 @@
                             <h1 className="text-2xl font-bold text-gray-800 dark:text-dark-text flex items-center">
                                 <i className="fas fa-layer-group text-indigo-500 mr-2"></i>Material Manager
                             </h1>
+                            {/* [追加] 現在のパス（フォルダ > ファイル）を表示 */}
+                            {fileSystem.root && (
+                                <div className="text-xs font-mono text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1 animate-fadeIn">
+                                    <i className="fas fa-folder-open text-indigo-400"></i> {fileSystem.rootName}
+                                    <span className="text-gray-300 dark:text-gray-600">/</span>
+                                    <i className="far fa-file-alt text-indigo-400"></i> {fileSystem.fileName}
+                                </div>
+                            )}
                             
                             {/* 接続済みの場合のコントロール */}
                             {fileSystem.root && (
