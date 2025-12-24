@@ -473,14 +473,31 @@
 
             // B. cheacker_url.jsonl 形式の場合
             if (rawData.url) {
-                // 日付変換
-                let isoDate = new Date().toISOString();
+                // 1. 日付変換 (updated_datetime を createdAt として使用)
+                // 【重要】ここで変数を初期化し、スコープを確保します
+                let isoDate = new Date().toISOString(); 
+
                 if (rawData.updated_datetime) {
-                    const match = rawData.updated_datetime.match(/^(\d{4})(\d{2})(\d{2})\s+(\d{2}):(\d{2})$/);
-                    if (match) isoDate = `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:00.000Z`;
+                    try {
+                        const str = String(rawData.updated_datetime).trim();
+                        // "YYYYMMDD HH:mm" 形式などの独自パースを試行
+                        const match = str.match(/^(\d{4})(\d{2})(\d{2})\s+(\d{2}):(\d{2})$/);
+                        
+                        if (match) {
+                            isoDate = `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:00.000Z`;
+                        } else {
+                            // 通常のDateパース
+                            const d = new Date(str);
+                            if (!isNaN(d.getTime())) {
+                                isoDate = d.toISOString();
+                            }
+                        }
+                    } catch(e) {
+                        console.warn("Date parsing failed:", e);
+                    }
                 }
 
-                // URLからタイトル推定
+                // 2. タイトル生成
                 let title = rawData.url;
                 try {
                     const u = new URL(rawData.url);
@@ -488,22 +505,35 @@
                     title = path ? decodeURIComponent(path) : u.hostname;
                 } catch(e) {}
 
-                // メモ欄の生成
-                const prompt = [
-                    `[Result]: ${rawData.result_vl || 'N/A'}`,
-                    rawData.run_code ? `[Run Code]: ${rawData.run_code}` : null,
-                    rawData.css_selector_list ? `[Selectors]:\n${rawData.css_selector_list.join('\n')}` : null
-                ].filter(Boolean).join('\n\n');
+                // 3. メモ欄 (prompt) の生成
+                const promptParts = [];
+                if (rawData.result_vl) promptParts.push(`[Result]: ${rawData.result_vl}`);
+                if (rawData.run_code) promptParts.push(`[Run Code]: ${rawData.run_code}`);
+                if (rawData.full_scan_datetime) promptParts.push(`[Full Scan]: ${rawData.full_scan_datetime}`);
+                
+                if (rawData.css_selector) {
+                    const selectors = Array.isArray(rawData.css_selector) 
+                        ? rawData.css_selector.join('\n') 
+                        : rawData.css_selector;
+                    promptParts.push(`[Selectors]:\n${selectors}`);
+                }
+
+                // 4. タグ生成
+                const tags = ["URL_CHECK"];
+                if (rawData.web_page_type) {
+                    tags.push(rawData.web_page_type);
+                }
 
                 return {
+                    ...rawData,
                     id: generateUuid(),
                     title: title,
-                    prompt: prompt,
+                    prompt: promptParts.join('\n\n'),
                     resourcePath: rawData.url,
-                    tags: ["URL_CHECK", rawData.web_page_type || "unknown"],
+                    tags: tags,
                     isPinned: false,
                     image_filename: null,
-                    createdAt: isoDate
+                    createdAt: isoDate // ここで参照されます
                 };
             }
             return rawData;
@@ -1706,6 +1736,14 @@
 
                     // Data Structure Definition (aligning with clean structure)
                     const newItem = {
+                        url: formData.resourcePath,
+                        run_code: "",
+                        result_vl: "",
+                        updated_datetime: "",
+                        full_scan_datetime: "",
+                        css_selector: [],
+                        web_page_type: "",
+                    
                         id: generateUuid(),
                         title: formData.title,
                         prompt: formData.prompt,
