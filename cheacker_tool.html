@@ -461,82 +461,79 @@
 
         //  外部データのスキーマをアプリ内部のデータ構造に変換
         const normalizeItemData = (rawData) => {
-            // A. 既にアプリ標準形式の場合
-            if (rawData.id && rawData.title) {
-                return {
-                    ...rawData,
-                    tags: rawData.tags || [],
-                    prompt: rawData.prompt || "",
-                    resourcePath: rawData.resourcePath || ""
-                };
-            }
-
-            // B. cheacker_url.jsonl 形式の場合
-            if (rawData.url) {
-                // 1. 日付変換 (updated_datetime を createdAt として使用)
-                // 【重要】ここで変数を初期化し、スコープを確保します
-                let isoDate = new Date().toISOString(); 
-
-                if (rawData.updated_datetime) {
-                    try {
-                        const str = String(rawData.updated_datetime).trim();
-                        // "YYYYMMDD HH:mm" 形式などの独自パースを試行
-                        const match = str.match(/^(\d{4})(\d{2})(\d{2})\s+(\d{2}):(\d{2})$/);
-                        
-                        if (match) {
-                            isoDate = `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:00.000Z`;
-                        } else {
-                            // 通常のDateパース
-                            const d = new Date(str);
-                            if (!isNaN(d.getTime())) {
-                                isoDate = d.toISOString();
-                            }
-                        }
-                    } catch(e) {
-                        console.warn("Date parsing failed:", e);
-                    }
+            // 1. URL/Pathの統一 (resourcePath -> url)
+            const effectiveUrl = rawData.url || rawData.resourcePath || "";
+            
+            // 2. 日付の統一 (updated_datetime を優先)
+            let displayDateRaw = rawData.updated_datetime || rawData.createdAt || new Date().toISOString();
+            
+            // アプリ内ソート用にISO形式の日付文字列を生成
+            let isoDate = new Date().toISOString();
+            try {
+                const str = String(displayDateRaw).trim();
+                const match = str.match(/^(\d{4})(\d{2})(\d{2})\s+(\d{2}):(\d{2})$/);
+                if (match) {
+                    isoDate = `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:00.000Z`;
+                } else {
+                    const d = new Date(str);
+                    if (!isNaN(d.getTime())) isoDate = d.toISOString();
                 }
+            } catch(e) {}
 
-                // 2. タイトル生成
-                let title = rawData.url;
+            // 3. タイトル生成
+            let title = rawData.title;
+            if (!title && effectiveUrl) {
                 try {
-                    const u = new URL(rawData.url);
+                    const u = new URL(effectiveUrl);
                     const path = u.pathname.split('/').filter(Boolean).pop();
                     title = path ? decodeURIComponent(path) : u.hostname;
                 } catch(e) {}
+            }
 
-                // 3. メモ欄 (prompt) の生成
+            // 4. css_selector_list の対応
+            let selectors = [];
+            if (Array.isArray(rawData.css_selector_list)) {
+                selectors = rawData.css_selector_list;
+            } else if (rawData.css_selector) {
+                selectors = Array.isArray(rawData.css_selector) ? rawData.css_selector : [rawData.css_selector];
+            }
+
+            // 5. メモ欄 (prompt) の生成 (既存のpromptがない場合のみ生成)
+            let promptText = rawData.prompt || "";
+            if (!promptText) {
                 const promptParts = [];
                 if (rawData.result_vl) promptParts.push(`[Result]: ${rawData.result_vl}`);
                 if (rawData.run_code) promptParts.push(`[Run Code]: ${rawData.run_code}`);
                 if (rawData.full_scan_datetime) promptParts.push(`[Full Scan]: ${rawData.full_scan_datetime}`);
-                
-                if (rawData.css_selector) {
-                    const selectors = Array.isArray(rawData.css_selector) 
-                        ? rawData.css_selector.join('\n') 
-                        : rawData.css_selector;
-                    promptParts.push(`[Selectors]:\n${selectors}`);
-                }
-
-                // 4. タグ生成
-                const tags = ["URL_CHECK"];
-                if (rawData.web_page_type) {
-                    tags.push(rawData.web_page_type);
-                }
-
-                return {
-                    ...rawData,
-                    id: generateUuid(),
-                    title: title,
-                    prompt: promptParts.join('\n\n'),
-                    resourcePath: rawData.url,
-                    tags: tags,
-                    isPinned: false,
-                    image_filename: null,
-                    createdAt: isoDate // ここで参照されます
-                };
+                if (selectors.length > 0) promptParts.push(`[Selectors]:\n${selectors.join('\n')}`);
+                promptText = promptParts.join('\n\n');
             }
-            return rawData;
+
+            // 6. タグ生成
+            const tags = Array.isArray(rawData.tags) ? rawData.tags : ["URL_CHECK"];
+            if (rawData.web_page_type && !tags.includes(rawData.web_page_type)) {
+                tags.push(rawData.web_page_type);
+            }
+
+            return {
+                ...rawData,
+                id: rawData.id || generateUuid(),
+                title: title,
+                prompt: promptText,
+                
+                // アプリ内部用
+                resourcePath: effectiveUrl, 
+                createdAt: isoDate, 
+
+                // 保存データ用互換フィールド
+                url: effectiveUrl,
+                updated_datetime: rawData.updated_datetime || formatDateTime(isoDate),
+                css_selector_list: selectors,
+                
+                tags: tags,
+                isPinned: rawData.isPinned || false,
+                image_filename: rawData.image_filename || null
+            };
         };
 
         // ==========================================
