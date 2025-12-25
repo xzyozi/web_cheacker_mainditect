@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import pandas as pd
 import json
 import os , sys
@@ -66,14 +66,16 @@ class User:
         self.directory = os.path.join("users",directory)
 
 
-        self.data_file_path = os.path.join(self.directory, "cheacker_url.jsonl")
+        self.data_file_path = os.path.join(self.directory, "cheacker_url.json")
         self.data_file_path = os.path.abspath(self.data_file_path)
         self.data_file_path = self.data_file_path.replace(r"\\", "/")
 
         self.json_dir_path = os.path.join(self.directory, "json/")
+        self.image_dir_path = os.path.join(self.directory, "data", "images")
 
         util_str.util_handle_path(self.data_file_path)
         util_str.util_handle_path(self.json_dir_path)
+        util_str.util_handle_path(self.image_dir_path)
 
         self.load_mail_settings()
         self.load_app_config()
@@ -121,7 +123,7 @@ class NotificationManager:
         self.user = user
         self.config = user.config
 
-    async def send_update_notification(self, diff_urls: list):
+    async def send_update_notification(self, diff_urls: list, image_list: list):
         if not diff_urls:
             return
 
@@ -132,25 +134,11 @@ class NotificationManager:
             logger.info("Email notification is disabled in config. Skipping.")
             return
 
-        # スクリーンショットの生成
-        file_list = []
-        ss_config = self.config.get('screenshot', {})
-        if ss_config.get('enabled', False):
-            temp_dir = ss_config.get('temporary_dir', 'temp_image')
-            perm_dir = ss_config.get('permanent_dir', 'data/view')
-            email_width = ss_config.get('email_width', 500)
-            perm_width = ss_config.get('permanent_width', 1920)
-
-            logger.info(f"Generating screenshots for email to {temp_dir}...")
-            file_list = await save_screenshot(diff_urls, save_dir=temp_dir, width=email_width)
-            logger.info(f"Generating screenshots for permanent storage to {perm_dir}...")
-            await save_screenshot(diff_urls, save_dir=perm_dir, width=perm_width)
-
         # メール本文の生成と送信
         logger.info("Generating HTML body for email...")
-        body = text_struct.generate_html(diff_urls, file_list)
+        body = text_struct.generate_html(diff_urls, image_list)
         logger.info("Sending update notification email...")
-        self.user.send_resultmail(body, body_type="html", image_list=file_list)
+        self.user.send_resultmail(body, body_type="html", image_list=image_list)
 
     def send_error_notification(self, error_list: list):
         if not error_list:
@@ -198,10 +186,10 @@ def save_json(data : dict,
 # +----------------------------------------------------------------
 # datetime edit function 
 # +----------------------------------------------------------------
-DEFAULT_DATETIME = "19700101 00:00"
-DEFAULT_DATEFORMAT = "%Y%m%d %H:%M"
-# 正規表現と対応する strptime フォーマットの辞書
-DATE_FORMATS = [
+# New standard for datetime strings, compliant with ISO 8601.
+DEFAULT_DATETIME = "1970-01-01T00:00:00Z"
+# Legacy format definitions for backward compatibility
+LEGACY_DATE_FORMATS = [
     (re.compile(r"^\d{4}\d{2}\d{2} \d{2}:\d{2}:\d{2}$"), "%Y%m%d %H:%M:%S"),
     (re.compile(r"^\d{4}\d{2}\d{2} \d{2}:\d{2}$"), "%Y%m%d %H:%M"),
     (re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$"), "%Y-%m-%d %H:%M:%S"),
@@ -215,47 +203,36 @@ DATE_FORMATS = [
 ]
 
 def get_Strdatetime() -> str:
-    nowtime = datetime.now()
-    formatted_now = nowtime.strftime(DEFAULT_DATEFORMAT)
+    """Returns the current time as a UTC ISO 8601 string."""
+    return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
-    return formatted_now
+def safe_parse_datetime(date_str: str) -> datetime:
+    """
+    Safely parse a datetime string, trying ISO 8601 first, then falling back to legacy formats.
+    Returns a timezone-aware datetime object (UTC).
+    """
+    if not date_str or not isinstance(date_str, str):
+        return datetime(1970, 1, 1, tzinfo=timezone.utc)
 
-def exchange_datetime(date_string : str) -> datetime :
-    return datetime.strptime(date_string, DEFAULT_DATEFORMAT )
+    # Try ISO 8601 format (handles 'Z' and timezone offsets)
+    try:
+        if date_str.endswith('Z'):
+            return datetime.fromisoformat(date_str[:-1] + '+00:00')
+        return datetime.fromisoformat(date_str)
+    except ValueError:
+        pass  # Not ISO format, fall through to legacy
 
-def test_datetime():    
-    date_string = "20240326"
-
-    print(exchange_datetime(date_string))
-    print(get_Strdatetime())
-
-def detect_datetime_format(date_str):
-    for pattern, fmt in DATE_FORMATS:
+    # Fallback to legacy format detection
+    for pattern, fmt in LEGACY_DATE_FORMATS:
         if pattern.match(date_str):
-            # logger.debug("format found")
-            return fmt
-    return None  # 判別できなかった場合
-
-def safe_parse_datetime(date_str, default_datetime=DEFAULT_DATETIME):
-    """
-    Safely parse a datetime string. If parsing fails, use the default datetime.
-
-    Args:
-        date_str (str): The datetime string to parse.
-        date_format (str): The expected datetime format.
-        default_datetime (str): The default datetime string to use if parsing fails.
-
-    Returns:
-        datetime: A parsed datetime object.
-    """
-
-    fmt = detect_datetime_format(date_str)
-
-    if fmt :
-        return datetime.strptime(date_str, fmt)
-    else :
-        logger.warning(f"Invalid datetime format for '{date_str}'. Using default: {default_datetime}")
-        return datetime.strptime(default_datetime, DEFAULT_DATEFORMAT)
+            try:
+                # Assume legacy formats are naive, make them UTC
+                return datetime.strptime(date_str, fmt).replace(tzinfo=timezone.utc)
+            except ValueError:
+                continue
+    
+    logger.warning(f"Could not parse datetime string '{date_str}'. Using default.")
+    return datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 # +----------------------------------------------------------------
@@ -310,7 +287,7 @@ CSV_COLUMN = { "url" : 0, # scraping url
                "result_vl" : 2 ,  
                "updated_datetime" : 3, 
                "full_scan_datetime"  : 4, 
-               "css_selector" : 5,
+               "css_selector_list" : 5,
                "web_page_type" : 6,
 }
 
@@ -321,20 +298,23 @@ class DataManager:
         self.lock = threading.Lock()
         try:
             with self.lock:
-                self.df = pd.read_json(self.file_path, lines=True, orient='records')
+                self.df = pd.read_json(self.file_path, orient='records', encoding='utf-8')
         except (FileNotFoundError, ValueError):
             self.df = pd.DataFrame(columns=[
                 "url", "run_code", "result_vl", "updated_datetime", 
-                "full_scan_datetime", "css_selector_list", "web_page_type"
+                "full_scan_datetime", "css_selector_list", "web_page_type", "image_filename"
             ])
         
         if 'css_selector_list' not in self.df.columns:
             self.df['css_selector_list'] = [[] for _ in range(len(self.df))]
+        if 'image_filename' not in self.df.columns:
+            self.df['image_filename'] = ""
 
         self.df = self.df.fillna({
             'web_page_type': '',
             'result_vl': '',
-            'full_scan_datetime': ''
+            'full_scan_datetime': '',
+            'image_filename': ''
         })
         self.df['css_selector_list'] = self.df['css_selector_list'].apply(lambda x: x if isinstance(x, list) else [])
 
@@ -384,10 +364,19 @@ class DataManager:
         self.df.at[index, "css_selector_list"] = []
         self.df.at[index, "full_scan_datetime"] = ""
 
+    def update_image_filename(self, url: str, filename: str):
+        """Updates the image_filename for a given URL."""
+        index = self.df[self.df['url'] == url].index
+        if not index.empty:
+            # Get just the filename, not the full path
+            base_filename = os.path.basename(filename)
+            self.df.loc[index, 'image_filename'] = base_filename
+            logger.info(f"Updated image_filename for {url} to {base_filename}")
+
     def save_data(self):
         with self.lock:
             self.df['run_code'] = get_Strdatetime()
-            self.df.to_json(self.file_path, orient='records', lines=True, force_ascii=False)
+            self.df.to_json(self.file_path, orient='records', force_ascii=False, indent=4)
 
     def chk_diff(self) -> list:
         # result_vl列を比較して差分を検出
@@ -421,7 +410,7 @@ async def process_url_async(url: str,
             diff_days = 99
             if full_scan_datetime_str:
                 try:
-                    diff_days = (datetime.now() - safe_parse_datetime(full_scan_datetime_str)).days
+                    diff_days = (datetime.now(timezone.utc) - safe_parse_datetime(full_scan_datetime_str)).days
                 except TypeError:
                     logger.warning(f"Could not parse datetime: {full_scan_datetime_str}")
 
@@ -513,22 +502,48 @@ async def main():
 
     tasks = []
     for index, row in data_manager.df.iterrows():
-        if row['url']:
+        if 'url' in row and row['url']:
             task = asyncio.create_task(
                 process_url_async(row['url'], index, data_manager, error_list, config, semaphore)
             )
             tasks.append(task)
 
     # 全てのタスクが完了するのを待つ
-    await asyncio.gather(*tasks)
+    if tasks:
+        await asyncio.gather(*tasks)
     logger.info("All async workers have finished.")
 
-    # --- 差分チェックと保存 ---
+    # --- 差分チェック ---
     diff_urls = data_manager.chk_diff()
+    
+    email_image_list = []
+    if diff_urls:
+        # --- Screenshot Generation ---
+        ss_config = config.get('screenshot', {})
+        if ss_config.get('enabled', False):
+            temp_dir = ss_config.get('temporary_dir', 'temp_image')
+            perm_dir = user.image_dir_path # Use the correct path
+            email_width = ss_config.get('email_width', 500)
+            perm_width = ss_config.get('permanent_width', 1920)
+
+            logger.info(f"Generating screenshots for email to {temp_dir}...")
+            email_image_list = await save_screenshot(diff_urls, save_dir=temp_dir, width=email_width)
+            
+            logger.info(f"Generating screenshots for permanent storage to {perm_dir}...")
+            permanent_image_list = await save_screenshot(diff_urls, save_dir=perm_dir, width=perm_width)
+
+            # --- Update DataFrame with permanent image filenames ---
+            if permanent_image_list:
+                for i, url in enumerate(diff_urls):
+                    # Assuming the lists correspond by index
+                    if i < len(permanent_image_list):
+                        data_manager.update_image_filename(url, permanent_image_list[i])
+
+    # --- データ保存 (画像ファイル名を含む) ---
     data_manager.save_data()
 
     # --- 通知処理 ---
-    await notification_manager.send_update_notification(diff_urls)
+    await notification_manager.send_update_notification(diff_urls, email_image_list)
 
     if error_list:
         logger.info("-------- ERROR list output -----------")
@@ -546,5 +561,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
- 
