@@ -71,9 +71,11 @@ class User:
         self.data_file_path = self.data_file_path.replace(r"\\", "/")
 
         self.json_dir_path = os.path.join(self.directory, "json/")
+        self.image_dir_path = os.path.join(self.directory, "data", "image")
 
         util_str.util_handle_path(self.data_file_path)
         util_str.util_handle_path(self.json_dir_path)
+        util_str.util_handle_path(self.image_dir_path)
 
         self.load_mail_settings()
         self.load_app_config()
@@ -137,7 +139,8 @@ class NotificationManager:
         ss_config = self.config.get('screenshot', {})
         if ss_config.get('enabled', False):
             temp_dir = ss_config.get('temporary_dir', 'temp_image')
-            perm_dir = ss_config.get('permanent_dir', 'data/view')
+            default_perm_dir = self.user.image_dir_path
+            perm_dir = ss_config.get('permanent_dir', default_perm_dir)
             email_width = ss_config.get('email_width', 500)
             perm_width = ss_config.get('permanent_width', 1920)
 
