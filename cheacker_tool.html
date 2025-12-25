@@ -1,0 +1,2045 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Material Manager v4.4 Refactored</title>
+   
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+   
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            bg: '#111827',
+                            card: '#1f2937',
+                            border: '#374151',
+                            text: '#f3f4f6',
+                            subtext: '#9ca3af'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+   
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; transition: background-color 0.3s ease; }
+        .prompt-scroll::-webkit-scrollbar { width: 6px; }
+        .prompt-scroll::-webkit-scrollbar-track { background: transparent; }
+        .prompt-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .prompt-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .dark .prompt-scroll::-webkit-scrollbar-thumb { background: #4b5563; }
+        .dark .prompt-scroll::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+        button:active { transform: translateY(1px); }
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+       
+        /* Modal Navigation Buttons */
+        .nav-btn-container {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 50;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+        }
+        .nav-prev { left: 0; }
+        .nav-next { right: 0; }
+       
+        .nav-icon {
+            width: 50px;
+            height: 50px;
+            background-color: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 20px;
+            backdrop-filter: blur(4px);
+            transition: all 0.2s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .nav-btn-container:hover .nav-icon {
+            background-color: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+        .nav-btn-container:active .nav-icon {
+            transform: scale(0.95);
+        }
+       
+        /* Tab Styles */
+        .tab-active {
+            border-bottom: 2px solid #6366f1;
+            color: #6366f1;
+        }
+        .tab-inactive {
+            border-bottom: 2px solid transparent;
+            color: #6b7280;
+        }
+        .dark .tab-inactive {
+            color: #9ca3af;
+        }
+        .tab-inactive:hover {
+            color: #4b5563;
+            border-bottom-color: #d1d5db;
+        }
+        .dark .tab-inactive:hover {
+            color: #d1d5db;
+            border-bottom-color: #4b5563;
+        }
+       
+        /* Animation */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fadeIn {
+            animation: fadeIn 0.3s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-dark-bg text-gray-500 dark:text-dark-subtext">
+    <div id="root" class="flex items-center justify-center min-h-screen">
+        <div class="text-center">
+            <i class="fas fa-spinner fa-spin text-4xl mb-4 text-indigo-500"></i>
+            <p>起動中...</p>
+        </div>
+    </div>
+
+    <script type="text/babel">
+        // ==========================================
+        // Constants & Configuration
+        // ==========================================
+
+        /**
+         * IndexedDBの設定情報
+         */
+        const DB_CONFIG = {
+            NAME: 'CheackManagerDB',
+            STORE_NAME: 'handles',
+            VERSION: 1,
+            KEY: 'rootDirectory'
+        };
+        
+        // [追加] 読み込み対象ファイルの優先順位定義
+        const DATA_FILE_NAMES = [
+            'cheacker_url.json', // 最優先
+             // 'materials.json',
+            'prompts.json'
+        ];     
+        
+
+        /**
+         * タグの色定義リスト
+         * ハッシュ計算により、同じタグは常に同じ色が割り当てられます。
+         */
+        const TAG_COLOR_PALETTE = [
+            { bg: 'bg-red-100 dark:bg-red-900', text: 'text-red-800 dark:text-red-200' },
+            { bg: 'bg-orange-100 dark:bg-orange-900', text: 'text-orange-800 dark:text-orange-200' },
+            { bg: 'bg-amber-100 dark:bg-amber-900', text: 'text-amber-800 dark:text-amber-200' },
+            { bg: 'bg-yellow-100 dark:bg-yellow-900', text: 'text-yellow-800 dark:text-yellow-200' },
+            { bg: 'bg-lime-100 dark:bg-lime-900', text: 'text-lime-800 dark:text-lime-200' },
+            { bg: 'bg-green-100 dark:bg-green-900', text: 'text-green-800 dark:text-green-200' },
+            { bg: 'bg-emerald-100 dark:bg-emerald-900', text: 'text-emerald-800 dark:text-emerald-200' },
+            { bg: 'bg-teal-100 dark:bg-teal-900', text: 'text-teal-800 dark:text-teal-200' },
+            { bg: 'bg-cyan-100 dark:bg-cyan-900', text: 'text-cyan-800 dark:text-cyan-200' },
+            { bg: 'bg-sky-100 dark:bg-sky-900', text: 'text-sky-800 dark:text-sky-200' },
+            { bg: 'bg-blue-100 dark:bg-blue-900', text: 'text-blue-800 dark:text-blue-200' },
+            { bg: 'bg-indigo-100 dark:bg-indigo-900', text: 'text-indigo-800 dark:text-indigo-200' },
+            { bg: 'bg-violet-100 dark:bg-violet-900', text: 'text-violet-800 dark:text-violet-200' },
+            { bg: 'bg-purple-100 dark:bg-purple-900', text: 'text-purple-800 dark:text-purple-200' },
+            { bg: 'bg-fuchsia-100 dark:bg-fuchsia-900', text: 'text-fuchsia-800 dark:text-fuchsia-200' },
+            { bg: 'bg-pink-100 dark:bg-pink-900', text: 'text-pink-800 dark:text-pink-200' },
+            { bg: 'bg-rose-100 dark:bg-rose-900', text: 'text-rose-800 dark:text-rose-200' },
+            { bg: 'bg-gray-100 dark:bg-gray-700', text: 'text-gray-800 dark:text-gray-200' }
+        ];
+
+        // ==========================================
+        // Utility Functions (Pure Functions)
+        // ==========================================
+
+        /**
+         * 一意のID（UUID v4）を生成します。
+         * crypto.randomUUID が使用できない環境へのフォールバックを含みます。
+         * @returns {string} UUID文字列
+         */
+        const generateUuid = () => {
+            if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+                return crypto.randomUUID();
+            }
+            
+            // フォールバック実装
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+                const random = Math.random() * 16 | 0;
+                const value = (char === 'x') ? random : (random & 0x3 | 0x8);
+                return value.toString(16);
+            });
+        };
+
+        /**
+         * テキストをクリップボードにコピーします。
+         * @param {string} text - コピーするテキスト
+         * @returns {Promise<boolean>} コピーに成功した場合はtrue
+         */
+        const copyTextToClipboard = async (text) => {
+            if (!text) {
+                return false;
+            }
+
+            // Clipboard APIが使える場合
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    return true;
+                } catch (error) {
+                    console.warn('Clipboard API failed, falling back to execCommand', error);
+                }
+            }
+
+            // フォールバック: textarea要素を使用
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.left = '-9999px';
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+
+            try {
+                const successful = document.execCommand('copy');
+                return successful;
+            } catch (err) {
+                console.error('Copy failed', err);
+                return false;
+            } finally {
+                document.body.removeChild(textarea);
+            }
+        };
+
+        /**
+         * ISO日付文字列を読みやすい形式にフォーマットします。
+         * @param {string} isoString - ISO形式の日付文字列
+         * @returns {string} "YYYY/MM/DD HH:MM" 形式の文字列
+         */
+        const formatDateTime = (isoString) => {
+            if (!isoString) {
+                return '';
+            }
+
+            const date = new Date(isoString);
+            if (isNaN(date.getTime())) {
+                return '';
+            }
+
+            const padZero = (num) => num.toString().padStart(2, '0');
+            
+            const year = date.getFullYear();
+            const month = padZero(date.getMonth() + 1);
+            const day = padZero(date.getDate());
+            const hours = padZero(date.getHours());
+            const minutes = padZero(date.getMinutes());
+
+            return `${year}/${month}/${day} ${hours}:${minutes}`;
+        };
+
+        /**
+         * 文字列が有効なURL形式かどうかを判定します。
+         * @param {string} text - 判定する文字列
+         * @returns {boolean} URLであればtrue
+         */
+        const isValidUrl = (text) => {
+            try {
+                const url = new URL(text);
+                return Boolean(url);
+            } catch (error) {
+                return false;
+            }
+        };
+
+        /**
+         * URLからファビコン取得用URLを生成します。
+         * Googleの非公開APIを使用しているため、永続性は保証されません。
+         * @param {string} urlString - 対象のURL
+         * @returns {string|null} ファビコンのURL、またはnull
+         */
+        const getFaviconUrl = (urlString) => {
+            try {
+                const url = new URL(urlString);
+                return `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=256`;
+            } catch (error) {
+                return null;
+            }
+        };
+
+        /**
+         * ファイルパス文字列から引用符を削除し、空白を除去します。
+         * @param {string} path - 入力パス
+         * @returns {string} クリーニングされたパス
+         */
+        const sanitizePath = (path) => {
+            if (!path) {
+                return "";
+            }
+            // 前後のダブルクォーテーション、シングルクォーテーションを削除してトリム
+            return path.replace(/^["']|["']$/g, '').trim();
+        };
+
+        /**
+         * タグ名に基づいて一貫した色情報を取得します。
+         * @param {string} tag - タグ名
+         * @returns {Object} { bg, text } クラス名オブジェクト
+         */
+        const determineTagColor = (tag) => {
+            let hash = 0;
+            for (let i = 0; i < tag.length; i++) {
+                hash = tag.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            const index = Math.abs(hash) % TAG_COLOR_PALETTE.length;
+            return TAG_COLOR_PALETTE[index];
+        };
+
+        /**
+         * ファイルの拡張子に基づいてアイコン情報を返します。
+         * @param {string} pathOrFilename - ファイルパスまたはファイル名
+         * @returns {Object|null} アイコン情報オブジェクト、または判定不能時null
+         */
+        const determineFileIcon = (pathOrFilename) => {
+            if (!pathOrFilename) {
+                return null;
+            }
+           
+            // URLは対象外
+            if (pathOrFilename.match(/^https?:\/\//)) {
+                return null;
+            }
+
+            let path = sanitizePath(pathOrFilename);
+            path = path.replace(/\\/g, '/'); // Windowsパスの正規化
+
+            // フォルダ判定
+            if (path.endsWith('/')) {
+                return { icon: 'fa-folder', color: 'text-yellow-500', bg: 'bg-yellow-100 dark:bg-yellow-900', label: 'FOLDER' };
+            }
+
+            const filename = path.split('/').pop();
+            const parts = filename.split('.');
+
+            // 拡張子なし
+            if (parts.length === 1 || (parts.length === 2 && parts[0] === '')) {
+                 return { icon: 'fa-file', color: 'text-gray-400', bg: 'bg-gray-100 dark:bg-gray-800', label: 'FILE' };
+            }
+            
+            const ext = parts.pop().toLowerCase();
+            
+            // 拡張子定義マップ
+            const extensionMap = {
+                // 1. テキスト・ドキュメント系
+                'txt':  { icon: 'fa-file-alt', color: 'text-gray-500', bg: 'bg-gray-100 dark:bg-gray-800', label: 'TXT' },
+                'md':   { icon: 'fa-file-code', color: 'text-gray-600', bg: 'bg-gray-200 dark:bg-gray-700', label: 'MD' },
+                'rtf':  { icon: 'fa-file-alt', color: 'text-gray-500', bg: 'bg-gray-100 dark:bg-gray-800', label: 'RTF' },
+                'doc':  { icon: 'fa-file-word', color: 'text-blue-600', bg: 'bg-blue-100 dark:bg-blue-900', label: 'Word' },
+                'docx': { icon: 'fa-file-word', color: 'text-blue-600', bg: 'bg-blue-100 dark:bg-blue-900', label: 'Word' },
+                'pdf':  { icon: 'fa-file-pdf', color: 'text-red-500', bg: 'bg-red-100 dark:bg-red-900', label: 'PDF' },
+
+                // 2. 表計算・データ系
+                'csv':  { icon: 'fa-file-csv', color: 'text-green-600', bg: 'bg-green-100 dark:bg-green-900', label: 'CSV' },
+                'xls':  { icon: 'fa-file-excel', color: 'text-green-600', bg: 'bg-green-100 dark:bg-green-900', label: 'Excel' },
+                'xlsx': { icon: 'fa-file-excel', color: 'text-green-600', bg: 'bg-green-100 dark:bg-green-900', label: 'Excel' },
+                'ods':  { icon: 'fa-file-excel', color: 'text-green-500', bg: 'bg-green-100 dark:bg-green-900', label: 'Sheet' },
+                'json': { icon: 'fa-file-code', color: 'text-yellow-600', bg: 'bg-yellow-100 dark:bg-yellow-900', label: 'JSON' },
+                'xml':  { icon: 'fa-file-code', color: 'text-orange-500', bg: 'bg-orange-100 dark:bg-orange-900', label: 'XML' },
+                'yaml': { icon: 'fa-file-code', color: 'text-purple-500', bg: 'bg-purple-100 dark:bg-purple-900', label: 'YAML' },
+                'yml':  { icon: 'fa-file-code', color: 'text-purple-500', bg: 'bg-purple-100 dark:bg-purple-900', label: 'YAML' },
+
+                // 3. 画像系
+                'jpg':  { icon: 'fa-file-image', color: 'text-indigo-500', bg: 'bg-indigo-100 dark:bg-indigo-900', label: 'JPEG' },
+                'jpeg': { icon: 'fa-file-image', color: 'text-indigo-500', bg: 'bg-indigo-100 dark:bg-indigo-900', label: 'JPEG' },
+                'png':  { icon: 'fa-file-image', color: 'text-indigo-500', bg: 'bg-indigo-100 dark:bg-indigo-900', label: 'PNG' },
+                'gif':  { icon: 'fa-file-image', color: 'text-indigo-500', bg: 'bg-indigo-100 dark:bg-indigo-900', label: 'GIF' },
+                'bmp':  { icon: 'fa-file-image', color: 'text-indigo-500', bg: 'bg-indigo-100 dark:bg-indigo-900', label: 'BMP' },
+                'svg':  { icon: 'fa-bezier-curve', color: 'text-orange-500', bg: 'bg-orange-100 dark:bg-orange-900', label: 'SVG' },
+                'webp': { icon: 'fa-file-image', color: 'text-indigo-500', bg: 'bg-indigo-100 dark:bg-indigo-900', label: 'WebP' },
+
+                // 4. 音声・動画系
+                'mp3':  { icon: 'fa-file-audio', color: 'text-purple-500', bg: 'bg-purple-100 dark:bg-purple-900', label: 'MP3' },
+                'wav':  { icon: 'fa-file-audio', color: 'text-purple-500', bg: 'bg-purple-100 dark:bg-purple-900', label: 'WAV' },
+                'aac':  { icon: 'fa-file-audio', color: 'text-purple-500', bg: 'bg-purple-100 dark:bg-purple-900', label: 'AAC' },
+                'mp4':  { icon: 'fa-file-video', color: 'text-pink-500', bg: 'bg-pink-100 dark:bg-pink-900', label: 'MP4' },
+                'mov':  { icon: 'fa-file-video', color: 'text-pink-500', bg: 'bg-pink-100 dark:bg-pink-900', label: 'MOV' },
+                'avi':  { icon: 'fa-file-video', color: 'text-pink-500', bg: 'bg-pink-100 dark:bg-pink-900', label: 'AVI' },
+                'mkv':  { icon: 'fa-file-video', color: 'text-pink-500', bg: 'bg-pink-100 dark:bg-pink-900', label: 'MKV' },
+
+                // 5. 圧縮・アーカイブ系
+                'zip':  { icon: 'fa-file-archive', color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900', label: 'ZIP' },
+                'rar':  { icon: 'fa-file-archive', color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900', label: 'RAR' },
+                '7z':   { icon: 'fa-file-archive', color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900', label: '7z' },
+                'tar':  { icon: 'fa-file-archive', color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900', label: 'TAR' },
+                'gz':   { icon: 'fa-file-archive', color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900', label: 'GZ' },
+
+                // 6. 実行ファイル・プログラム系
+                'exe':  { icon: 'fa-window-maximize', color: 'text-blue-700', bg: 'bg-blue-100 dark:bg-blue-900', label: 'EXE' },
+                'msi':  { icon: 'fa-box-open', color: 'text-blue-700', bg: 'bg-blue-100 dark:bg-blue-900', label: 'MSI' },
+                'bat':  { icon: 'fa-terminal', color: 'text-gray-700', bg: 'bg-gray-300 dark:bg-gray-600', label: 'BAT' },
+                'sh':   { icon: 'fa-terminal', color: 'text-gray-700', bg: 'bg-gray-300 dark:bg-gray-600', label: 'SH' },
+                'apk':  { icon: 'fa-android', color: 'text-green-500', bg: 'bg-green-100 dark:bg-green-900', label: 'APK' },
+                'app':  { icon: 'fa-apple', color: 'text-gray-500', bg: 'bg-gray-200 dark:bg-gray-700', label: 'APP' },
+
+                // 7. コード・開発関連
+                'html': { icon: 'fa-html5', color: 'text-orange-600', bg: 'bg-orange-100 dark:bg-orange-900', label: 'HTML' },
+                'htm':  { icon: 'fa-html5', color: 'text-orange-600', bg: 'bg-orange-100 dark:bg-orange-900', label: 'HTML' },
+                'css':  { icon: 'fa-css3-alt', color: 'text-blue-600', bg: 'bg-blue-100 dark:bg-blue-900', label: 'CSS' },
+                'js':   { icon: 'fa-js', color: 'text-yellow-500', bg: 'bg-yellow-100 dark:bg-yellow-900', label: 'JS' },
+                'ts':   { icon: 'fa-code', color: 'text-blue-400', bg: 'bg-blue-100 dark:bg-blue-900', label: 'TS' },
+                'py':   { icon: 'fa-python', color: 'text-blue-500', bg: 'bg-blue-100 dark:bg-blue-900', label: 'PY' },
+                'java': { icon: 'fa-java', color: 'text-red-500', bg: 'bg-red-100 dark:bg-red-900', label: 'JAVA' },
+                'c':    { icon: 'fa-code', color: 'text-blue-700', bg: 'bg-blue-100 dark:bg-blue-900', label: 'C' },
+                'cpp':  { icon: 'fa-code', color: 'text-blue-700', bg: 'bg-blue-100 dark:bg-blue-900', label: 'C++' },
+                'h':    { icon: 'fa-code', color: 'text-blue-700', bg: 'bg-blue-100 dark:bg-blue-900', label: 'H' },
+                'php':  { icon: 'fa-php', color: 'text-purple-600', bg: 'bg-purple-100 dark:bg-purple-900', label: 'PHP' },
+
+                // 8. その他
+                'log':  { icon: 'fa-file-alt', color: 'text-gray-400', bg: 'bg-gray-100 dark:bg-gray-800', label: 'LOG' },
+                'ini':  { icon: 'fa-cog', color: 'text-gray-500', bg: 'bg-gray-100 dark:bg-gray-800', label: 'INI' },
+                'db':   { icon: 'fa-database', color: 'text-blue-800', bg: 'bg-blue-100 dark:bg-blue-900', label: 'DB' },
+                'sqlite': { icon: 'fa-database', color: 'text-blue-800', bg: 'bg-blue-100 dark:bg-blue-900', label: 'DB' },
+                'iso':  { icon: 'fa-compact-disc', color: 'text-gray-500', bg: 'bg-gray-200 dark:bg-gray-700', label: 'ISO' },
+            };
+            
+            const config = extensionMap[ext];
+            if (config) {
+                return { ...config, label: config.label || ext.toUpperCase() };
+            }
+
+            // デフォルト
+            return { icon: 'fa-file', color: 'text-gray-400', bg: 'bg-gray-100 dark:bg-gray-800', label: ext.toUpperCase() };
+        };
+
+        /**
+         * PDFファイルの最初のページを画像（Blob）としてレンダリングします。
+         * @param {File} file - PDFファイル
+         * @returns {Promise<Blob>} 画像Blob
+         */
+        const convertPdfToImageBlob = async (file) => {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdfDocument = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            const page = await pdfDocument.getPage(1);
+            
+            const viewport = page.getViewport({ scale: 1.5 });
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            
+            await page.render({ canvasContext: context, viewport: viewport }).promise;
+            
+            return new Promise((resolve) => {
+                canvas.toBlob((blob) => {
+                    resolve(blob);
+                }, 'image/png');
+            });
+        };
+
+        //  外部データのスキーマをアプリ内部のデータ構造に変換
+        const normalizeItemData = (rawData) => {
+            // 1. URL/Pathの統一 (resourcePath -> url)
+            const effectiveUrl = rawData.url || rawData.resourcePath || "";
+            
+            // 2. 日付の統一 (updated_datetime を優先)
+            let displayDateRaw = rawData.updated_datetime || rawData.createdAt || new Date().toISOString();
+            
+            // アプリ内ソート用にISO形式の日付文字列を生成
+            let isoDate = new Date().toISOString();
+            try {
+                const str = String(displayDateRaw).trim();
+                const match = str.match(/^(\d{4})(\d{2})(\d{2})\s+(\d{2}):(\d{2})$/);
+                if (match) {
+                    isoDate = `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:00.000Z`;
+                } else {
+                    const d = new Date(str);
+                    if (!isNaN(d.getTime())) isoDate = d.toISOString();
+                }
+            } catch(e) {}
+
+            // 3. タイトル生成
+            let title = rawData.title;
+            if (!title && effectiveUrl) {
+                try {
+                    const u = new URL(effectiveUrl);
+                    const path = u.pathname.split('/').filter(Boolean).pop();
+                    title = path ? decodeURIComponent(path) : u.hostname;
+                } catch(e) {}
+            }
+
+            // 4. css_selector_list の対応
+            let selectors = [];
+            if (Array.isArray(rawData.css_selector_list)) {
+                selectors = rawData.css_selector_list;
+            } else if (rawData.css_selector) {
+                selectors = Array.isArray(rawData.css_selector) ? rawData.css_selector : [rawData.css_selector];
+            }
+
+            // 5. メモ欄 (prompt) の生成 (既存のpromptがない場合のみ生成)
+            let promptText = rawData.prompt || "";
+            if (!promptText) {
+                const promptParts = [];
+                if (rawData.result_vl) promptParts.push(`[Result]: ${rawData.result_vl}`);
+                if (rawData.run_code) promptParts.push(`[Run Code]: ${rawData.run_code}`);
+                if (rawData.full_scan_datetime) promptParts.push(`[Full Scan]: ${rawData.full_scan_datetime}`);
+                if (selectors.length > 0) promptParts.push(`[Selectors]:\n${selectors.join('\n')}`);
+                promptText = promptParts.join('\n\n');
+            }
+
+            // 6. タグ生成
+            const tags = Array.isArray(rawData.tags) ? rawData.tags : ["URL_CHECK"];
+            if (rawData.web_page_type && !tags.includes(rawData.web_page_type)) {
+                tags.push(rawData.web_page_type);
+            }
+
+            return {
+                ...rawData,
+                id: rawData.id || generateUuid(),
+                title: title,
+                prompt: promptText,
+                
+                // アプリ内部用
+                resourcePath: effectiveUrl, 
+                createdAt: isoDate, 
+
+                // 保存データ用互換フィールド
+                url: effectiveUrl,
+                updated_datetime: rawData.updated_datetime || formatDateTime(isoDate),
+                css_selector_list: selectors,
+                
+                tags: tags,
+                isPinned: rawData.isPinned || false,
+                image_filename: rawData.image_filename || null
+            };
+        };
+
+        // ==========================================
+        // Data Access Layer (IndexedDB & FileSystem)
+        // ==========================================
+
+        /**
+         * IndexedDB操作をラップするクラス
+         */
+        class LocalDatabase {
+            static async open() {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open(DB_CONFIG.NAME, DB_CONFIG.VERSION);
+                    
+                    request.onupgradeneeded = (event) => {
+                        const db = event.target.result;
+                        if (!db.objectStoreNames.contains(DB_CONFIG.STORE_NAME)) {
+                            db.createObjectStore(DB_CONFIG.STORE_NAME);
+                        }
+                    };
+                    
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            }
+
+            /**
+             * ディレクトリハンドルをDBに保存
+             * @param {FileSystemDirectoryHandle} handle 
+             */
+            static async saveHandle(handle) {
+                const db = await this.open();
+                return new Promise((resolve, reject) => {
+                    const transaction = db.transaction(DB_CONFIG.STORE_NAME, 'readwrite');
+                    const store = transaction.objectStore(DB_CONFIG.STORE_NAME);
+                    store.put(handle, DB_CONFIG.KEY);
+                    
+                    transaction.oncomplete = () => resolve();
+                    transaction.onerror = () => reject(transaction.error);
+                });
+            }
+
+            /**
+             * 保存されたディレクトリハンドルを取得
+             * @returns {Promise<FileSystemDirectoryHandle|undefined>}
+             */
+            static async getHandle() {
+                const db = await this.open();
+                return new Promise((resolve, reject) => {
+                    const transaction = db.transaction(DB_CONFIG.STORE_NAME, 'readonly');
+                    const store = transaction.objectStore(DB_CONFIG.STORE_NAME);
+                    const request = store.get(DB_CONFIG.KEY);
+                    
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            }
+        }
+
+        class JsonlParser {
+            static parse(text) {
+                if (!text) return [];
+                return text.trim().split('\n').map((line, i) => {
+                    try { return line.trim() ? JSON.parse(line) : null; } 
+                    catch (e) { console.warn(`Line ${i+1} parse error`, e); return null; }
+                }).filter(Boolean);
+            }
+        }
+
+        /**
+         * File System Access API操作をラップするクラス
+         */
+        class FileSystemService {
+            /**
+             * 権限を確認し、必要であれば要求します。
+             * @param {FileSystemHandle} handle 
+             * @param {boolean} readWrite 
+             * @returns {Promise<boolean>}
+             */
+            static async verifyPermission(handle, readWrite = true) {
+                const options = {};
+                if (readWrite) {
+                    options.mode = 'readwrite';
+                }
+                
+                if ((await handle.queryPermission(options)) === 'granted') {
+                    return true;
+                }
+                
+                if ((await handle.requestPermission(options)) === 'granted') {
+                    return true;
+                }
+                
+                return false;
+            }
+
+            static async getFile(dirHandle, name, create = false) {
+                try {
+                    return await dirHandle.getFileHandle(name, { create });
+                } catch (e) {
+                    return null;
+                }
+            }
+
+            static async getDirectory(dirHandle, name, create = false) {
+                try {
+                    return await dirHandle.getDirectoryHandle(name, { create });
+                } catch (e) {
+                    return null;
+                }
+            }
+
+            //  拡張子に応じてJSON/JSONLを読み分ける
+            static async readDataFile(fileHandle) {
+                const file = await fileHandle.getFile();
+                const text = await file.text();
+                
+                if (file.name.endsWith('.jsonl')) {
+                    return JsonlParser.parse(text);
+                }
+                return text ? JSON.parse(text) : [];
+            }
+
+            static async readJson(fileHandle) {
+                const file = await fileHandle.getFile();
+                const text = await file.text();
+                return text ? JSON.parse(text) : [];
+            }
+
+            static async writeJson(fileHandle, data) {
+                const writable = await fileHandle.createWritable();
+                // 見やすくフォーマットして保存
+                await writable.write(JSON.stringify(data, null, 4));
+                await writable.close();
+            }
+
+            static async saveImage(dirHandle, filename, fileBlob) {
+                const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
+                const writable = await fileHandle.createWritable();
+                await writable.write(fileBlob);
+                await writable.close();
+            }
+
+            static async deleteFile(dirHandle, filename) {
+                try {
+                    await dirHandle.removeEntry(filename);
+                } catch(error) {
+                    console.warn("Delete file failed:", error);
+                }
+            }
+        }
+
+        // ==========================================
+        // UI Components
+        // ==========================================
+
+        /**
+         * タグ入力コンポーネント
+         */
+        const TagInput = ({ tags, onChange, placeholder = "タグを入力 (Enterで追加)", suggestions = [] }) => {
+            const [inputValue, setInputValue] = React.useState("");
+            const [isComposing, setIsComposing] = React.useState(false);
+            const datalistId = React.useId();
+
+            const handleAddTag = () => {
+                const normalizedValue = inputValue.trim();
+                if (normalizedValue && !tags.includes(normalizedValue)) {
+                    onChange([...tags, normalizedValue]);
+                    setInputValue("");
+                }
+            };
+
+            const handleKeyDown = (e) => {
+                // IME変換中は確定させない
+                if (isComposing) {
+                    return;
+                }
+
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleAddTag();
+                } else if (e.key === 'Backspace' && !inputValue && tags.length > 0) {
+                    // 入力欄が空でBackspaceを押すと最後のタグを削除
+                    onChange(tags.slice(0, -1));
+                }
+            };
+
+            const handleRemoveTag = (indexToRemove) => {
+                const newTags = tags.filter((_, index) => index !== indexToRemove);
+                onChange(newTags);
+            };
+
+            // 既に追加済みのタグは補完候補から除外
+            const availableSuggestions = suggestions.filter(s => !tags.includes(s));
+
+            return (
+                <div className="flex flex-wrap items-center gap-2 p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 min-h-[46px] focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-indigo-500 transition-shadow">
+                    {tags.map((tag, index) => {
+                        const colorStyle = determineTagColor(tag);
+                        return (
+                            <span key={index} className={`${colorStyle.bg} ${colorStyle.text} px-2 py-1 rounded-full text-sm flex items-center gap-1 transition-colors`}>
+                                {tag}
+                                <button
+                                    onClick={(e) => { e.preventDefault(); handleRemoveTag(index); }}
+                                    className="hover:opacity-75 rounded-full w-4 h-4 flex items-center justify-center focus:outline-none"
+                                >
+                                    &times;
+                                </button>
+                            </span>
+                        );
+                    })}
+                    <input
+                        type="text"
+                        value={inputValue}
+                        onChange={(e) => setInputValue(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        onCompositionStart={() => setIsComposing(true)}
+                        onCompositionEnd={() => setIsComposing(false)}
+                        onBlur={handleAddTag}
+                        enterKeyHint="enter"
+                        placeholder={tags.length === 0 ? placeholder : ""}
+                        list={datalistId}
+                        className="flex-grow bg-transparent border-none outline-none text-sm dark:text-white min-w-[120px]"
+                    />
+                    <datalist id={datalistId}>
+                        {availableSuggestions.map(tag => (
+                            <option key={tag} value={tag} />
+                        ))}
+                    </datalist>
+                    {inputValue && (
+                        <button
+                            type="button"
+                            onClick={(e) => { e.preventDefault(); handleAddTag(); }}
+                            className="text-indigo-500 hover:text-indigo-700 px-2 animate-fadeIn"
+                        >
+                            <i className="fas fa-plus-circle text-lg"></i>
+                        </button>
+                    )}
+                </div>
+            );
+        };
+
+        /**
+         * ファイルアップロードおよびプレビュー表示コンポーネント
+         */
+        const FileUploader = ({
+            previewUrl,
+            faviconUrl,
+            fileIconInfo,
+            onFileSelect,
+            onDelete,
+            hasFile,
+            isCompact = false
+        }) => {
+            const [isLoadingPdf, setIsLoadingPdf] = React.useState(false);
+            const fileInputRef = React.useRef(null);
+
+            const handleFileChange = async (file) => {
+                if (!file) {
+                    return;
+                }
+                
+                if (file.type.startsWith('image/')) {
+                    const objectUrl = URL.createObjectURL(file);
+                    onFileSelect(file, objectUrl);
+                    return;
+                }
+                
+                if (file.type === 'application/pdf') {
+                    setIsLoadingPdf(true);
+                    try {
+                        const imageBlob = await convertPdfToImageBlob(file);
+                        const objectUrl = URL.createObjectURL(imageBlob);
+                        onFileSelect(imageBlob, objectUrl);
+                    } catch(error) {
+                        alert("PDFの読み込みに失敗しました。暗号化されていないか確認してください。");
+                        // プレビュー生成失敗時もファイルとしては保持する
+                        onFileSelect(file, null);
+                    } finally {
+                        setIsLoadingPdf(false);
+                    }
+                    return;
+                }
+
+                // その他のファイル形式
+                onFileSelect(file, null);
+            };
+
+            const handleDrop = (e) => {
+                e.preventDefault();
+                handleFileChange(e.dataTransfer.files[0]);
+            };
+
+            // スタイルの決定
+            const containerStyle = isCompact
+                ? "w-full h-32 border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer relative overflow-hidden transition-colors"
+                : "flex-1 min-h-[250px] border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer relative overflow-hidden transition-colors";
+            
+            const stateStyle = (hasFile || previewUrl || fileIconInfo)
+                ? 'border-indigo-500 bg-indigo-50 dark:bg-gray-800'
+                : 'border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700';
+
+            const renderContent = () => {
+                if (isLoadingPdf) {
+                    return (
+                        <div className="text-center text-indigo-500">
+                            <i className="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                            <p className="text-xs">Processing PDF...</p>
+                        </div>
+                    );
+                }
+
+                if (previewUrl) {
+                    return (
+                        <img src={previewUrl} alt="Preview" className="absolute inset-0 w-full h-full object-contain p-2" />
+                    );
+                }
+
+                if (faviconUrl) {
+                    return (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center p-4">
+                            <img src={faviconUrl} alt="Favicon" className="w-16 h-16 object-contain mb-2 shadow-sm rounded-lg" onError={(e) => e.target.style.display = 'none'} />
+                            <span className="text-xs text-gray-500">Web Page</span>
+                        </div>
+                    );
+                }
+
+                if (fileIconInfo) {
+                    return (
+                        <div className={`absolute inset-0 flex flex-col items-center justify-center p-4 transition-colors ${fileIconInfo.bg}`}>
+                            <i className={`fas ${fileIconInfo.icon} ${isCompact ? 'text-4xl' : 'text-6xl'} ${fileIconInfo.color} mb-2`}></i>
+                            <span className="text-xs font-bold text-gray-600 dark:text-gray-300">{fileIconInfo.label}</span>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="text-center text-gray-400 dark:text-gray-500 p-2">
+                        <i className={`fas fa-cloud-upload-alt ${isCompact ? 'text-2xl' : 'text-4xl'} mb-2`}></i>
+                        <p className="text-xs">{isCompact ? "Drop to Change" : "Drop File"}</p>
+                    </div>
+                );
+            };
+
+            return (
+                <div
+                    className={`${containerStyle} ${stateStyle}`}
+                    onClick={() => !isLoadingPdf && fileInputRef.current.click()}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={handleDrop}
+                >
+                    {renderContent()}
+                    
+                    <input 
+                        type="file" 
+                        ref={fileInputRef} 
+                        onChange={(e) => handleFileChange(e.target.files[0])} 
+                        className="hidden" 
+                    />
+                    
+                    {(previewUrl || faviconUrl || fileIconInfo) && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                            className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600 shadow z-10"
+                            title="削除"
+                        >
+                            &times;
+                        </button>
+                    )}
+                </div>
+            );
+        };
+
+        /**
+         * 新規アイテム登録フォーム
+         */
+        const UploadForm = ({ onSave, isSaving, isConnected, allTags }) => {
+            const [title, setTitle] = React.useState("");
+            const [prompt, setPrompt] = React.useState("");
+            const [resourcePath, setResourcePath] = React.useState("");
+            const [tags, setTags] = React.useState([]);
+            
+            // ファイル・画像関連の状態
+            const [selectedFile, setSelectedFile] = React.useState(null);
+            const [previewUrl, setPreviewUrl] = React.useState(null);
+            const [faviconPreview, setFaviconPreview] = React.useState(null);
+            const [fileIconInfo, setFileIconInfo] = React.useState(null);
+            const [isManuallyDeleted, setIsManuallyDeleted] = React.useState(false);
+
+            // パスやファイルが変更されたときのアイコン自動判定ロジック
+            React.useEffect(() => {
+                if (isManuallyDeleted) {
+                    setIsManuallyDeleted(false);
+                }
+
+                const timer = setTimeout(() => {
+                    // ファイル未選択かつ手動削除直後でない場合に自動判定
+                    if (!isManuallyDeleted && !selectedFile) {
+                        detectIconFromPath(resourcePath);
+                    }
+                }, 500);
+
+                return () => clearTimeout(timer);
+            }, [resourcePath, isManuallyDeleted, selectedFile]);
+
+            const detectIconFromPath = (path) => {
+                const info = determineFileIcon(path);
+                if (info) {
+                     setFileIconInfo(info);
+                     setFaviconPreview(null);
+                } else if (isValidUrl(path)) {
+                     setFaviconPreview(getFaviconUrl(path));
+                     setFileIconInfo(null);
+                } else {
+                     setFileIconInfo(null);
+                     setFaviconPreview(null);
+                }
+            };
+
+            const handleFileSelect = (file, preview) => {
+                setSelectedFile(file);
+                setPreviewUrl(preview);
+                setFaviconPreview(null);
+                setIsManuallyDeleted(false);
+                
+                // 画像以外の場合、ファイル名からアイコン情報を取得
+                if (file && !preview) {
+                    setFileIconInfo(determineFileIcon(file.name));
+                } else {
+                    setFileIconInfo(null);
+                }
+                
+                // タイトル未入力ならファイル名から自動設定
+                if (!title && file) {
+                    const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+                    setTitle(nameWithoutExt);
+                }
+            };
+
+            const handleDeleteImage = () => {
+                setSelectedFile(null);
+                setPreviewUrl(null);
+                setFaviconPreview(null);
+                setFileIconInfo(null);
+                if (resourcePath) {
+                    setIsManuallyDeleted(true);
+                }
+            };
+
+            const handlePathBlur = () => {
+                const cleanedPath = sanitizePath(resourcePath);
+                if (cleanedPath !== resourcePath) {
+                    setResourcePath(cleanedPath);
+                }
+
+                if (!cleanedPath || title) {
+                    return;
+                }
+
+                // タイトル自動生成ロジック
+                let generatedTitle = "";
+                if (isValidUrl(cleanedPath)) {
+                    try {
+                        const urlObj = new URL(cleanedPath);
+                        const pathPart = urlObj.pathname.split('/').filter(p => p).pop();
+                        generatedTitle = pathPart ? decodeURIComponent(pathPart) : urlObj.hostname;
+                    } catch (e) {
+                        generatedTitle = "Web Page";
+                    }
+                } else {
+                    const normalized = cleanedPath.replace(/\\/g, '/');
+                    generatedTitle = normalized.split('/').pop();
+                }
+
+                if (generatedTitle) {
+                    setTitle(generatedTitle);
+                }
+            };
+
+            const handleSubmit = () => {
+                if (!isConnected) return alert("フォルダが接続されていません");
+                if (!title) return alert("タイトルは必須です");
+                
+                const data = {
+                    title,
+                    prompt,
+                    resourcePath: sanitizePath(resourcePath),
+                    file: selectedFile,
+                    tags
+                };
+
+                onSave(data, () => {
+                    // Reset form
+                    setTitle("");
+                    setPrompt("");
+                    setResourcePath("");
+                    setTags([]);
+                    setSelectedFile(null);
+                    setPreviewUrl(null);
+                    setFaviconPreview(null);
+                    setFileIconInfo(null);
+                    setIsManuallyDeleted(false);
+                });
+            };
+
+            const containerClass = `bg-white dark:bg-dark-card p-6 rounded-xl shadow-md mb-8 flex flex-col md:flex-row gap-6 border border-gray-200 dark:border-dark-border transition-all duration-300 ${!isConnected ? 'opacity-50 pointer-events-none grayscale' : ''}`;
+
+            return (
+                <div className={containerClass}>
+                    <FileUploader
+                        previewUrl={previewUrl}
+                        faviconUrl={faviconPreview}
+                        fileIconInfo={fileIconInfo}
+                        onFileSelect={handleFileSelect}
+                        onDelete={handleDeleteImage}
+                        hasFile={!!selectedFile}
+                    />
+
+                    <div className="flex-[1.5] flex flex-col gap-4">
+                        <div>
+                            <label className="block text-gray-700 dark:text-gray-300 font-bold mb-1 text-sm">資料パス / URL</label>
+                            <div className="relative">
+                                <input
+                                    type="text"
+                                    value={resourcePath}
+                                    onChange={(e) => setResourcePath(e.target.value)}
+                                    onBlur={handlePathBlur}
+                                    className="w-full p-3 pl-10 border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:border-indigo-500 bg-white dark:bg-gray-700 dark:text-white font-mono text-sm"
+                                    placeholder="https://example.com または C:\Docs\File.pdf"
+                                />
+                                <i className="fas fa-link absolute left-3 top-3.5 text-gray-400"></i>
+                            </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-gray-700 dark:text-gray-300 font-bold mb-1 text-sm">タイトル</label>
+                                <input
+                                    type="text"
+                                    value={title}
+                                    onChange={(e) => setTitle(e.target.value)}
+                                    className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:border-indigo-500 bg-white dark:bg-gray-700 dark:text-white"
+                                    placeholder="タイトル"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-gray-700 dark:text-gray-300 font-bold mb-1 text-sm">タグ</label>
+                                <TagInput tags={tags} onChange={setTags} suggestions={allTags} />
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label className="block text-gray-700 dark:text-gray-300 font-bold mb-1 text-sm">メモ</label>
+                            <textarea
+                                value={prompt}
+                                onChange={(e) => setPrompt(e.target.value)}
+                                className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:border-indigo-500 min-h-[100px] font-mono text-sm bg-white dark:bg-gray-700 dark:text-white"
+                                placeholder="メモ..."
+                            ></textarea>
+                        </div>
+                        
+                        <button 
+                            onClick={handleSubmit} 
+                            disabled={isSaving} 
+                            className="self-start bg-indigo-600 text-white px-8 py-3 rounded font-bold hover:bg-indigo-700 transition disabled:opacity-50 flex items-center gap-2 shadow-sm mt-auto"
+                        >
+                            {isSaving ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-save"></i>}
+                            リストに追加
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        /**
+         * アイテムカード（表示モードと編集モードを持つ）
+         */
+        const MaterialCard = ({ item, onDelete, onUpdate, onTogglePin, onOpenModal, imagesDirHandle, onTagSearch, allTags }) => {
+            const [imageUrl, setImageUrl] = React.useState(null);
+            const [isEditing, setIsEditing] = React.useState(false);
+            const [copyStatus, setCopyStatus] = React.useState("Path");
+
+            // 編集用State
+            const [editForm, setEditForm] = React.useState({
+                title: "",
+                prompt: "",
+                resourcePath: "",
+                tags: []
+            });
+            const [editFileState, setEditFileState] = React.useState({
+                file: null,
+                preview: null,
+                status: 'keep', // 'keep' | 'change' | 'delete'
+                iconInfo: null
+            });
+
+            // 画像の遅延読み込み
+            React.useEffect(() => {
+                let isActive = true;
+                let objectUrl = null;
+
+                const loadImage = async () => {
+                    if (!imagesDirHandle || !item.image_filename) return;
+                    
+                    try {
+                        const fileHandle = await FileSystemService.getFile(imagesDirHandle, item.image_filename);
+                        if (fileHandle) {
+                            const file = await fileHandle.getFile();
+                            if (isActive) {
+                                objectUrl = URL.createObjectURL(file);
+                                setImageUrl(objectUrl);
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Image load error", e);
+                    }
+                };
+
+                loadImage();
+                return () => { 
+                    isActive = false; 
+                    if (objectUrl) URL.revokeObjectURL(objectUrl); 
+                };
+            }, [item, imagesDirHandle]);
+
+            const handleCopyPath = async (e) => {
+                e.stopPropagation();
+                if (item.resourcePath && await copyTextToClipboard(item.resourcePath)) {
+                    setCopyStatus("Copied!");
+                    setTimeout(() => setCopyStatus("Path"), 1500);
+                }
+            };
+
+            const startEditing = (e) => {
+                e.stopPropagation();
+                setEditForm({
+                    title: item.title,
+                    prompt: item.prompt,
+                    resourcePath: item.resourcePath || "",
+                    tags: item.tags || []
+                });
+                setEditFileState({
+                    file: null,
+                    preview: null,
+                    status: 'keep',
+                    iconInfo: null
+                });
+                setIsEditing(true);
+            };
+
+            const saveEditing = (e) => {
+                e.stopPropagation();
+                onUpdate(item.id, {
+                    ...item,
+                    title: editForm.title,
+                    prompt: editForm.prompt,
+                    resourcePath: sanitizePath(editForm.resourcePath),
+                    tags: editForm.tags
+                }, editFileState.file, editFileState.status);
+                setIsEditing(false);
+            };
+
+            // 表示用データの準備
+            const isWebLink = isValidUrl(item.resourcePath);
+            const hasImage = !!item.image_filename;
+            
+            // 編集モード時のプレビュー決定ロジック
+            let displayPreview = null;
+            let displayFavicon = null;
+            let displayIconInfo = null;
+
+            if (isEditing) {
+                if (editFileState.status === 'change') {
+                    displayPreview = editFileState.preview;
+                    if (!displayPreview) displayIconInfo = editFileState.iconInfo;
+                } else if (editFileState.status === 'keep') {
+                    displayPreview = imageUrl;
+                }
+
+                // 画像がない場合のフォールバック（Favicon or Icon）
+                if (!displayPreview && !displayIconInfo) {
+                    if (isValidUrl(editForm.resourcePath)) {
+                        displayFavicon = getFaviconUrl(editForm.resourcePath);
+                    } else {
+                        displayIconInfo = determineFileIcon(editForm.resourcePath);
+                    }
+                }
+            } else {
+                // 通常表示モード
+                displayPreview = imageUrl;
+                if (!displayPreview && isWebLink) {
+                    displayFavicon = getFaviconUrl(item.resourcePath);
+                }
+                if (!displayPreview && !displayFavicon) {
+                    displayIconInfo = determineFileIcon(item.resourcePath);
+                }
+            }
+
+            // レンダー
+            return (
+                <div className={`bg-white dark:bg-dark-card rounded-lg shadow-sm border ${item.isPinned ? 'border-indigo-300 dark:border-indigo-700 ring-1 ring-indigo-200 dark:ring-indigo-900' : 'border-gray-200 dark:border-dark-border'} hover:shadow-lg transition-all duration-200 hover:-translate-y-1 overflow-hidden flex flex-col h-full group relative`}>
+                    
+                    {/* 編集モード */}
+                    {isEditing ? (
+                        <div className="flex flex-col h-full bg-white dark:bg-dark-card p-2">
+                            <div className="mb-2">
+                                <FileUploader
+                                    previewUrl={displayPreview}
+                                    faviconUrl={displayFavicon}
+                                    fileIconInfo={displayIconInfo}
+                                    onFileSelect={(file, preview) => {
+                                        setEditFileState({
+                                            file, 
+                                            preview, 
+                                            status: 'change', 
+                                            iconInfo: (file && !preview) ? determineFileIcon(file.name) : null
+                                        });
+                                    }}
+                                    onDelete={() => {
+                                        setEditFileState({ file: null, preview: null, status: 'delete', iconInfo: null });
+                                    }}
+                                    hasFile={!!editFileState.file || (editFileState.status === 'keep' && hasImage)}
+                                    isCompact={true}
+                                />
+                            </div>
+                            <div className="flex flex-col gap-2 flex-grow overflow-y-auto px-1">
+                                <input
+                                    className="border border-indigo-300 rounded p-2 w-full font-bold text-gray-800 dark:text-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    value={editForm.title}
+                                    onChange={e => setEditForm({ ...editForm, title: e.target.value })}
+                                    placeholder="タイトル"
+                                />
+                                <input
+                                    className="border border-indigo-300 rounded p-2 w-full text-xs font-mono text-gray-600 dark:text-gray-300 dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    value={editForm.resourcePath}
+                                    onChange={e => setEditForm({ ...editForm, resourcePath: e.target.value })}
+                                    placeholder="パス / URL"
+                                />
+                                <TagInput 
+                                    tags={editForm.tags} 
+                                    onChange={newTags => setEditForm({ ...editForm, tags: newTags })} 
+                                    suggestions={allTags} 
+                                    placeholder="タグ編集" 
+                                />
+                                <textarea
+                                    className="border border-indigo-300 rounded p-2 w-full flex-grow text-sm font-mono text-gray-600 dark:text-gray-300 dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none min-h-[60px]"
+                                    value={editForm.prompt}
+                                    onChange={e => setEditForm({ ...editForm, prompt: e.target.value })}
+                                    placeholder="メモ"
+                                />
+                            </div>
+                            <div className="flex gap-2 justify-end mt-2 pt-2 border-t border-gray-100 dark:border-gray-700">
+                                <button onClick={() => setIsEditing(false)} className="px-3 py-1 text-sm bg-gray-200 dark:bg-gray-600 rounded hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200">Cancel</button>
+                                <button onClick={saveEditing} className="px-3 py-1 text-sm bg-indigo-500 text-white rounded hover:bg-indigo-600">Save</button>
+                            </div>
+                        </div>
+                    ) : (
+                        /* 表示モード */
+                        <>
+                            {/* アクションボタン */}
+                            <div className="absolute top-2 right-2 flex gap-2 z-10">
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); onTogglePin(item.id); }}
+                                    className={`w-8 h-8 rounded-full flex items-center justify-center shadow-md transition ${item.isPinned ? 'bg-indigo-500 text-white' : 'bg-white dark:bg-gray-700 text-gray-400 hover:text-indigo-500'}`}
+                                    title={item.isPinned ? "お気に入り解除" : "お気に入りに追加"}
+                                >
+                                    <i className="fas fa-thumbtack transform rotate-45"></i>
+                                </button>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); if(confirm(`「${item.title}」を削除しますか？`)) onDelete(item.id); }}
+                                    className="bg-red-500 text-white w-8 h-8 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-md hover:bg-red-600"
+                                    title="削除"
+                                >
+                                    <i className="fas fa-times"></i>
+                                </button>
+                            </div>
+                            
+                            {/* メディアエリア */}
+                            <div
+                                className={`relative ${hasImage ? 'pt-[56.25%]' : 'h-32'} bg-gray-100 dark:bg-gray-800 cursor-pointer overflow-hidden border-b border-gray-100 dark:border-dark-border`}
+                                onClick={() => {
+                                    if (hasImage) onOpenModal(imageUrl);
+                                    else if (item.resourcePath) {
+                                        isWebLink ? window.open(item.resourcePath, '_blank') : handleCopyPath({ stopPropagation: () => {} });
+                                    }
+                                }}
+                            >
+                                {displayPreview ? (
+                                    <img
+                                        src={displayPreview}
+                                        alt={item.title}
+                                        className="absolute inset-0 w-full h-full object-cover transition duration-300 hover:scale-105"
+                                    />
+                                ) : displayFavicon ? (
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                                        <img src={displayFavicon} alt="Icon" className="w-16 h-16 object-contain mb-1" onError={(e) => e.target.style.display = 'none'} />
+                                    </div>
+                                ) : displayIconInfo ? (
+                                    <div className={`absolute inset-0 flex flex-col items-center justify-center ${displayIconInfo.bg} hover:brightness-95 transition-all`}>
+                                        <i className={`fas ${displayIconInfo.icon} text-5xl ${displayIconInfo.color} mb-2`}></i>
+                                        <span className="text-xs font-bold text-gray-600 dark:text-gray-300">{displayIconInfo.label}</span>
+                                    </div>
+                                ) : (
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-300 dark:text-gray-600 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors">
+                                        <i className={`fas ${isWebLink ? 'fa-globe' : 'fa-file-alt'} text-4xl mb-2`}></i>
+                                        <span className="text-xs font-mono px-4 text-center truncate w-full opacity-70">
+                                            {isWebLink ? 'Web Link' : 'Local File'}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* 詳細情報エリア */}
+                            <div className="p-4 flex flex-col flex-grow relative">
+                                <div className="flex justify-between items-start mb-2 gap-2">
+                                    <h3
+                                        className="font-bold text-gray-800 dark:text-dark-text text-lg truncate flex-grow cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400"
+                                        title={item.title}
+                                        onClick={(e) => { 
+                                            if (!item.resourcePath) return;
+                                            isWebLink ? window.open(item.resourcePath, '_blank') : handleCopyPath(e);
+                                        }}
+                                    >
+                                        {item.resourcePath && isWebLink && <i className="fas fa-external-link-alt text-xs mr-2 opacity-50"></i>}
+                                        {item.title}
+                                    </h3>
+                                    <button
+                                        onClick={startEditing}
+                                        className="text-gray-400 hover:text-indigo-500 dark:hover:text-indigo-400 transition flex-shrink-0"
+                                        title="編集"
+                                    >
+                                        <i className="fas fa-edit"></i>
+                                    </button>
+                                </div>
+                                {item.tags && item.tags.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mb-2">
+                                        {item.tags.map((tag, idx) => {
+                                            const color = determineTagColor(tag);
+                                            return (
+                                                <span
+                                                    key={idx}
+                                                    onClick={(e) => { e.stopPropagation(); onTagSearch(tag); }}
+                                                    className={`${color.bg} ${color.text} text-xs px-2 py-0.5 rounded-full cursor-pointer transition-colors hover:opacity-80 border border-transparent hover:border-current`}
+                                                >
+                                                    #{tag}
+                                                </span>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                                <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-dark-border rounded p-2 text-sm text-gray-600 dark:text-gray-300 font-mono mb-3 flex-grow overflow-y-auto max-h-[100px] prompt-scroll whitespace-pre-wrap leading-relaxed">
+                                    {item.prompt || <span className="text-gray-400 italic">No notes</span>}
+                                </div>
+                                <div className="pt-2 border-t border-gray-100 dark:border-dark-border flex justify-between items-center text-xs text-gray-500 dark:text-gray-400 mt-auto">
+                                    <span>{formatDateTime(item.createdAt)}</span>
+                                    {item.resourcePath && (
+                                        <button onClick={handleCopyPath} className={`px-3 py-1 border rounded transition flex items-center gap-1 max-w-[50%] ${copyStatus === 'Copied!' ? 'bg-green-100 border-green-300 text-green-700 dark:bg-green-900 dark:border-green-800 dark:text-green-300' : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300'}`} title="パスをコピー">
+                                            <i className="fas fa-copy"></i> <span className="truncate">{copyStatus}</span>
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+            );
+        };
+
+        // ==========================================
+        // Main Application Logic
+        // ==========================================
+
+        const App = () => {
+            // --- State: Data ---
+            const [items, setItems] = React.useState([]);
+            const [filteredItems, setFilteredItems] = React.useState([]);
+            
+            // --- State: File System Handles ---
+            const [fileSystem, setFileSystem] = React.useState({
+                root: null,
+                dataDir: null,
+                imagesDir: null,
+                jsonFile: null
+            });
+            const [savedHandleAvailable, setSavedHandleAvailable] = React.useState(false);
+
+            // --- State: UI Control ---
+            const [uiState, setUiState] = React.useState({
+                searchTerm: "",
+                sortOrder: "newest",
+                activeTab: "all",
+                currentPage: 1,
+                isSaving: false,
+                isDark: false
+            });
+
+            // --- State: Modal ---
+            const [modalState, setModalState] = React.useState({
+                index: null,
+                url: null
+            });
+
+            // --- Initialization ---
+            React.useEffect(() => {
+                // Theme
+                const savedTheme = localStorage.getItem('mm_theme');
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                const isDark = savedTheme === 'dark' || (!savedTheme && prefersDark);
+                setUiState(prev => ({ ...prev, isDark }));
+
+                // Check DB for saved handle
+                LocalDatabase.getHandle()
+                    .then(handle => {
+                        if (handle) setSavedHandleAvailable(true);
+                    })
+                    .catch(() => {});
+            }, []);
+
+            // Theme Effect
+            React.useEffect(() => {
+                const root = document.documentElement;
+                if (uiState.isDark) {
+                    root.classList.add('dark');
+                    localStorage.setItem('mm_theme', 'dark');
+                } else {
+                    root.classList.remove('dark');
+                    localStorage.setItem('mm_theme', 'light');
+                }
+            }, [uiState.isDark]);
+
+            // Filter & Sort Effect
+            React.useEffect(() => {
+                let result = [...items];
+
+                // Tab Filter
+                if (uiState.activeTab === 'pinned') {
+                    result = result.filter(item => item.isPinned);
+                }
+
+                // Search Filter
+                if (uiState.searchTerm.trim()) {
+                    const terms = uiState.searchTerm.toLowerCase().split(/\s+/).filter(Boolean);
+                    result = result.filter(item => {
+                        const searchableText = [
+                            item.title,
+                            item.prompt,
+                            item.resourcePath,
+                            ...(item.tags || [])
+                        ].join(" ").toLowerCase();
+                        return terms.every(term => searchableText.includes(term));
+                    });
+                }
+
+                // Sorting
+                result.sort((a, b) => {
+                    switch (uiState.sortOrder) {
+                        case "newest": return new Date(b.createdAt) - new Date(a.createdAt);
+                        case "oldest": return new Date(a.createdAt) - new Date(b.createdAt);
+                        case "title_asc": return a.title.localeCompare(b.title);
+                        case "title_desc": return b.title.localeCompare(a.title);
+                        default: return 0;
+                    }
+                });
+
+                setFilteredItems(result);
+                // Reset pagination on search change
+                if (modalState.index === null) {
+                    setUiState(prev => ({ ...prev, currentPage: 1 }));
+                }
+            }, [uiState.searchTerm, uiState.sortOrder, uiState.activeTab, items]);
+
+            /**
+             * ページネーションコンポーネント
+             */
+            const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => {
+                const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+                const [jumpPage, setJumpPage] = React.useState(currentPage);
+
+                React.useEffect(() => {
+                    setJumpPage(currentPage);
+                }, [currentPage]);
+
+                const handlePageChange = (newPage) => {
+                    if (newPage >= 1 && newPage <= totalPages) {
+                        onPageChange(newPage);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
+                };
+
+                const handleJump = (e) => {
+                    e.preventDefault();
+                    const p = parseInt(jumpPage, 10);
+                    if (!isNaN(p) && p >= 1 && p <= totalPages) {
+                        handlePageChange(p);
+                    }
+                };
+
+                // ページ番号の生成ロジック
+                const pages = [];
+                if (totalPages <= 7) {
+                    for (let i = 1; i <= totalPages; i++) pages.push(i);
+                } else {
+                    if (currentPage <= 4) {
+                        for (let i = 1; i <= 5; i++) pages.push(i);
+                        pages.push('...');
+                        pages.push(totalPages);
+                    } else if (currentPage >= totalPages - 3) {
+                        pages.push(1);
+                        pages.push('...');
+                        for (let i = totalPages - 4; i <= totalPages; i++) pages.push(i);
+                    } else {
+                        pages.push(1);
+                        pages.push('...');
+                        pages.push(currentPage - 1);
+                        pages.push(currentPage);
+                        pages.push(currentPage + 1);
+                        pages.push('...');
+                        pages.push(totalPages);
+                    }
+                }
+
+                if (totalPages <= 1) return null;
+
+                return (
+                    <div className="flex flex-col sm:flex-row justify-center items-center gap-4 mt-8 mb-12">
+                        {/* ページ番号ボタン */}
+                        <div className="flex flex-wrap justify-center items-center gap-1">
+                            <button 
+                                onClick={() => handlePageChange(currentPage - 1)} 
+                                disabled={currentPage === 1}
+                                className="w-8 h-8 flex items-center justify-center rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
+                            >
+                                <i className="fas fa-chevron-left text-xs"></i>
+                            </button>
+
+                            {pages.map((p, i) => (
+                                <React.Fragment key={i}>
+                                    {p === '...' ? (
+                                        <span className="px-2 text-gray-400">...</span>
+                                    ) : (
+                                        <button
+                                            onClick={() => handlePageChange(p)}
+                                            className={`w-8 h-8 flex items-center justify-center rounded border text-sm transition-colors ${
+                                                p === currentPage 
+                                                ? 'bg-indigo-600 text-white border-indigo-600' 
+                                                : 'border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+                                            }`}
+                                        >
+                                            {p}
+                                        </button>
+                                    )}
+                                </React.Fragment>
+                            ))}
+
+                            <button 
+                                onClick={() => handlePageChange(currentPage + 1)} 
+                                disabled={currentPage === totalPages}
+                                className="w-8 h-8 flex items-center justify-center rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
+                            >
+                                <i className="fas fa-chevron-right text-xs"></i>
+                            </button>
+                        </div>
+
+                        {/* ジャンプ入力フォーム */}
+                        <form onSubmit={handleJump} className="flex items-center gap-2">
+                            <span className="text-sm text-gray-500 dark:text-gray-400">Go to:</span>
+                            <input
+                                type="number"
+                                min="1"
+                                max={totalPages}
+                                value={jumpPage}
+                                onChange={(e) => setJumpPage(e.target.value)}
+                                className="w-16 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-700 dark:text-white focus:outline-none focus:border-indigo-500 text-center"
+                            />
+                            <button 
+                                type="submit"
+                                className="px-3 py-1 text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                            >
+                                Go
+                            </button>
+                        </form>
+                    </div>
+                );
+            };
+
+            // --- Handlers: File System ---
+
+            const initializeDirectory = async (rootHandle) => {
+                try {
+                    const dataDir = await FileSystemService.getDirectory(rootHandle, 'data', true);
+                    if (!dataDir) throw new Error("dataディレクトリにアクセスできません");
+
+                    const imagesDir = await FileSystemService.getDirectory(dataDir, 'images', true);
+                    if (!imagesDir) throw new Error("imagesディレクトリにアクセスできません");
+
+                    // 優先順リストに基づいてファイルを探索
+                    let jsonHandle = null;
+                    for (const fileName of DATA_FILE_NAMES) {
+                        const handle = await FileSystemService.getFile(rootHandle, fileName);
+                        if (handle) {
+                            jsonHandle = handle;
+                            break;
+                        }
+                    }
+                    
+                    // 旧ファイル名の互換性チェック（prompts.json）
+                    if (!jsonHandle) {
+                        jsonHandle = await FileSystemService.getFile(dataDir, 'prompts.json', false);
+                    }
+                    
+                    // 新規作成
+                    if (!jsonHandle) {
+                        jsonHandle = await FileSystemService.getFile(dataDir, 'materials.json', true);
+                        await FileSystemService.writeJson(jsonHandle, []);
+                    }
+
+                    setFileSystem({
+                        root: rootHandle,
+                        dataDir,
+                        imagesDir,
+                        jsonFile: jsonHandle
+                    });
+
+                    // Load Data
+                    const data = await FileSystemService.readDataFile(jsonHandle);
+                    
+                    const normalizedData = data.map(item => {
+                        const normalized = normalizeItemData(item);
+                        return {
+                            ...normalized,
+                            // IDやタグの補完
+                            id: normalized.id || generateUuid(),
+                            tags: normalized.tags || [],
+                            isPinned: normalized.isPinned ?? false,
+                            // 古い image_path への互換性
+                            image_filename: normalized.image_filename || (normalized.image_path ? normalized.image_path.split('/').pop() : null)
+                        };
+                    });
+                    setItems(normalizedData);
+                    setFileSystem({
+                        root: rootHandle,
+                        dataDir: rootHandle, // ファイル保存先はルート直下
+                        imagesDir,
+                        jsonFile: jsonHandle,
+                        rootName: rootHandle.name, // フォルダ名
+                        fileName: jsonHandle.name  // ファイル名
+                    });
+                    
+                    // Save handle for next time
+                    await LocalDatabase.saveHandle(rootHandle);
+                    setSavedHandleAvailable(true);
+
+                } catch (error) {
+                    alert(`初期化エラー: ${error.message}`);
+                    // エラー時は状態をリセットして未接続状態に戻す
+                    setFileSystem({
+                        root: null,
+                        dataDir: null,
+                        imagesDir: null,
+                        jsonFile: null,
+                        rootName: null,
+                        fileName: null
+                    });
+                }
+            };
+
+            const handleConnect = async () => {
+                if (!window.showDirectoryPicker) {
+                    return alert("お使いのブラウザはFile System Access APIに対応していません。ChromeまたはEdgeをご利用ください。");
+                }
+                try {
+                    const root = await window.showDirectoryPicker({ id: 'material_manager_root', mode: 'readwrite' });
+                    await initializeDirectory(root);
+                } catch (error) {
+                    if (error.name !== 'AbortError') {
+                        alert(`接続エラー: ${error.message}`);
+                    }
+                }
+            };
+
+            const handleReconnect = async () => {
+                try {
+                    const root = await LocalDatabase.getHandle();
+                    if (!root) {
+                        return alert("保存されたフォルダ情報が見つかりません。");
+                    }
+                    if (!(await FileSystemService.verifyPermission(root, true))) {
+                        return alert("フォルダへのアクセス権限がありません。");
+                    }
+                    await initializeDirectory(root);
+                } catch (error) {
+                    alert(`再接続失敗: ${error.message}`);
+                }
+            };
+
+            // --- Handlers: Data CRUD ---
+
+            const handleSaveItem = async (formData, onSuccess) => {
+                if (!fileSystem.jsonFile) return;
+                setUiState(prev => ({ ...prev, isSaving: true }));
+
+                try {
+                    let imageFilename = null;
+                    if (formData.file) {
+                        const file = formData.file;
+                        // 画像かPDFのみ保存対象
+                        if (file.type.startsWith('image/') || file.type === 'application/pdf') {
+                            const ext = file.name ? (file.name.split('.').pop() || 'png') : 'png';
+                            imageFilename = `${generateUuid()}.${ext}`;
+                            await FileSystemService.saveImage(fileSystem.imagesDir, imageFilename, file);
+                        }
+                    }
+
+                    // Data Structure Definition (aligning with clean structure)
+                    const newItem = {
+                        url: formData.resourcePath,
+                        run_code: "",
+                        result_vl: "",
+                        updated_datetime: "",
+                        full_scan_datetime: "",
+                        css_selector_list: [],
+                        web_page_type: "",
+                    
+                        id: generateUuid(),
+                        title: formData.title,
+                        prompt: formData.prompt,
+                        resourcePath: formData.resourcePath,
+                        tags: formData.tags,
+                        isPinned: false,
+                        image_filename: imageFilename,
+                        createdAt: new Date().toISOString()
+                    };
+
+                    const newItems = [newItem, ...items];
+                    await FileSystemService.writeJson(fileSystem.jsonFile, newItems);
+                    setItems(newItems);
+                    onSuccess();
+                } catch (error) {
+                    alert(`保存エラー: ${error.message}`);
+                } finally {
+                    setUiState(prev => ({ ...prev, isSaving: false }));
+                }
+            };
+
+            const handleUpdateItem = async (id, updatedItemData, newFile, imageStatus) => {
+                if (!fileSystem.jsonFile) return;
+
+                try {
+                    let finalImageFilename = updatedItemData.image_filename;
+
+                    // Image Handling Logic
+                    if (imageStatus === 'delete') {
+                        if (updatedItemData.image_filename) {
+                            await FileSystemService.deleteFile(fileSystem.imagesDir, updatedItemData.image_filename);
+                        }
+                        finalImageFilename = null;
+                    } else if (imageStatus === 'change' && newFile) {
+                        if (updatedItemData.image_filename) {
+                            await FileSystemService.deleteFile(fileSystem.imagesDir, updatedItemData.image_filename);
+                        }
+                        
+                        if (newFile.type.startsWith('image/') || newFile.type === 'application/pdf') {
+                            const ext = newFile.name ? (newFile.name.split('.').pop() || 'png') : 'png';
+                            finalImageFilename = `${generateUuid()}.${ext}`;
+                            await FileSystemService.saveImage(fileSystem.imagesDir, finalImageFilename, newFile);
+                        } else {
+                            finalImageFilename = null;
+                        }
+                    }
+
+                    const itemToSave = { ...updatedItemData, image_filename: finalImageFilename };
+                    const newItems = items.map(item => item.id === id ? itemToSave : item);
+
+                    await FileSystemService.writeJson(fileSystem.jsonFile, newItems);
+                    setItems(newItems);
+
+                } catch (error) {
+                    alert(`更新エラー: ${error.message}`);
+                }
+            };
+
+            const handleDeleteItem = async (id) => {
+                if (!fileSystem.jsonFile) return;
+                
+                try {
+                    const targetItem = items.find(i => i.id === id);
+                    if (targetItem && targetItem.image_filename) {
+                        await FileSystemService.deleteFile(fileSystem.imagesDir, targetItem.image_filename);
+                    }
+                    
+                    const newItems = items.filter(i => i.id !== id);
+                    await FileSystemService.writeJson(fileSystem.jsonFile, newItems);
+                    setItems(newItems);
+                } catch (error) {
+                    alert(`削除エラー: ${error.message}`);
+                }
+            };
+
+            const handleTogglePin = async (id) => {
+                if (!fileSystem.jsonFile) return;
+                try {
+                    const newItems = items.map(item => {
+                        if (item.id === id) {
+                            return { ...item, isPinned: !item.isPinned };
+                        }
+                        return item;
+                    });
+                    await FileSystemService.writeJson(fileSystem.jsonFile, newItems);
+                    setItems(newItems);
+                } catch (error) {
+                    console.error("Pin toggle failed", error);
+                }
+            };
+
+            // --- Handlers: Modal ---
+
+            const openModal = (index) => {
+                const item = filteredItems[index];
+                if (!item.image_filename) return;
+
+                setModalState({ index, url: null });
+                
+                // Load modal image
+                (async () => {
+                    if (fileSystem.imagesDir) {
+                        const handle = await FileSystemService.getFile(fileSystem.imagesDir, item.image_filename);
+                        if (handle) {
+                            const file = await handle.getFile();
+                            setModalState({ index, url: URL.createObjectURL(file) });
+                        }
+                    }
+                })();
+            };
+
+            const allTags = React.useMemo(() => {
+                const tagSet = new Set();
+                items.forEach(item => {
+                    if (item.tags) item.tags.forEach(t => tagSet.add(t));
+                });
+                return Array.from(tagSet).sort();
+            }, [items]);
+
+            // --- Render Helpers ---
+
+            const itemsPerPage = 12;
+            const indexOfLastItem = uiState.currentPage * itemsPerPage;
+            const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+            const currentItems = filteredItems.slice(indexOfFirstItem, indexOfLastItem);
+            const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
+
+            return (
+                <div className="container mx-auto px-4 py-8 max-w-7xl">
+                    {/* ヘッダー部分は省略せず、機能ごとに整理して記述推奨ですが、今回は簡略化のためそのまま使います */}
+                     <div className="mb-8">
+                        <header className="flex flex-col md:flex-row justify-between items-center bg-white dark:bg-dark-card p-4 rounded-lg shadow-sm border border-gray-200 dark:border-dark-border transition-colors duration-300 gap-4 mb-4">
+                            <h1 className="text-2xl font-bold text-gray-800 dark:text-dark-text flex items-center">
+                                <i className="fas fa-layer-group text-indigo-500 mr-2"></i>Material Manager
+                            </h1>
+                            {/* [追加] 現在のパス（フォルダ > ファイル）を表示 */}
+                            {fileSystem.root && (
+                                <div className="text-xs font-mono text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1 animate-fadeIn">
+                                    <i className="fas fa-folder-open text-indigo-400"></i> {fileSystem.rootName}
+                                    <span className="text-gray-300 dark:text-gray-600">/</span>
+                                    <i className="far fa-file-alt text-indigo-400"></i> {fileSystem.fileName}
+                                </div>
+                            )}
+                            
+                            {/* 接続済みの場合のコントロール */}
+                            {fileSystem.root && (
+                                <div className="flex flex-col md:flex-row gap-4 flex-grow justify-end">
+                                    <div className="relative group">
+                                        <input
+                                            type="text"
+                                            value={uiState.searchTerm}
+                                            onChange={(e) => setUiState(prev => ({...prev, searchTerm: e.target.value}))}
+                                            placeholder="検索..."
+                                            className="w-full md:w-64 pl-9 pr-8 py-2 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                                        />
+                                        <i className="fas fa-search absolute left-3 top-2.5 text-gray-400"></i>
+                                    </div>
+                                    <select
+                                        value={uiState.sortOrder}
+                                        onChange={(e) => setUiState(prev => ({...prev, sortOrder: e.target.value}))}
+                                        className="pl-3 pr-8 py-2 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                                    >
+                                        <option value="newest">新しい順</option>
+                                        <option value="oldest">古い順</option>
+                                        <option value="title_asc">タイトル A-Z</option>
+                                    </select>
+                                </div>
+                            )}
+
+                            {/* 設定・接続ボタン */}
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={() => setUiState(prev => ({...prev, isDark: !prev.isDark}))}
+                                    className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-yellow-400 hover:bg-gray-200 transition flex items-center justify-center"
+                                >
+                                    <i className={`fas ${uiState.isDark ? 'fa-sun' : 'fa-moon'}`}></i>
+                                </button>
+                                
+                                {!fileSystem.root ? (
+                                    savedHandleAvailable ? (
+                                        <div className="flex gap-2">
+                                            <button onClick={handleReconnect} className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition flex items-center gap-2 shadow-md">
+                                                <i className="fas fa-history"></i> 前回を開く
+                                            </button>
+                                            <button onClick={handleConnect} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-300 transition">
+                                                <i className="fas fa-folder"></i> 変更
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <button onClick={handleConnect} className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition flex items-center gap-2 shadow-md">
+                                            <i className="fas fa-folder"></i> フォルダを選択
+                                        </button>
+                                    )
+                                ) : (
+                                    <span className="px-4 py-2 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded border border-green-200 flex items-center gap-2">
+                                        <i className="fas fa-check-circle"></i> 接続中
+                                    </span>
+                                )}
+                            </div>
+                        </header>
+
+                        {/* タブ切り替え */}
+                        {fileSystem.root && (
+                            <div className="flex space-x-6 border-b border-gray-200 dark:border-gray-700 px-4">
+                                <button
+                                    className={`pb-3 px-2 text-sm font-medium transition-colors ${uiState.activeTab === 'all' ? 'tab-active' : 'tab-inactive'}`}
+                                    onClick={() => setUiState(prev => ({...prev, activeTab: 'all'}))}
+                                >
+                                    すべて
+                                </button>
+                                <button
+                                    className={`pb-3 px-2 text-sm font-medium transition-colors ${uiState.activeTab === 'pinned' ? 'tab-active' : 'tab-inactive'}`}
+                                    onClick={() => setUiState(prev => ({...prev, activeTab: 'pinned'}))}
+                                >
+                                    <i className="fas fa-thumbtack mr-1"></i> お気に入り
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                    
+                    {!fileSystem.root ? (
+                        <div className="text-center py-20 bg-white dark:bg-dark-card rounded-lg shadow-sm border-2 border-dashed border-gray-300 dark:border-dark-border">
+                            <i className="fas fa-folder text-6xl text-indigo-200 mb-6"></i>
+                            <h2 className="text-2xl font-bold text-gray-700 dark:text-gray-200 mb-2">フォルダを選択してください</h2>
+                            <p className="text-gray-500 dark:text-gray-400 mb-6">ローカルフォルダを選択して、資料データベース（JSON）と画像を管理します。</p>
+                        </div>
+                    ) : (
+                        <>
+                            {uiState.activeTab === 'all' && (
+                                <UploadForm 
+                                    onSave={handleSaveItem} 
+                                    isSaving={uiState.isSaving} 
+                                    isConnected={!!fileSystem.root} 
+                                    allTags={allTags} 
+                                />
+                            )}
+                            
+                            {currentItems.length > 0 ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-8">
+                                    {currentItems.map((item, index) => (
+                                        <MaterialCard
+                                            key={item.id}
+                                            item={item}
+                                            onDelete={handleDeleteItem}
+                                            onUpdate={handleUpdateItem}
+                                            onTogglePin={handleTogglePin}
+                                            onOpenModal={() => openModal(indexOfFirstItem + index)}
+                                            imagesDirHandle={fileSystem.imagesDir}
+                                            onTagSearch={(tag) => setUiState(prev => ({...prev, searchTerm: tag}))}
+                                            allTags={allTags}
+                                        />
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="text-center py-12 text-gray-500 bg-white dark:bg-dark-card rounded-lg border border-dashed border-gray-300 mb-8">
+                                    <p>アイテムが見つかりません</p>
+                                </div>
+                            )}
+
+                            {/* 高機能ページネーション (Page Jump付き) */}
+                            <Pagination 
+                                totalItems={filteredItems.length}
+                                itemsPerPage={itemsPerPage}
+                                currentPage={uiState.currentPage}
+                                onPageChange={(page) => setUiState(prev => ({ ...prev, currentPage: page }))}
+                            />
+                            
+                        </>
+                    )}
+                    
+                    {/* Modal (簡易実装) */}
+                    {modalState.url && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-95 p-4" onClick={() => setModalState({index: null, url: null})}>
+                             <img src={modalState.url} className="max-w-full max-h-full object-contain" alt="Full size" />
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
