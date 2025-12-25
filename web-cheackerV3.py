@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import pandas as pd
 import json
 import os , sys
@@ -198,10 +198,10 @@ def save_json(data : dict,
 # +----------------------------------------------------------------
 # datetime edit function 
 # +----------------------------------------------------------------
-DEFAULT_DATETIME = "19700101 00:00"
-DEFAULT_DATEFORMAT = "%Y%m%d %H:%M"
-# 正規表現と対応する strptime フォーマットの辞書
-DATE_FORMATS = [
+# New standard for datetime strings, compliant with ISO 8601.
+DEFAULT_DATETIME = "1970-01-01T00:00:00Z"
+# Legacy format definitions for backward compatibility
+LEGACY_DATE_FORMATS = [
     (re.compile(r"^\d{4}\d{2}\d{2} \d{2}:\d{2}:\d{2}$"), "%Y%m%d %H:%M:%S"),
     (re.compile(r"^\d{4}\d{2}\d{2} \d{2}:\d{2}$"), "%Y%m%d %H:%M"),
     (re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$"), "%Y-%m-%d %H:%M:%S"),
@@ -215,47 +215,36 @@ DATE_FORMATS = [
 ]
 
 def get_Strdatetime() -> str:
-    nowtime = datetime.now()
-    formatted_now = nowtime.strftime(DEFAULT_DATEFORMAT)
+    """Returns the current time as a UTC ISO 8601 string."""
+    return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
-    return formatted_now
+def safe_parse_datetime(date_str: str) -> datetime:
+    """
+    Safely parse a datetime string, trying ISO 8601 first, then falling back to legacy formats.
+    Returns a timezone-aware datetime object (UTC).
+    """
+    if not date_str or not isinstance(date_str, str):
+        return datetime(1970, 1, 1, tzinfo=timezone.utc)
 
-def exchange_datetime(date_string : str) -> datetime :
-    return datetime.strptime(date_string, DEFAULT_DATEFORMAT )
+    # Try ISO 8601 format (handles 'Z' and timezone offsets)
+    try:
+        if date_str.endswith('Z'):
+            return datetime.fromisoformat(date_str[:-1] + '+00:00')
+        return datetime.fromisoformat(date_str)
+    except ValueError:
+        pass  # Not ISO format, fall through to legacy
 
-def test_datetime():    
-    date_string = "20240326"
-
-    print(exchange_datetime(date_string))
-    print(get_Strdatetime())
-
-def detect_datetime_format(date_str):
-    for pattern, fmt in DATE_FORMATS:
+    # Fallback to legacy format detection
+    for pattern, fmt in LEGACY_DATE_FORMATS:
         if pattern.match(date_str):
-            # logger.debug("format found")
-            return fmt
-    return None  # 判別できなかった場合
-
-def safe_parse_datetime(date_str, default_datetime=DEFAULT_DATETIME):
-    """
-    Safely parse a datetime string. If parsing fails, use the default datetime.
-
-    Args:
-        date_str (str): The datetime string to parse.
-        date_format (str): The expected datetime format.
-        default_datetime (str): The default datetime string to use if parsing fails.
-
-    Returns:
-        datetime: A parsed datetime object.
-    """
-
-    fmt = detect_datetime_format(date_str)
-
-    if fmt :
-        return datetime.strptime(date_str, fmt)
-    else :
-        logger.warning(f"Invalid datetime format for '{date_str}'. Using default: {default_datetime}")
-        return datetime.strptime(default_datetime, DEFAULT_DATEFORMAT)
+            try:
+                # Assume legacy formats are naive, make them UTC
+                return datetime.strptime(date_str, fmt).replace(tzinfo=timezone.utc)
+            except ValueError:
+                continue
+    
+    logger.warning(f"Could not parse datetime string '{date_str}'. Using default.")
+    return datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 # +----------------------------------------------------------------
@@ -421,7 +410,7 @@ async def process_url_async(url: str,
             diff_days = 99
             if full_scan_datetime_str:
                 try:
-                    diff_days = (datetime.now() - safe_parse_datetime(full_scan_datetime_str)).days
+                    diff_days = (datetime.now(timezone.utc) - safe_parse_datetime(full_scan_datetime_str)).days
                 except TypeError:
                     logger.warning(f"Could not parse datetime: {full_scan_datetime_str}")
 
