@@ -143,11 +143,11 @@
         
         // [追加] 読み込み対象ファイルの優先順位定義
         const DATA_FILE_NAMES = [
-            'cheacker_url.json', // 最優先
-             // 'materials.json',
+            'cheacker_url.json',
             'prompts.json'
         ];     
         
+        const POLING_INTERVAL_MS = 60000; // 60秒ごとにポーリング
 
         /**
          * タグの色定義リスト
@@ -529,7 +529,6 @@
                 url: effectiveUrl,
                 updated_datetime: rawData.updated_datetime || formatDateTime(isoDate),
                 css_selector_list: selectors,
-                
                 tags: tags,
                 isPinned: rawData.isPinned || false,
                 image_filename: rawData.image_filename || null
@@ -646,7 +645,6 @@
                 }
             }
 
-            //  拡張子に応じてJSON/JSONLを読み分ける
             static async readDataFile(fileHandle) {
                 const file = await fileHandle.getFile();
                 const text = await file.text();
@@ -665,7 +663,6 @@
 
             static async writeJson(fileHandle, data) {
                 const writable = await fileHandle.createWritable();
-                // 見やすくフォーマットして保存
                 await writable.write(JSON.stringify(data, null, 4));
                 await writable.close();
             }
@@ -1417,11 +1414,15 @@
                 root: null,
                 dataDir: null,
                 imagesDir: null,
-                jsonFile: null
+                jsonFile: null,
+                rootName: null,
+                fileName: null
             });
             const [savedHandleAvailable, setSavedHandleAvailable] = React.useState(false);
 
-            // --- State: UI Control ---
+            // [追加] ファイルの最終更新日時を管理
+            const [lastModified, setLastModified] = React.useState(0);
+
             const [uiState, setUiState] = React.useState({
                 searchTerm: "",
                 sortOrder: "newest",
@@ -1500,15 +1501,47 @@
                 });
 
                 setFilteredItems(result);
-                // Reset pagination on search change
                 if (modalState.index === null) {
                     setUiState(prev => ({ ...prev, currentPage: 1 }));
                 }
             }, [uiState.searchTerm, uiState.sortOrder, uiState.activeTab, items]);
 
-            /**
-             * ページネーションコンポーネント
-             */
+            // [追加] ファイル変更監視 (ポーリング)
+            React.useEffect(() => {
+                if (!fileSystem.jsonFile) return;
+
+                const checkInterval = setInterval(async () => {
+                    if (uiState.isSaving) return;
+
+                    try {
+                        const file = await fileSystem.jsonFile.getFile();
+                        
+                        if (file.lastModified > lastModified) {
+                            console.log("External change detected. Reloading...");
+                            
+                            const data = await FileSystemService.readDataFile(fileSystem.jsonFile);
+                            const normalizedData = data.map(item => {
+                                const normalized = normalizeItemData(item);
+                                return {
+                                    ...normalized,
+                                    id: normalized.id || generateUuid(),
+                                    tags: normalized.tags || [],
+                                    isPinned: normalized.isPinned ?? false,
+                                    image_filename: normalized.image_filename || (normalized.image_path ? normalized.image_path.split('/').pop() : null)
+                                };
+                            });
+
+                            setItems(normalizedData);
+                            setLastModified(file.lastModified);
+                        }
+                    } catch (e) {
+                        console.warn("File watch error:", e);
+                    }
+                }, POLING_INTERVAL_MS);
+
+                return () => clearInterval(checkInterval);
+            }, [fileSystem.jsonFile, lastModified, uiState.isSaving]);
+
             const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => {
                 const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
                 const [jumpPage, setJumpPage] = React.useState(currentPage);
@@ -1651,14 +1684,10 @@
                         await FileSystemService.writeJson(jsonHandle, []);
                     }
 
-                    setFileSystem({
-                        root: rootHandle,
-                        dataDir,
-                        imagesDir,
-                        jsonFile: jsonHandle
-                    });
-
                     // Load Data
+                    const file = await jsonHandle.getFile();
+                    const currentLastModified = file.lastModified;
+
                     const data = await FileSystemService.readDataFile(jsonHandle);
                     
                     const normalizedData = data.map(item => {
@@ -1679,11 +1708,12 @@
                         dataDir: rootHandle, // ファイル保存先はルート直下
                         imagesDir,
                         jsonFile: jsonHandle,
-                        rootName: rootHandle.name, // フォルダ名
-                        fileName: jsonHandle.name  // ファイル名
+                        rootName: rootHandle.name,
+                        fileName: jsonHandle.name
                     });
+
+                    setLastModified(currentLastModified);
                     
-                    // Save handle for next time
                     await LocalDatabase.saveHandle(rootHandle);
                     setSavedHandleAvailable(true);
 
@@ -1809,6 +1839,11 @@
                     const newItems = items.map(item => item.id === id ? itemToSave : item);
 
                     await FileSystemService.writeJson(fileSystem.jsonFile, newItems);
+                    
+                    // [追加]
+                    const fileObj = await fileSystem.jsonFile.getFile();
+                    setLastModified(fileObj.lastModified);
+
                     setItems(newItems);
 
                 } catch (error) {
@@ -1827,6 +1862,11 @@
                     
                     const newItems = items.filter(i => i.id !== id);
                     await FileSystemService.writeJson(fileSystem.jsonFile, newItems);
+                    
+                    // [追加]
+                    const fileObj = await fileSystem.jsonFile.getFile();
+                    setLastModified(fileObj.lastModified);
+
                     setItems(newItems);
                 } catch (error) {
                     alert(`削除エラー: ${error.message}`);
@@ -1843,6 +1883,11 @@
                         return item;
                     });
                     await FileSystemService.writeJson(fileSystem.jsonFile, newItems);
+                    
+                    // [追加]
+                    const fileObj = await fileSystem.jsonFile.getFile();
+                    setLastModified(fileObj.lastModified);
+
                     setItems(newItems);
                 } catch (error) {
                     console.error("Pin toggle failed", error);
