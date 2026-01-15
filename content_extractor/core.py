@@ -22,7 +22,8 @@ from .quality_evaluator import is_no_results_page, quantify_search_results
 from setup_logger import setup_logger
 from utils.file_handler import save_json
 
-asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 # logger setting 
 LOGGER_DATEFORMAT = "%Y%m%d_%H%M%S"
@@ -46,7 +47,7 @@ def print_error_details(e : Exception) -> None :
 async def extract_main_content(url: str,
                     browser: Browser,
                     count : int = 0,
-                    arg_webtype : any = None
+                    arg_webtype : Any = None
                     ) -> DOMTreeSt | None:       
     """
     URLからメインコンテンツを抽出し、DOMTreeStオブジェクトとして返します。(Fullスキャン)
@@ -56,30 +57,30 @@ async def extract_main_content(url: str,
         url (str): 解析対象のURL。
         browser (Browser): 使用するPlaywrightのBrowserインスタンス。
         count (int, optional): ページ遷移の再帰呼び出し回数カウンタ。デフォルトは 0。
-        arg_webtype (any, optional): 前の処理から引き継がれたWebページタイプ。デフォルトは None。
+        arg_webtype (Any, optional): 前の処理から引き継がれたWebページタイプ。デフォルトは None。
 
     Returns:
         DOMTreeSt | None: 抽出されたメインコンテンツのDOMTreeStオブジェクト。失敗した場合はNone。
     """
-    # robots.txtを取得
-    robots_txt = await fetch_robots_txt(url)
-    
-    if robots_txt:
-        # スクレイピングが許可されているか確認
-        from urllib.parse import urlparse
-        parsed_url = urlparse(url)
-        target_path = parsed_url.path or "/"
+    page = None
+    try:
+        # robots.txtを取得
+        robots_txt = await fetch_robots_txt(url)
         
-        if not is_scraping_allowed(robots_txt, target_path):
-            logger.info(f"robots.txtにより、このURLのスクレイピングは許可されていません: {url}")
+        if robots_txt:
+            # スクレイピングが許可されているか確認
+            from urllib.parse import urlparse
+            parsed_url = urlparse(url)
+            target_path = parsed_url.path or "/"
+            
+            if not is_scraping_allowed(robots_txt, target_path):
+                logger.info(f"robots.txtにより、このURLのスクレイピングは許可されていません: {url}")
+                return None
+
+        page = await setup_page(url, browser)
+        if not page:
             return None
 
-
-    page = await setup_page(url, browser)
-    if not page:
-        return None
-
-    try:
         max_loop_count = 5
         dimensions = await adjust_page_view(page)
 
@@ -110,11 +111,9 @@ async def extract_main_content(url: str,
 
         if not main_contents:
             logger.info("メインコンテンツ候補が見つかりませんでした。")
-            return {}
+            return None
 
         logger.info(f"Top candidates:{len(main_contents)}")
-        for content in main_contents[:0]:
-            logger.info(content)
 
         if main_contents:
             main_contents = rescore_main_content_with_children(main_contents[0])
@@ -146,7 +145,6 @@ async def extract_main_content(url: str,
                 logger.debug(child)
 
             logger.info("最終的に選択されたメインコンテンツ:")
-            # print_content(tmp_main_content)
             logger.info(tmp_main_content)
 
             # 最終的に選択されたコンテンツを final_content とする
@@ -195,6 +193,7 @@ async def extract_main_content(url: str,
     except Exception as e:
         logger.error("extract_main_contentの実行中にエラーが発生しました:")
         print_error_details(e)
+        return None
 
     finally:
         if page:
@@ -304,7 +303,7 @@ async def quick_extract_content(url: str,
     try:
         found_tree = None
         # ページ移動と初期待機を簡略化
-        await page.goto(url, wait_until='load', timeout=10000)
+        await page.goto(url, wait_until='domcontentloaded', timeout=10000)
 
         # セレクタをループで試す
         for selector in css_selector_list:
@@ -340,7 +339,7 @@ async def quick_extract_content(url: str,
         await context.close()
 
 
-async def run_full_scan_standalone(url: str, arg_webtype: any = None):
+async def run_full_scan_standalone(url: str, arg_webtype: Any = None):
     """
     従来のtest_mainと同様に、単一URLのフルスキャンをスタンドアロンで実行します。
     ブラウザの起動と終了を内包します。
@@ -396,7 +395,7 @@ if __name__ == "__main__":
     parser.add_argument("url", help="The URL to test.")
     parser.add_argument(
         "--mode", "-m",
-        choices=["full", "quick"],
+        choices=["full", "quick", "quality"],
         default="full",
         help="Scan mode to execute. 'full' runs full scan, 'quick' runs quick scan. Default: full"
     )
