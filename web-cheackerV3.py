@@ -11,6 +11,7 @@ import re
 import json
 import html
 import requests
+from playwright.async_api import async_playwright
 
 # +----------------------------------------------------------------
 # + my module imports
@@ -526,11 +527,16 @@ async def main():
             email_width = ss_config.get('email_width', 500)
             perm_width = ss_config.get('permanent_width', 1920)
 
-            logger.info(f"Generating screenshots for email to {temp_dir}...")
-            email_image_list = await save_screenshot(diff_urls, save_dir=temp_dir, width=email_width)
-            
-            logger.info(f"Generating screenshots for permanent storage to {perm_dir}...")
-            permanent_image_list = await save_screenshot(diff_urls, save_dir=perm_dir, width=perm_width)
+            permanent_image_list = []
+            async with async_playwright() as p:
+                browser = await p.chromium.launch()
+                logger.info(f"Generating screenshots for email to {temp_dir}...")
+                email_image_list = await save_screenshot(browser, url_list=diff_urls, save_dir=temp_dir, width=email_width)
+                
+                logger.info(f"Generating screenshots for permanent storage to {perm_dir}...")
+                permanent_image_list = await save_screenshot(browser, url_list=diff_urls, save_dir=perm_dir, width=perm_width)
+                await browser.close()
+
 
             # --- Update DataFrame with permanent image filenames ---
             if permanent_image_list:

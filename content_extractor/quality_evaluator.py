@@ -4,7 +4,7 @@ from playwright.async_api import Page
 
 from .dom_treeSt import DOMTreeSt
 from .config import NO_RESULTS_CONFIG
-from .dom_utils import update_nodes_with_children
+from .dom_utils import flatten_dom_tree
 from setup_logger import setup_logger
 
 logger = setup_logger("quality_evaluator")
@@ -22,20 +22,44 @@ async def is_no_results_page(page: Page, dom_tree: DOMTreeSt) -> bool:
             return True
 
     # 2. HTML構造ベースの検出 (「結果なし」を示すセレクタの存在)
-    for selector in NO_RESULTS_CONFIG["no_results_selectors"]:
-        try:
-            if await page.locator(selector).count() > 0:
-                logger.info(f"「結果なし」セレクタ '{selector}' を検出しました。")
-                return True
-        except Exception as e:
-            logger.debug(f"セレクタ '{selector}' のチェック中にエラー: {e}")
-            continue
+    no_results_selectors = NO_RESULTS_CONFIG.get("no_results_selectors", [])
+    if no_results_selectors:
+        selectors_js_array = '["' + '", "'.join(no_results_selectors) + '"]'
+        found_no_results_selector = await page.evaluate(f"""
+            () => {{
+                const selectors = {selectors_js_array};
+                for (const selector of selectors) {{
+                    if (document.querySelector(selector)) {{
+                        return true;
+                    }}
+                }}
+                return false;
+            }}
+        """)
+        if found_no_results_selector:
+            logger.info("「結果なし」セレクタのいずれかを検出しました。")
+            return True
 
     # 3. HTML構造ベースの検出 (期待される結果コンテナの不在)
-    for selector in NO_RESULTS_CONFIG["expected_results_selectors"]:
-        if await page.locator(selector).count() > 0:
+    expected_selectors = NO_RESULTS_CONFIG.get("expected_results_selectors", [])
+    if expected_selectors:
+        selectors_js_array = '["' + '", "'.join(expected_selectors) + '"]'
+        found_expected_selector = await page.evaluate(f"""
+            () => {{
+                const selectors = {selectors_js_array};
+                for (const selector of selectors) {{
+                    if (document.querySelector(selector)) {{
+                        return true;
+                    }}
+                }}
+                return false;
+            }}
+        """)
+        if found_expected_selector:
+            # If an expected container is found, it's NOT a no-results page.
             return False
 
+    # If no expected container is found after all other checks, it's likely a no-results page.
     return True
 
 def _is_valid_result_item(item_node: DOMTreeSt) -> bool:
@@ -55,7 +79,7 @@ def _find_result_container(main_content_node: DOMTreeSt) -> Optional[DOMTreeSt]:
     best_container = None
     max_repetition_score = 0
 
-    candidate_nodes = update_nodes_with_children(main_content_node)
+    candidate_nodes = flatten_dom_tree(main_content_node)
 
     for node in candidate_nodes:
         if not node.children or len(node.children) < 2:
