@@ -23,12 +23,16 @@ class BoundingBox:
 class DOMTreeSt:
     tag: str = ""
     id: str = ""
-    attributes: Dict[str, str] = None
+    attributes: Dict[str, str] = field(default_factory=dict)
     children: List["DOMTreeSt"] = field(default_factory=list)
     rect: BoundingBox = field(default_factory=lambda: BoundingBox(0, 0, 0, 0))
     depth: int = 0
     text: str = ""
     score: int = 0
+    # NOTE: css_selector is the most specific selector, while css_selector_list holds alternatives.
+    # この2つのフィールドは意図的に分離されています。
+    # `css_selector`は最も具体的な単一セレクタを保持します。
+    # `css_selector_list`は代替またはより汎用的なセレクタのリストを保持します。
     css_selector: str = ""
     css_selector_list: List[str] = field(default_factory=list)
     links: List[str] = field(default_factory=list)
@@ -55,12 +59,7 @@ class DOMTreeSt:
             "id": self.id,
             "attributes": self.attributes,
             "children": [child.to_dict() for child in self.children],
-            "rect": {
-                "x": self.rect.x,
-                "y": self.rect.y,
-                "width": self.rect.width,
-                "height": self.rect.height,
-            },
+            "rect": self.rect.to_dict(),
             "depth": self.depth,
             "text": self.text,
             "score": self.score,
@@ -80,7 +79,7 @@ class DOMTreeSt:
             "is_empty_result": self.is_empty_result,
         }
     
-    def print_children(self) -> str:
+    def format_children(self) -> str:
         """子要素の出力"""
         infos = []
         for child in self.children:
