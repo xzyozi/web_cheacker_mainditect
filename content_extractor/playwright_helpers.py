@@ -1,6 +1,7 @@
 import os
 import hashlib
 from urllib.parse import urlparse, urljoin
+from typing import Optional
 import aiohttp
 from playwright.async_api import async_playwright, Page, Browser, TimeoutError as PlaywrightTimeoutError
 from PIL import Image
@@ -21,6 +22,8 @@ async def setup_page(url : str,
     指定されたURLのページを準備し、Pageオブジェクトを返します。
     ページの読み込みとネットワークの安定を待ちます。
     """
+    context = None
+    page = None
     try:
         context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
         page = await context.new_page()
@@ -34,6 +37,10 @@ async def setup_page(url : str,
     except Exception as e:
         logger.error(f"ページのセットアップ中にエラーが発生: {e}")
         traceback.print_exc()
+        if page:
+            await page.close()
+        elif context:
+            await context.close()
         return None
 
 async def adjust_page_view(page: Page) -> dict:
@@ -79,10 +86,11 @@ def is_scraping_allowed(robots_txt : str,
     return robot_parser.can_fetch("*", target_path)
 
 
-async def save_screenshot(url_list: list,
+async def save_screenshot(browser: Browser,
+                          url_list: list,
                           save_dir="temp",
                           width=500,
-                          height : int | None =None
+                          height: Optional[int] = None
                           ) -> list:
     """
     URLリストを受け取り、各ページのスクリーンショットを指定されたサイズで保存します。
@@ -91,57 +99,53 @@ async def save_screenshot(url_list: list,
     screenshot_paths = []
     os.makedirs(save_dir, exist_ok=True)
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+    for url in url_list:
+        parsed_url = urlparse(url)
+        if not parsed_url.scheme or not parsed_url.netloc:
+            logger.warning(f"無効なURLのためスキップ: {url}")
+            screenshot_paths.append(None)
+            continue
+
+        filename = generate_filename(url)
+        filepath = os.path.join(save_dir, filename)
         
-        for url in url_list:
-            parsed_url = urlparse(url)
-            if not parsed_url.scheme or not parsed_url.netloc:
-                logger.warning(f"無効なURLのためスキップ: {url}")
-                screenshot_paths.append(None)
-                continue
+        success = False
+        for attempt in range(MAX_RETRIES):
+            context = None
+            page = None
+            try:
+                # 毎回新しいコンテキストとページを作成して分離を強化
+                context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
+                page = await context.new_page()
+                
+                await page.goto(url, wait_until='load', timeout=30000)
+                await page.screenshot(path=filepath, full_page=True)
 
-            filename = generate_filename(url)
-            filepath = os.path.join(save_dir, filename)
-            
-            success = False
-            for attempt in range(MAX_RETRIES):
-                context = None
-                page = None
-                try:
-                    # 毎回新しいコンテキストとページを作成して分離を強化
-                    context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
-                    page = await context.new_page()
-                    
-                    await page.goto(url, wait_until='load', timeout=30000)
-                    await page.screenshot(path=filepath, full_page=True)
+                with Image.open(filepath) as img:
+                    aspect_ratio = img.height / img.width
+                    new_height = height if height else int(width * aspect_ratio)
+                    resized_img = img.resize((width, new_height))
+                    resized_img.save(filepath)
 
-                    with Image.open(filepath) as img:
-                        aspect_ratio = img.height / img.width
-                        new_height = height if height else int(width * aspect_ratio)
-                        resized_img = img.resize((width, new_height))
-                        resized_img.save(filepath)
+                screenshot_paths.append(filepath)
+                logger.info(f"スクリーンショットを保存しました: {filepath}")
+                success = True
+                break
+            except Exception as e:
+                logger.error(f"{url} のスクリーンショット処理に失敗 (試行 {attempt + 1}/{MAX_RETRIES}): {e}")
+                if attempt < MAX_RETRIES - 1:
+                    await asyncio.sleep(RETRY_DELAY_SECONDS)
+                else:
+                    logger.error(f"{url} のスクリーンショット処理が最大試行回数 ({MAX_RETRIES}) を超えても成功しませんでした。")
+            finally:
+                if page:
+                    await page.close()
+                if context:
+                    await context.close()
+        
+        if not success:
+            screenshot_paths.append(None)
 
-                    screenshot_paths.append(filepath)
-                    logger.info(f"スクリーンショットを保存しました: {filepath}")
-                    success = True
-                    break
-                except Exception as e:
-                    logger.error(f"{url} のスクリーンショット処理に失敗 (試行 {attempt + 1}/{MAX_RETRIES}): {e}")
-                    if attempt < MAX_RETRIES - 1:
-                        await asyncio.sleep(RETRY_DELAY_SECONDS)
-                    else:
-                        logger.error(f"{url} のスクリーンショット処理が最大試行回数 ({MAX_RETRIES}) を超えても成功しませんでした。")
-                finally:
-                    if page:
-                        await page.close()
-                    if context:
-                        await context.close()
-            
-            if not success:
-                screenshot_paths.append(None)
-
-        await browser.close()
     return screenshot_paths
 
 def generate_filename(url: str) -> str:
