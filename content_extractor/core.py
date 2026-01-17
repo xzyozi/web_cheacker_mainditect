@@ -257,7 +257,14 @@ async def evaluate_search_quality(url: str,
             logger.info(f"関連性スコアを計算しました: Avg={content_node.avg_relevance:.2f}, Var={content_node.relevance_variance:.2f}, Max={content_node.max_relevance:.2f}")
 
             # フェーズ4: SQS計算と最終判定
-            scorer.calculate_sqs(content_node)
+            sqs, category = scorer.calculate_sqs(
+                result_count=content_node.result_count,
+                avg_relevance=content_node.avg_relevance,
+                relevance_variance=content_node.relevance_variance,
+                max_relevance=content_node.max_relevance
+            )
+            content_node.sqs_score = sqs
+            content_node.quality_category = category
 
         return content_node
     finally:
