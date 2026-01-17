@@ -4,9 +4,6 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 from enum import Enum, auto
 
-# This import is moved inside __main__ to allow running the script directly
-# from .dom_treeSt import DOMTreeSt 
-
 # --- Regex Constants ---
 # Matches 'page' followed by an optional separator (-, =, /) and digits.
 # Used to identify URLs that are part of a paginated series.
@@ -42,14 +39,13 @@ class WebType(Enum):
 
     @classmethod
     def from_string(cls, enum_str: str) -> "WebType":
-        if not isinstance(enum_str, str) or not enum_str:
+        if not isinstance(enum_str, str):
             return cls.plane
         
-        member_name = enum_str.split(".")[-1] # "WebType.plane"でも"plane"でも対応
-        try:
-            return cls[member_name.strip()]
-        except KeyError:
-            return cls.plane
+        member_name = enum_str.split(".")[-1].strip()
+        
+        # getattrを使って安全にアクセスする
+        return getattr(cls, member_name, cls.plane)
     
 
 class PageMonitor:
@@ -72,34 +68,32 @@ class PageMonitor:
     def determine_watch_page(self):
         """
         最新ページのURLを取得します。
-        ページ内のリンクから最大のページ番号を見つけ、ベースURLのページ番号部分をそれで置換します。
+        ページ内のリンクから最大のページ番号を持つリンクを見つけ、絶対URLを返します。
         """
-        page_numbers = []
-        # ページリンクからページ番号を収集
+        latest_page_num = -1
+        latest_link = None
+
+        # ページリンクから最新のページ番号と対応するリンクを見つける
         for link in self.node.links:
             match = PAGE_NUMBER_CAPTURE_REGEX.search(link)
             if match:
-                page_numbers.append(int(match.group(2)))
-
-        if not page_numbers:
+                page_num = int(match.group(2))
+                if page_num > latest_page_num:
+                    latest_page_num = page_num
+                    latest_link = link
+        
+        # ページネーションリンクが見つからなければ何もしない
+        if latest_link is None:
             return None
 
-        latest_page_num = max(page_numbers)
-
-        # ベースURLにページ番号パターンがあるか確認
+        # ベースURLから現在のページ番号を取得
         base_match = PAGE_NUMBER_CAPTURE_REGEX.search(self.base_url)
-        if not base_match:
-            # ベースURLがページネーション形式でない場合、何もしない
-            return None
-            
-        current_page_num = int(base_match.group(2))
-
+        current_page_num = int(base_match.group(2)) if base_match else -1
+        
         # 最新ページ番号が現在のページ番号より大きい場合のみURLを更新
         if latest_page_num > current_page_num:
-            # page_format (e.g., "page-", "page/") and the number
-            page_part_format = base_match.group(1)
-            # Replace the page part of the base_url with the new latest page number
-            new_url = self.base_url.replace(base_match.group(0), f"{page_part_format}{latest_page_num}")
+            # `urljoin` を使って相対リンクを絶対URLに正しく解決する
+            new_url = urljoin(self.base_url, latest_link)
             return new_url
         
         return None
