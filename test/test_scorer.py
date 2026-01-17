@@ -79,6 +79,17 @@ def test_is_main_element_with_empty_attributes():
     node = DOMTreeSt(tag="div", attributes={})
     assert is_main_element(node) is False
 
+def test_is_main_element_with_mixed_case_main_id():
+    """idのさらに別の-大文字小文字を区別しない場合をテストする。"""
+    node = DOMTreeSt(tag="div", attributes={"id": "my-Main-section"})
+    assert is_main_element(node) is True
+
+def test_is_main_element_with_main_in_class():
+    """class属性に'main'が含まれるが、idには含まれない場合をテストする。"""
+    node = DOMTreeSt(tag="div", attributes={"class": "main-body", "id": "content"})
+    assert is_main_element(node) is False
+
+
 # -----------------------------------------------------------------
 # is_valid_element() のテスト
 #
