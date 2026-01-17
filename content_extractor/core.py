@@ -4,6 +4,7 @@ import os
 from collections import Counter
 import asyncio
 from playwright.async_api import async_playwright, Page, Browser, TimeoutError as PlaywrightTimeoutError
+from aiohttp import ClientError
 
 import traceback
 import sys
@@ -122,16 +123,27 @@ async def extract_main_content(url: str,
             # for content in main_contents[:2]:
             #     print_content(content)
 
+            # =================================================================
+            # メインコンテンツ候補の再評価ループ
+            # =================================================================
+            # 初期候補(mainタグなど)は大きすぎることがある。そのため、その子要素を再評価し、
+            # よりスコアの高い(＝よりコンテンツ本体に近い)要素へと絞り込んでいく。
+            # 画面占有率などがスコアに大きく影響するため、この絞り込みが重要となる。
             loop_count = 0
-            # tmp_main_content = DOMTreeSt()
             while main_contents:
-                tmp_main_content = main_contents[0] 
+                # 現在の最有力候補を一時保存
+                tmp_main_content = main_contents[0]
 
+                # 最有力候補の子要素を再スコアリングし、新たな候補リストとする
                 main_contents = rescore_main_content_with_children(tmp_main_content)
 
-                logger.debug(f" tmp_main selector : {tmp_main_content.css_selector} main selector: {main_contents[0].css_selector}")
-                logger.debug(f'tmp_candidates score : {tmp_main_content.score}  & main_contents {main_contents[0].score}')
-                if tmp_main_content.score >= main_contents[0].score:
+                logger.debug(f" Parent selector : {tmp_main_content.css_selector} / Score: {tmp_main_content.score}")
+                if main_contents:
+                    logger.debug(f" -> Best Child selector: {main_contents[0].css_selector} / Score: {main_contents[0].score}")
+
+                # 子要素が見つからない、または子要素のスコアが親を超えなくなったら、
+                # 親が最良のコンテンツブロックと判断してループを抜ける。
+                if not main_contents or tmp_main_content.score >= main_contents[0].score:
                     break
 
                 loop_count += 1
@@ -190,8 +202,16 @@ async def extract_main_content(url: str,
 
             return None
 
+    except PlaywrightTimeoutError as e:
+        logger.error(f"Playwrightの操作中にタイムアウトが発生しました: {url} - {e}")
+        print_error_details(e)
+        return None
+    except ClientError as e:
+        logger.error(f"HTTPリクエスト中にエラーが発生しました: {url} - {e}")
+        print_error_details(e)
+        return None
     except Exception as e:
-        logger.error("extract_main_contentの実行中にエラーが発生しました:")
+        logger.error(f"extract_main_contentの実行中に予期せぬエラーが発生しました: {url}")
         print_error_details(e)
         return None
 
@@ -339,8 +359,12 @@ async def quick_extract_content(url: str,
         found_tree.web_type = webtype_str
         return found_tree
 
+    except PlaywrightTimeoutError as e:
+        logger.error(f"Quickスキャン中のPlaywright操作でタイムアウトしました: {url} - {e}")
+        return None # Quickスキャン失敗
     except Exception as e:
-        logger.error(f"コンテンツ抽出中にエラーが発生: {str(e)}")
+        logger.error(f"Quickスキャン中に予期せぬエラーが発生: {url}")
+        print_error_details(e)
         return None # Quickスキャン失敗
     finally:
         await context.close()
