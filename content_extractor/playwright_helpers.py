@@ -34,8 +34,16 @@ async def setup_page(url : str,
         except PlaywrightTimeoutError:
             logger.warning("ネットワークが15秒以内にアイドル状態になりませんでした。処理を続行します。")
         return page
+    except PlaywrightTimeoutError as e:
+        logger.error(f"ページのセットアップ中にタイムアウトが発生しました: {url} - {e}")
+        traceback.print_exc()
+        if page:
+            await page.close()
+        elif context:
+            await context.close()
+        return None
     except Exception as e:
-        logger.error(f"ページのセットアップ中にエラーが発生: {e}")
+        logger.error(f"ページのセットアップ中に予期せぬエラーが発生: {url} - {e}")
         traceback.print_exc()
         if page:
             await page.close()
@@ -132,7 +140,12 @@ async def save_screenshot(browser: Browser,
                 success = True
                 break
             except Exception as e:
-                logger.error(f"{url} のスクリーンショット処理に失敗 (試行 {attempt + 1}/{MAX_RETRIES}): {e}")
+                if isinstance(e, (PlaywrightTimeoutError, IOError)):
+                    logger.warning(f"{url} のスクリーンショット処理で既知のエラー (試行 {attempt + 1}/{MAX_RETRIES}): {type(e).__name__} - {e}")
+                else:
+                    logger.error(f"{url} のスクリーンショット処理中に予期せぬエラー (試行 {attempt + 1}/{MAX_RETRIES}): {e}")
+                    traceback.print_exc()
+
                 if attempt < MAX_RETRIES - 1:
                     await asyncio.sleep(RETRY_DELAY_SECONDS)
                 else:
