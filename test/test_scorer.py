@@ -183,3 +183,60 @@ def test_score_text_length_very_high(scorer_instance):
     """Test Case 3: テキスト長が非常に長い。"""
     node = DOMTreeSt(text="a" * 2000)
     assert scorer_instance._score_text_length(node) < 0.1
+
+# -----------------------------------------------------------------
+# MainContentScorer クラスのテスト
+#
+# 設計書セクション: 3.1. scorer.py -> find_candidates / score_parent_and_children
+# -----------------------------------------------------------------
+@pytest.fixture
+def sample_dom_tree():
+    """テスト用のDOMツリー構造を生成するフィクスチャ"""
+    p = DOMTreeSt(tag="p", text="a" * 100, rect=BoundingBox(200, 200, 600, 400), depth=3)
+    article = DOMTreeSt(tag="article", text="a", rect=BoundingBox(150, 150, 700, 500), depth=2, children=[p])
+    aside = DOMTreeSt(tag="aside", rect=BoundingBox(850, 150, 100, 500), depth=2) # is_valid_element=Falseになる想定
+    main_content = DOMTreeSt(tag="main", text="a", rect=BoundingBox(100, 100, 800, 600), depth=1, children=[article, aside])
+    header = DOMTreeSt(tag="header", rect=BoundingBox(0, 0, 1000, 100), depth=1) # is_valid_element=Falseになる想定
+    footer = DOMTreeSt(tag="footer", rect=BoundingBox(0, 700, 1000, 100), depth=1) # is_valid_element=Falseになる想定
+    body = DOMTreeSt(tag="body", rect=BoundingBox(0, 0, 1000, 1000), depth=0, children=[header, main_content, footer])
+    return [body]
+
+
+def test_find_candidates(sample_dom_tree):
+    """
+    Test Case 1: `find_candidates` が最もメインコンテンツらしい要素を最高スコアとして返すことを確認する。
+    """
+    scorer = MainContentScorer(tree=sample_dom_tree, width=1000, height=1000)
+    candidates = scorer.find_candidates()
+
+    # デバッグ用にスコアを出力
+    for c in candidates:
+        print(f"Tag: {c.tag}, Score: {c.score}")
+
+    # 候補リストはスコアで降順ソートされている
+    assert candidates[0].score >= candidates[1].score
+    # このテストケースでは<main>タグが最もスコアが高いはず
+    assert candidates[0].tag == "main"
+
+def test_score_parent_and_children_depth_weighting(scorer_instance):
+    """
+    深さを考慮したスコアリングで、同じ特徴を持つノードでも
+    深い階層にあるものが高く評価されることを確認する。
+    """
+    # ジオメトリとテキストが同じで深さだけが違うノードを作成
+    child = DOMTreeSt(tag="div", text="a", rect=BoundingBox(100, 100, 100, 100), depth=2)
+    parent = DOMTreeSt(tag="div", text="a", rect=BoundingBox(100, 100, 100, 100), depth=1, children=[child])
+
+    # Scorerを親ノードで初期化
+    scorer = MainContentScorer(tree=[parent], width=1000, height=1000)
+    scored_nodes = scorer.score_parent_and_children()
+
+    parent_score = next(n.score for n in scored_nodes if n.depth == 1)
+    child_score = next(n.score for n in scored_nodes if n.depth == 2)
+
+    # デバッグ用にスコアを出力
+    print(f"Parent score (depth 1): {parent_score}")
+    print(f"Child score (depth 2): {child_score}")
+
+    assert child_score > parent_score
+
