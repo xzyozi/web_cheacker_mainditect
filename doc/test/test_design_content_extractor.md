@@ -109,11 +109,47 @@
 
 ### 3.2. `core.py` (インテグレーションテスト)
 
-- **目的:** 複数モジュールが連携するフローを検証する。
-- **Test Case 1: `extract_main_content` のコンテンツ絞り込み**
-    - **内容:** `make_tree`が親子関係を持つノードツリーを返し、`scorer`が適切にスコアを付ける設定で、`while`ループが正しく子ノードに絞り込み、最終的にループを抜けることを確認する。
-    - **モック対象:** `make_tree`, `rescore_main_content_with_children`
-    - **期待値:** 最終的に最もスコアの高い子孫ノードが `final_content`として返される。
+**目的:** `content_extractor.core.extract_main_content` が、複数のモジュール（`make_tree`, `MainContentScorer`）と連携し、最も確からしいコンテンツブロックを特定するまでの絞り込みプロセス全体を検証する。
+
+**Test Case 1: `extract_main_content` の絞り込みループ**
+- **シナリオ:**
+  初期スコアリングではメインコンテンツに見えないが、子要素を再評価するとよりスコアの高い子孫が見つかる、という状況をシミュレートする。
+  具体的には、最初は広いコンテナ(`div#wrapper`)が高いスコアを持つが、その子孫である `article#main-article` が真の本文であり、再スコアリングによって最終的に選択されることを確認する。
+
+- **テストフィクスチャ (Mock `make_tree` の返り値):**
+  以下のような親子関係を持つDOMツリーを準備する。各ノードのスコアは `MainContentScorer` によって初期計算されると仮定する。
+
+  ```
+  body
+  └── div#wrapper (score: 80)
+      ├── nav (score: 10, is_valid=False)
+      └── main
+          └── article#main-article (score: 70)
+              └── p (score: 95)
+  ```
+
+- **モック対象の動作:**
+    1.  **`make_tree`:**
+        - 上記のテストフィクスチャ（DOMツリー）を返すようにモックする。
+    2.  **`MainContentScorer.find_candidates`:**
+        - このツリーを評価し、`div#wrapper` と `article#main-article` を候補として返す。`div#wrapper` の方がスコアが高いとする。
+    3.  **`rescore_main_content_with_children`:**
+        - 呼び出されるたびに、渡されたノードの子孫を評価し、スコアを更新したリストを返すようにモックする。
+        - 1回目の呼び出し（対象: `div#wrapper`）: `article#main-article` を含む子リストを返し、その中で `article#main-article` のスコアが更新されて `div#wrapper` より高くなるように設定する (例: 85)。
+        - 2回目の呼び出し（対象: `article#main-article`）: `p` を含む子リストを返し、`p` のスコアがさらに高くなるように設定する (例: 95)。
+        - 3回目の呼び出し（対象: `p`）: 子がいないため空リスト `[]` を返す。これによりループが終了する。
+
+- **検証ステップ:**
+    1.  `extract_main_content` を呼び出す。
+    2.  内部で `MainContentScorer` が実行され、最初の候補として `div#wrapper` が選択されることを確認する。
+    3.  `while` ループが開始される。
+    4.  1回目の `rescore_main_content_with_children` 呼び出し後、次の最有力候補が `article#main-article` になることを確認する。
+    5.  2回目の呼び出し後、次の最有力候補が `p` になることを確認する。
+    6.  3回目の呼び出し後、空リストが返されループが終了することを確認する。
+    7.  最終的に `extract_main_content` が `p` ノードを返すことをアサートする。
+
+- **期待値:**
+  最終的に返される `final_content` オブジェクトが、最も深い階層にある `p` タグのノードと一致する。
 
 ## 4. 新規テストの追加手順
 
