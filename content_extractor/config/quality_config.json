@@ -1,0 +1,12 @@
+{
+    "sqs_weights": {
+        "result_count": 0.2,
+        "avg_relevance": 0.4,
+        "relevance_variance": 0.2,
+        "max_relevance": 0.2
+    },
+    "sqs_thresholds": {
+        "valid": 60,
+        "low_quality": 20
+    }
+}
