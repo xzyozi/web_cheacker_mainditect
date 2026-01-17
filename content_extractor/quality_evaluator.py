@@ -93,7 +93,12 @@ def _find_result_container(main_content_node: DOMTreeSt) -> Optional[DOMTreeSt]:
             continue
 
         most_common_class, count = class_counts.most_common(1)[0]
-        repetition_score = count * (count / len(node.children))
+        
+        # スコアリングロジックを改善：純度（purity）を考慮に入れる
+        # 純度 = 繰り返し回数 / 全子要素数
+        # これにより、ノイズの少ない（均質な）コンテナが評価されやすくなる
+        purity = count / len(node.children)
+        repetition_score = count * purity
 
         if repetition_score > max_repetition_score:
             max_repetition_score = repetition_score
