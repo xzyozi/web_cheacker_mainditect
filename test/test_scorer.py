@@ -127,3 +127,48 @@ def test_screen_occupancy_multiplier_at_zero(scorer_instance):
     """Test Case 3: ゼロ。"""
     assert scorer_instance._calculate_screen_occupancy_multiplier(0.0) < 0.1
     assert scorer_instance._calculate_screen_occupancy_multiplier(0.0) > 0
+
+# -----------------------------------------------------------------
+# _score_link_length() のテスト
+#
+# 設計書セクション: 3.1. scorer.py -> _score_link_length()
+# -----------------------------------------------------------------
+
+def test_score_link_length_zero(scorer_instance):
+    """Test Case 1: リンク数ゼロ。"""
+    node = DOMTreeSt(links=[])
+    # スコアは0.1をLINK_LENGTH_WEIGHT(1.0)で累乗したもの
+    assert scorer_instance._score_link_length(node) == pytest.approx(0.1)
+
+def test_score_link_length_at_mean(scorer_instance):
+    """Test Case 2: リンク数が平均値。"""
+    # MEANは6なので、ガウス分布はexp(0) = 1.0になる
+    node = DOMTreeSt(links=[""] * 6)
+    assert scorer_instance._score_link_length(node) == pytest.approx(1.0)
+
+def test_score_link_length_very_high(scorer_instance):
+    """Test Case 3: リンク数が非常に多い。"""
+    node = DOMTreeSt(links=[""] * 100)
+    assert scorer_instance._score_link_length(node) < 0.1
+
+# -----------------------------------------------------------------
+# _score_text_length() のテスト
+#
+# 設計書セクション: 3.1. scorer.py -> _score_text_length()
+# -----------------------------------------------------------------
+
+def test_score_text_length_zero(scorer_instance):
+    """Test Case 1: テキスト長ゼロ。"""
+    node = DOMTreeSt(text="")
+    assert scorer_instance._score_text_length(node) == 0.0
+
+def test_score_text_length_at_mean(scorer_instance):
+    """Test Case 2: テキスト長が平均値。"""
+    # MEANは50
+    node = DOMTreeSt(text="a" * 50)
+    assert scorer_instance._score_text_length(node) == pytest.approx(1.0)
+
+def test_score_text_length_very_high(scorer_instance):
+    """Test Case 3: テキスト長が非常に長い。"""
+    node = DOMTreeSt(text="a" * 2000)
+    assert scorer_instance._score_text_length(node) < 0.1
