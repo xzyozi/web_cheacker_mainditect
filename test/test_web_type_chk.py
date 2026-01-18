@@ -44,6 +44,11 @@ def node_data_6():
         links=["http://sample.com/page-1", "http://sample.com/page-2"]
     )
 
+@pytest.fixture
+def node_data_no_links():
+    """Fixture for a DOM tree with no links."""
+    return DOMTreeSt(links=[])
+
 # --- Tests for PageMonitor ---
 
 def test_determine_watch_page_standard_pagination(node_data_1):
@@ -71,7 +76,7 @@ def test_determine_watch_page_relative_links(node_data_3):
     assert actual_url_3 == expected_url_3
 
 def test_determine_watch_page_base_not_paginated(node_data_6):
-    """Test Case 6: Base URL is not a paginated URL."""
+    """Test Case 4: Base URL is not a paginated URL."""
     base_url_6 = "http://sample.com/regular/article.html"
     monitor_6 = PageMonitor(base_url_6, node_data_6)
     expected_url_6 = None
@@ -81,7 +86,7 @@ def test_determine_watch_page_base_not_paginated(node_data_6):
 # --- Tests for WebTypeCHK ---
 
 def test_webtype_chk_integration(node_data_3):
-    """Test Case 4: WebTypeCHK integration check."""
+    """Test Case 1: Next page exists."""
     base_url_3 = "http://sample.com/articles/page/3"
     expected_url_3 = "http://sample.com/articles/page/5"
     chk_4 = WebTypeCHK(base_url_3, node_data_3)
@@ -90,7 +95,7 @@ def test_webtype_chk_integration(node_data_3):
     assert chk_4.next_url == expected_url_3
 
 def test_webtype_chk_on_last_page(node_data_2):
-    """Test Case 5: WebTypeCHK on last page."""
+    """Test Case 2: Last page, but URL is paginated."""
     base_url_2 = "http://sample.com/def/page-10"
     chk_5 = WebTypeCHK(base_url_2, node_data_2)
     web_type_5 = chk_5.webtype_chk()
@@ -98,9 +103,17 @@ def test_webtype_chk_on_last_page(node_data_2):
     assert chk_5.next_url is None
 
 def test_webtype_chk_not_paginated(node_data_6):
-    """Test Case 6 part 2: WebTypeCHK with non-paginated base URL."""
+    """Test Case 3: Not paginated (with links)."""
     base_url_6 = "http://sample.com/regular/article.html"
     chk_6 = WebTypeCHK(base_url_6, node_data_6)
     web_type_6 = chk_6.webtype_chk()
     assert web_type_6 == "plane"
     assert chk_6.next_url is None
+
+def test_webtype_chk_not_paginated_no_links(node_data_no_links):
+    """Test Case 3: Not paginated (no links)."""
+    base_url = "http://sample.com/regular/article.html"
+    chk = WebTypeCHK(base_url, node_data_no_links)
+    web_type = chk.webtype_chk()
+    assert web_type == "plane"
+    assert chk.next_url is None
