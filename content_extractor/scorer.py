@@ -45,28 +45,31 @@ class MainContentScorer:
         STD_HIGH = 1000
 
     def __init__(self,
-                 tree: list[DOMTreeSt], 
-                 width: int, 
+                 tree: list[DOMTreeSt],
+                 width: int,
                  height: int
                  ):
         if isinstance(tree, list):
             self.tree = tree
         else:
             raise TypeError("tree must be a list of dicts")
-        
+
         self.width = width
         self.height = height
 
-    def _calculate_screen_occupancy_multiplier(self, 
-                                               occupancy_rate: float, 
-                                               peak: float = 0.8, 
+    def _calculate_screen_occupancy_multiplier(self,
+                                               occupancy_rate: float,
+                                               peak: float = 0.8,
                                                sigma: float = 0.3
                                                ) -> float:
-        """        
-        画面占有率に基づいてスコアの倍率を計算する。  
-        この関数はガウス関数（正規分布）を使用し、基準値（peak）を中心に  
+        """
+        画面占有率に基づいてスコアの倍率を計算する。
+        この関数はガウス関数（正規分布）を使用し、基準値（peak）を中心に
         偏差（sigma）が大きくなるほどスコアを減衰させる。
         """
+        # occupancy_rateがNoneになる可能性を考慮。Noneの場合は0として扱う。
+        # また、負の値が入力された場合も0として扱う。
+        occupancy_rate = max(0.0, occupancy_rate if occupancy_rate is not None else 0.0)
         exponent = -0.5 * ((occupancy_rate - peak) / sigma) ** 2
         return math.exp(exponent)
 
@@ -74,9 +77,14 @@ class MainContentScorer:
         """
         要素内のリンク数に基づいてスコアを計算します。
         リンクが全くない、あるいは多すぎる場合にペナルティを与え、適度な場合に高評価します。
-        これにより、ナビゲーションやフッターではなく、本文を抽出しやすくします。
+        これにより、ナビゲーションやフッターではなく、本文を抽出出しやすくします。
         """
-        link_length = len(node.links)
+        # node.linksがリストでない場合、またはNoneの場合は0として扱う
+        if not isinstance(node.links, list):
+            link_length = 0
+        else:
+            link_length = len(node.links)
+
         if link_length == 0:
             score = 0.1
         elif link_length <= self.LinkScoring.MEAN:
@@ -92,7 +100,12 @@ class MainContentScorer:
         テキストが全くない、あるいは非常に少ない場合にペナルティを与えます。
         適度な長さのテキストを持つ要素を本文の候補として高く評価します。
         """
-        text_length = len(node.text)
+        # node.textが文字列でない場合、またはNoneの場合は0として扱う
+        if not isinstance(node.text, str):
+            text_length = 0
+        else:
+            text_length = len(node.text)
+
         if text_length == 0: score = 0
         elif text_length <= self.TextScoring.MEAN:
             score = math.exp(-0.5 * ((text_length - self.TextScoring.MEAN) / self.TextScoring.STD_LOW) ** 2)
@@ -108,17 +121,21 @@ class MainContentScorer:
         score = 1.0
 
         # 1. 画面占有率: 要素が画面に占める面積が大きいほど高スコア
-        element_area = node.rect.width * node.rect.height
+        element_area = node.rect.width * node.rect.height if node.rect else 0 # rectがNoneの場合を考慮
         page_area = self.width * self.height if self.width * self.height > 0 else 1
         occupancy_rate = element_area / page_area
         multiplier = self._calculate_screen_occupancy_multiplier(occupancy_rate)
         score *= multiplier
 
         # 2. 位置とサイズ: 画面中央・上部にある、幅広・高身長の要素を高スコア
-        x = (node.rect.x + node.rect.width / 2) / self.width if self.width > 0 else 0
-        y = node.rect.y / self.height if self.height > 0 else 0
-        w = node.rect.width / self.width if self.width > 0 else 0
-        h = node.rect.height / self.height if self.height > 0 else 0
+        if node.rect: # rectがNoneの場合を考慮
+            x = (node.rect.x + node.rect.width / 2) / self.width if self.width > 0 else 0
+            y = node.rect.y / self.height if self.height > 0 else 0
+            w = node.rect.width / self.width if self.width > 0 else 0
+            h = node.rect.height / self.height if self.height > 0 else 0
+        else: # rectがNoneの場合は全て0とする
+            x, y, w, h = 0, 0, 0, 0
+
 
         x_score = self.X_DIST.pdf(x) ** self.Weights.X
         y_score = self.Y_DIST.pdf(y) ** self.Weights.Y
@@ -138,11 +155,11 @@ class MainContentScorer:
         深さ(depth)を考慮せず、要素単体の特徴で評価します。
         """
         score = self._calculate_base_score(node)
-        
+
         # <main>タグなど、メインコンテンツを示す明確な要素にはボーナスを与える
         if is_main_element(node):
             score += self.Weights.MAIN_TAG_BONUS
-        
+
         node.score = score
 
     def _score_for_refinement(self, node: DOMTreeSt, depth_diff: int):
@@ -155,7 +172,7 @@ class MainContentScorer:
         # 深さの重み: 深い階層にあるノードほど本文である可能性が高いとみなし、スコアを高くする
         depth_weight = calculate_depth_weight(node.depth - depth_diff)
         score *= depth_weight
-        
+
         node.score = score
 
     def find_candidates(self) -> List[DOMTreeSt]:
@@ -166,7 +183,7 @@ class MainContentScorer:
         """
         if not self.tree:
             return []
-        
+
         nodes = self.tree
         candidates = []
         while nodes :
@@ -176,13 +193,13 @@ class MainContentScorer:
                 candidates.append(node)
 
             self._score_for_candidacy(node)
-            
+
             nodes.extend(node.children)
 
         candidates.sort(key=lambda x: x.score, reverse=True)
-        
+
         return candidates
-    
+
     def score_parent_and_children(self) -> list[DOMTreeSt]:
         """
         候補リスト（またはその親）とその子孫に対して、深さ(depth)を考慮した
@@ -199,7 +216,7 @@ class MainContentScorer:
         nodes_to_score = list(self.tree)  # Make a copy to iterate over
 
         while nodes_to_score:
-            node = nodes_to_score.pop(0)
+            node = nodes_to_score.pop(0) # Corrected line
             self._score_for_refinement(node, depth_diff=depth_diff)
             scored_nodes.append(node)
             nodes_to_score.extend(node.children)
@@ -207,15 +224,17 @@ class MainContentScorer:
         scored_nodes.sort(key=lambda x: x.score, reverse=True)
 
         return scored_nodes
-    
-def calculate_depth_weight(current_depth : int , 
+
+def calculate_depth_weight(current_depth : int ,
                            max_depth : int = 5,
-                           base_weight :float =1.0 , 
+                           base_weight :float =1.0 ,
                            weight_factor :float =4.0) -> float:
     """
     現在の階層レベルに基づいて depth の重みを計算する関数。
     深い階層にあるほど高い重みを返します。
     """
+    # 負の深さは0として扱う
+    current_depth = max(0, current_depth)
     depth_ratio = current_depth / max_depth
     weight = base_weight * (weight_factor ** depth_ratio)
     return weight
@@ -225,10 +244,18 @@ def is_main_element(node: DOMTreeSt) -> bool:
     ノードが<main>タグか、idに"main"を含むなど、
     メインコンテンツであることを示す明確なヒントを持つかを判定します。
     """
+    # node.tagがNoneの場合を考慮
+    if node.tag is None or node.tag == "":
+        return False # タグがない場合はメイン要素ではない
+
     tag = node.tag.upper()
     if tag == "MAIN":
         return True
-    if "id" in node.attributes and "main" in node.attributes["id"].lower():
+
+    # node.attributesがNone、または'id'キーが存在しない/値がNoneの場合を考慮
+    node_attributes = node.attributes if node.attributes is not None else {}
+    node_id = node_attributes.get("id")
+    if node_id and isinstance(node_id, str) and "main" in node_id.lower():
         return True
     return False
 
@@ -244,7 +271,7 @@ def is_valid_element(node: DOMTreeSt) -> bool:
     ]
     if tag in invalid_tags:
         return False
-    
+
     area = node.rect.width * node.rect.height
     if area < 0.05:
         return False
@@ -255,8 +282,12 @@ def is_valid_element(node: DOMTreeSt) -> bool:
     ノードがメインコンテンツの候補として有効かどうかを判定します。
     明らかに本文ではない要素（ヘッダー、フッターなど）や、小さすぎる要素を除外します。
     """
+    # タグがない、または空の場合は無効な要素とする
+    if node.tag is None or node.tag == "":
+        return False
+
     tag = node.tag.upper()
-    
+
     # リファクタリングにより、コンテナ要素(div, sectionなど)を主に候補とするため、
     # テキスト要素(P, Hxなど)を直接の候補から除外するアプローチから、
     # 非コンテナ要素を明示的に除外するアプローチに変更。
@@ -272,9 +303,10 @@ def is_valid_element(node: DOMTreeSt) -> bool:
     ]
     if tag in invalid_tags:
         return False
-    
+
     # 画面に対して極端に小さい要素は除外
-    area = node.rect.width * node.rect.height
+    # node.rectがNoneの場合を考慮
+    area = node.rect.width * node.rect.height if node.rect else 0
     if area < 0.05:
         return False
     return True
