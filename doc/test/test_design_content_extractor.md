@@ -332,356 +332,707 @@
     - **期待値:** エラーがログに記録され、関数が`None`を返すこと。
 
 #### `adjust_page_view(page)`
+
 - **目的:** ページのコンテンツに基づいてビューポートのサイズが正しく計算され、設定されること、およびページが最下部までスクロールされることを確認する。
+
 - **Test Case 1: 正しいビューポートサイズ設定とスクロール**
+
     - **内容:** `page.evaluate`が正しいJavaScriptコードを実行してページの寸法を取得し、`page.set_viewport_size`がこれらの寸法で呼び出され、`window.scrollTo`が呼び出されることを確認する。
+
     - **入力:** モックされた`Page`オブジェクト。
-    - **期待値:** `page.evaluate`と`page.set_viewport_size`、`page.wait_for_timeout`が正しい引数で呼び出され、計算された寸法が返されること。
+
+    - **期待値:** `page.evaluate`と`page.set_viewport_size`、`page.wait_for_timeout`が正しい引数で呼び出され、計算された寸法が返されること（`height`が`page.evaluate`から返される`height`値と一致すること）。
+
+
 
 #### `fetch_robots_txt(url)`
+
 - **目的:** 指定されたURLから`robots.txt`の内容を非同期で取得できること、およびネットワークエラーや無効なレスポンスを適切に処理できることを確認する。
+
 - **Test Case 1: 正常な`robots.txt`の取得**
+
     - **内容:** `aiohttp.ClientSession`を使用して`robots.txt`が正常にフェッチされ、内容が文字列として返されることを確認する。
+
     - **入力:** 有効なURLとモックされた`aiohttp`リクエスト。
+
     - **期待値:** `robots.txt`の内容が文字列として返されること。
+
 - **Test Case 2: `robots.txt`が見つからない (404)**
+
     - **内容:** `robots.txt`のURLが404 Not Foundを返した場合に、`None`が返されることを確認する。
+
     - **入力:** 404を返すようにモックされた`aiohttp`リクエスト。
+
     - **期待値:** `None`が返されること。
+
 - **Test Case 3: ネットワークエラー**
+
     - **内容:** ネットワーク接続の問題などで`aiohttp`が例外を発生させた場合に、`None`が返されることを確認する。
+
     - **入力:** 例外を発生させるようにモックされた`aiohttp`リクエスト。
+
     - **期待値:** `None`が返されること。
+
+
 
 #### `is_scraping_allowed(robots_txt, target_path)`
+
 - **目的:** `robots.txt`の内容を正確に解析し、指定されたパスのスクレイピングが許可されているか否かを正しく判断できることを確認する。
+
 - **Test Case 1: 許可されているパス**
+
     - **内容:** `User-agent: * Disallow: /admin` のような`robots.txt`において、`/allowed/path`が許可されることを確認する。
+
     - **入力:** `robots.txt`の内容と、許可されるパス。
+
     - **期待値:** `True`が返されること。
+
 - **Test Case 2: 禁止されているパス**
+
     - **内容:** `User-agent: * Disallow: /private` のような`robots.txt`において、`/private/data`が禁止されることを確認する。
+
     - **入力:** `robots.txt`の内容と、禁止されるパス。
+
     - **期待値:** `False`が返されること。
+
 - **Test Case 3: `robots.txt`が存在しない（空の文字列）**
+
     - **内容:** `robots_txt`が空の場合に、すべてのパスが許可されることを確認する。
+
     - **入力:** 空文字列と任意のパス。
+
     - **期待値:** `True`が返されること。
+
 - **Test Case 4: コメント行と空行の処理**
+
     - **内容:** `robots.txt`内のコメント行や空行が正しく無視されることを確認する。
+
     - **入力:** コメントと空行を含む`robots.txt`。
+
     - **期待値:** 正しい許可/不許可の判断がなされること。
 
+
+
 #### `save_screenshot(browser, url_list, save_dir="temp", width=500, height=None)`
+
 - **目的:** 複数のURLに対してスクリーンショットを撮影し、指定されたディレクトリに保存、リサイズできること、およびエラーやリトライを適切に処理できることを確認する。
+
 - **Test Case 1: 正常なスクリーンショットの保存とリサイズ**
+
     - **内容:** 有効なURLリストに対して、各URLのスクリーンショットが撮影され、指定された幅にリサイズされ、ファイルとして保存されることを確認する。
+
     - **入力:** 有効なURLリストとモックされたPlaywright、`PIL.Image`、`os`モジュール。
+
     - **期待値:** 各URLに対して有効なファイルパスがリストとして返され、ファイルシステム操作と画像処理が正しく行われること。
+
 - **Test Case 2: 無効なURLのスキップ**
+
     - **内容:** `url_list`内に無効なURLが含まれている場合に、そのURLがスキップされ、対応するリストエントリが`None`になることを確認する。
+
     - **入力:** 有効なURLと無効なURLの混合リスト。
+
     - **期待値:** 無効なURLに対して`None`が返されること。
+
 - **Test Case 3: リトライメカニズム**
+
     - **内容:** `PlaywrightTimeoutError`などの一時的なエラーが発生した場合に、指定された回数だけリトライが実行され、最終的に成功するか、最大試行回数を超えて失敗することを確認する。
+
     - **入力:** 最初の数回はエラーを発生させ、その後成功するようにモックされたPlaywright操作。
+
     - **期待値:** リトライロジックが正しく実行され、最終結果（成功したパスまたは`None`）が返されること。
+
 - **Test Case 4: 最大リトライ回数を超えた失敗**
+
     - **内容:** 常にエラーを発生させるようにモックされたPlaywright操作に対して、最大リトライ回数を超えた後に`None`が返されることを確認する。
+
     - **入力:** 常にエラーを発生させるPlaywright操作。
+
     - **期待値:** `None`が返されること。
+
 - **Test Case 5: 画像リサイズ時のアスペクト比保持**
+
     - **内容:** `height`が指定されない場合に、`width`に基づいて元画像の正確なアスペクト比を保ってリサイズされることを確認する。
+
     - **入力:** 元の画像サイズと`width`。
+
     - **期待値:** `PIL.Image.Image.resize`が正しい`width`と計算された`height`で呼び出されること。
+
 - **Test Case 6: ディレクトリの作成**
+
     - **内容:** スクリーンショット保存ディレクトリが存在しない場合に、`os.makedirs`が正しく呼び出されることを確認する。
+
     - **入力:** 新規の保存ディレクトリパス。
+
     - **期待値:** `os.makedirs(save_dir, exist_ok=True)`が呼び出されること。
 
+
+
 #### `generate_filename(url)`
+
 - **目的:** URLから一意でファイルシステムに適したファイル名を正しく生成できることを確認する。
+
 - **Test Case 1: 基本的なURLからの生成**
+
     - **内容:** シンプルなURLからドメイン、パスの最後の部分、ハッシュを含むファイル名が生成されることを確認する。
+
     - **入力:** `https://example.com/some/path/page.html`
+
     - **期待値:** `'example_com_page_html_[hash].png'`のような形式の文字列。
+
 - **Test Case 2: クエリパラメータを含むURL**
+
     - **内容:** クエリパラメータがファイル名生成に影響しないことを確認する。
+
     - **入力:** `https://example.com/page?param=value`
+
     - **期待値:** `'example_com_page_[hash].png'`のような形式の文字列。
+
 - **Test Case 3: 特殊文字を含むURL**
+
     - **内容:** URL内の特殊文字（ファイルシステムで許可されないもの）が適切に処理され、有効なファイル名が生成されることを確認する。
+
     - **入力:** `https://example.com/path/with spaces/file!.html`
+
     - **期待値:** 有効なファイル名が生成されること。
+
 - **Test Case 4: ルートURL**
+
     - **内容:** ドメインのみのURLが正しくファイル名に変換されることを確認する。
+
     - **入力:** `https://example.com`
+
     - **期待値:** `'example_com_index_[hash].png'`のような形式の文字列。
 
+
+
 ---
+
+
 
 ### 3.8. `web_type_chk.py` (ユニットテスト)
 
+
+
 `web_type_chk.py`は、URLとDOM情報から、ページがページネーション（複数ページにまたがる一覧）の一部であるかを判定し、次のページ（最新ページ）のURLを特定する役割を担います。
 
+
+
 #### `PageMonitor.determine_watch_page()`
+
 - **目的:** 現在のURLとページ内のリンクから、次に巡回すべき最新ページのURLを正しく特定できることを確認する。
+
 - **Test Case 1: 標準的なページネーション**
+
     - **内容:** `page-` 形式のURLで、より新しいページ番号のリンクが存在する場合。
+
     - **入力:** `base_url=".../page-1"`, `links=[".../page-2", ".../page-10"]`
+
     - **期待値:** `".../page-10"`
+
 - **Test Case 2: 既に最新ページにいる場合**
+
     - **内容:** `base_url`のページ番号が、リンク内の最大ページ番号と同じか、それより大きい場合。
+
     - **入力:** `base_url=".../page-10"`, `links=[".../page-8", ".../page-9"]`
+
     - **期待値:** `None`
+
 - **Test Case 3: 相対パスのリンク**
+
     - **内容:** リンクが相対パスで指定されている場合に、`base_url`を基準に正しく絶対URLに解決できることを確認する。
+
     - **入力:** `base_url="http://example.com/articles/page/3"`, `links=["/articles/page/5"]`
+
     - **期待値:** `"http://example.com/articles/page/5"`
+
 - **Test Case 4: ベースURLがページネーション形式でない場合**
+
     - **内容:** `base_url`自体がページネーションのパターンに一致しない場合、何も返さないことを確認する。
+
     - **入力:** `base_url=".../article.html"`, `links=[".../page-2"]`
+
     - **期待値:** `None`
+
+
 
 #### `WebTypeCHK.webtype_chk()`
+
 - **目的:** `PageMonitor`と連携し、ページの種別（`page_changer`または`plane`）を判定し、次のページのURLを正しく設定できることを確認する。
+
 - **Test Case 1: 次ページが存在する場合**
+
     - **内容:** `determine_watch_page`が新しいURLを返す場合。
+
     - **入力:** `base_url=".../page/3"`, `links=[".../page/5"]`
+
     - **期待値:** `webtype`が`"page_changer"`、`next_url`が`".../page/5"`となること。
+
 - **Test Case 2: 最新ページだが、URL自体はページャー形式**
+
     - **内容:** `determine_watch_page`が`None`を返すものの、`base_url`自体がページネーションパターンに一致する場合。
+
     - **入力:** `base_url=".../page-10"`, `links=[".../page-9"]`
+
     - **期待値:** `webtype`が`"page_changer"`、`next_url`が`None`となること。
+
 - **Test Case 3: ページネーションでない場合**
+
     - **内容:** `base_url`もリンクもページネーションパターンに一致しない場合。
+
     - **入力:** `base_url=".../article.html"`, `links=[]`
-    - **期待値:** `webtype`が`"plane"`、`next_url`が`None`となること。
-- **Test Case 4: ページネーションでなく、リンクも存在しない場合**
-    - **内容:** `base_url`がページネーションパターンに一致せず、ページ内にリンクも存在しない場合。
-    - **入力:** `base_url=".../article.html"`, `links=[]` (`node_data_no_links`使用)
+
     - **期待値:** `webtype`が`"plane"`、`next_url`が`None`となること。
 
+- **Test Case 4: ページネーションでなく、リンクも存在しない場合**
+
+    - **内容:** `base_url`がページネーションパターンに一致せず、ページ内にリンクも存在しない場合。
+
+    - **入力:** `base_url=".../article.html"`, `links=[]` (`node_data_no_links`使用)
+
+    - **期待値:** `webtype`が`"plane"`、`next_url`が`None`となること。
+
+
+
 ---
+
+
 
 ### 3.7. `relevance_scorer.py` (ユニットテスト)
 
+
+
 `relevance_scorer.py`は、検索クエリと検索結果アイテムの関連性を評価し、総合的な品質スコア（SQS）を算出します。
 
+
+
 #### `_calculate_jaccard(text1, text2)`
+
 - **目的:** 2つのテキスト間のジャカード類似度を正しく計算できることを確認する。
+
 - **Test Case 1: 通常の計算**
+
     - **内容:** 共通の単語とユニークな単語を持つ2つの文。
+
     - **入力:** `text1="hello world from python"`, `text2="hello python universe"`
+
     - **期待値:** `0.4` (共通2語 / 全体5語)
+
 - **Test Case 2: 共通語なし**
+
     - **内容:** 共通の単語が一つもない場合。
+
     - **入力:** `text1="a b c"`, `text2="d e f"`
+
     - **期待値:** `0.0`
+
 - **Test Case 3: 空文字列**
+
     - **内容:** 両方の文字列が空の場合。
+
     - **入力:** `text1=""`, `text2=""`
+
     - **期待値:** `0.0`
+
+
 
 #### `score_relevance(query, items)`
+
 - **目的:** Jaccard、TF-IDF、Semantic-Transformerの3つのスコアを組み合わせたハイブリッド関連性スコアを正しく計算できることを確認する。
+
 - **Test Case 1: ハイブリッドスコアの計算**
+
     - **内容:** `_calculate_jaccard`, `cosine_similarity`, `cos_sim` をモックし、各スコアに重みを掛けた合計が期待通りになることを確認する。
+
     - **入力:** クエリ文字列と`DOMTreeSt`アイテムのリスト。
+
     - **期待値:** 各アイテムの`relevance_score`が、重み付けされたスコアの合計値と一致すること。
+
 - **Test Case 2: 空のアイテムリスト**
+
     - **内容:** スコアリング対象のアイテムがない場合。
+
     - **入力:** `items=[]`
+
     - **期待値:** 空のリスト `[]` が返されること。
 
+
+
 #### `calculate_sqs(result_count, avg_relevance, relevance_variance, max_relevance)`
+
 - **目的:** 検索結果の統計情報から、品質スコア（SQS）と品質カテゴリを正しく計算できることを確認する。
+
 - **Test Case 1: 「Valid」カテゴリの計算**
+
     - **内容:** 高品質な検索結果を示す入力値。
+
     - **入力:** `result_count=10`, `avg_relevance=0.8`, `relevance_variance=0.1`, `max_relevance=0.9`
+
     - **期待値:** SQSスコアが「Valid」の閾値（例: 60）以上になり、カテゴリが "Valid" となること。
+
 - **Test Case 2: 「Low Quality」カテゴリの計算**
+
     - **内容:** 低品質な検索結果を示す入力値。
+
     - **入力:** `result_count=3`, `avg_relevance=0.4`, `relevance_variance=0.3`, `max_relevance=0.5`
+
     - **期待値:** SQSスコアが「Low Quality」の範囲内（例: 20-60）になり、カテゴリが "Low Quality" となること。
+
 - **Test Case 3: 「Invalid/Empty」カテゴリの計算**
+
     - **内容:** 非常に低い品質の検索結果を示す入力値。
+
     - **入力:** `result_count=1`, `avg_relevance=0.1`, `relevance_variance=0.5`, `max_relevance=0.2`
+
     - **期待値:** SQSスコアが「Invalid/Empty」の閾値（例: 20）未満になり、カテゴリが "Invalid/Empty" となること。
+
 - **Test Case 4: 結果ゼロの場合**
+
     - **内容:** 検索結果が0件の場合。
+
     - **入力:** `result_count=0`
+
     - **期待値:** SQSスコアが `0`、カテゴリが "Invalid/Empty" となること。
+
 - **Test Case 5: SQSスコアがマイナスになる場合**
+
     - **内容:** 計算結果が負になるような入力値の場合、スコアが0に丸められることを確認する。
+
     - **入力:** `result_count=1`, `avg_relevance=0.1`, `relevance_variance=1.0`, `max_relevance=0.1`
+
     - **期待値:** SQSスコアが `0` となること。
 
+
+
 ---
+
+
 
 ### 3.6. `quality_evaluator.py` (ユニットテスト)
 
+
+
 `quality_evaluator.py`は、抽出されたコンテンツが「検索結果なしかどうか」を判定し、検索結果の品質を定量化する役割を担います。
 
+
+
 #### `is_no_results_page(page, dom_tree)`
+
 - **目的:** ページが「結果なし」の状態であるかを、キーワード、CSSセレクタ、期待されるコンテナの有無から正しく判定できることを確認する。
+
 - **Test Case 1: キーワードによる判定**
+
     - **内容:** DOMツリーのテキストに「結果なし」を示すキーワードが含まれている場合。
+
     - **入力:** `dom_tree`に "no results found" を含むテキスト、モックされた`page`オブジェクト。
+
     - **期待値:** `True`が返されること。
+
 - **Test Case 2: 「結果なし」セレクタによる判定**
+
     - **内容:** ページ内に「結果なし」を示すCSSセレクタを持つ要素が存在する場合。
+
     - **入力:** `page.evaluate`が`True`を返すようにモックされた`page`オブジェクト。
+
     - **期待値:** `True`が返されること。
+
 - **Test Case 3: 期待される結果コンテナが存在することによる判定**
+
     - **内容:** ページ内に期待される結果コンテナのセレクタが存在する場合、「結果なし」ではないと判定されること。
+
     - **入力:** `page.evaluate`が1回目の呼び出しで`False`（「結果なし」セレクタなし）、2回目の呼び出しで`True`（期待セレクタあり）を返すようにモック。
+
     - **期待値:** `False`が返されること。
+
 - **Test Case 4: キーワードもセレクタも存在しない場合**
+
     - **内容:** 「結果なし」の兆候がなく、かつ期待される結果コンテナも見つからない場合、「結果なし」と判定されること。
+
     - **入力:** `page.evaluate`が常に`False`を返すようにモック。
+
     - **期待値:** `True`が返されること。
+
+
 
 #### `_find_result_container(main_content_node)`
+
 - **目的:** メインコンテンツノード内から、最も繰り返し構造を持つ子要素のコンテナを正しく特定できることを確認する。
+
 - **Test Case 1: 繰り返しクラスを持つコンテナの特定**
+
     - **内容:** 子要素に同じクラス名が複数回出現するコンテナを特定する。
+
     - **入力:** `class="result-item"` を持つ子要素が複数含まれる`DOMTreeSt`ノード。
+
     - **期待値:** `class="results-list"` を持つ親ノードが返されること。
+
 - **Test Case 2: 明確なコンテナがない場合**
+
     - **内容:** 子要素に繰り返し構造が見られない場合。
+
     - **入力:** 子要素がすべて異なるクラス名を持つ`DOMTreeSt`ノード。
+
     - **期待値:** `None`が返されること。
 
+
+
 #### `quantify_search_results(main_content_node)`
+
 - **目的:** 特定された結果コンテナから、有効な検索結果アイテムを抽出し、その数をカウントできることを確認する。
+
 - **Test Case 1: 有効なアイテムのカウント**
+
     - **内容:** コンテナ内に有効なアイテム（リンクと十分なテキストを持つ）と無効なアイテムが混在している場合に、有効なものだけをカウントする。
+
     - **入力:** `_find_result_container`がコンテナを返し、その中に有効・無効な子要素が含まれる`DOMTreeSt`。
+
     - **期待値:** 有効なアイテム数（例: 2）が`result_count`に設定され、`result_items`にそのノードが含まれること。
+
 - **Test Case 2: コンテナが見つからない場合**
+
     - **内容:** `_find_result_container`が`None`を返した場合、結果が0件として処理されること。
+
     - **入力:** `_find_result_container`が`None`を返すような`DOMTreeSt`。
+
     - **期待値:** `result_count`が0に設定されること。
+
 - **Test Case 3: 有効なアイテムがない場合**
+
     - **内容:** コンテナは見つかるが、その中に有効なアイテムが一つもない場合。
+
     - **入力:** コンテナ内にリンクや十分なテキストを持たない子要素のみが含まれる`DOMTreeSt`。
+
     - **期待値:** `result_count`が0に設定されること。
+
+
 
 ---
 
+
+
 ### 3.6. `core.py` (インテグレーションテスト)
+
+
 
 **目的:** `content_extractor.core.extract_main_content` が、複数のモジュール（`make_tree`, `MainContentScorer`）と連携し、最も確からしいコンテンツブロックを特定するまでの絞り込みプロセス全体を検証する。
 
+
+
 **Test Case 1: `extract_main_content` の絞り込みループ**
+
 - **シナリオ:**
+
   初期スコアリングではメインコンテンツに見えないが、子要素を再評価するとよりスコアの高い子孫が見つかる、という状況をシミュレートする。
+
   具体的には、最初は広いコンテナ(`div#wrapper`)が高いスコアを持つが、その子孫である `article#main-article` が真の本文であり、再スコアリングによって最終的に選択されることを確認する。
 
+
+
 - **テストフィクスチャ (Mock `make_tree` の返り値):**
+
   以下のような親子関係を持つDOMツリーを準備する。各ノードのスコアは `MainContentScorer` によって初期計算されると仮定する。
 
+
+
   ```
+
   body
+
   └── div#wrapper (score: 80)
+
       ├── nav (score: 10, is_valid=False)
+
       └── main
+
           └── article#main-article (score: 70)
+
               └── p (score: 95)
+
   ```
+
+
 
 - **モック対象の動作:**
+
     1.  **`make_tree`:**
+
         - 上記のテストフィクスチャ（DOMツリー）を返すようにモックする。
+
     2.  **`MainContentScorer.find_candidates`:**
+
         - このツリーを評価し、`div#wrapper` と `article#main-article` を候補として返す。`div#wrapper` の方がスコアが高いとする。
+
     3.  **`rescore_main_content_with_children`:**
+
         - 呼び出されるたびに、渡されたノードの子孫を評価し、スコアを更新したリストを返すようにモックする。
+
         - 1回目の呼び出し（対象: `div#wrapper`）: `article#main-article` を含む子リストを返し、その中で `article#main-article` のスコアが更新されて `div#wrapper` より高くなるように設定する (例: 85)。
+
         - 2回目の呼び出し（対象: `article#main-article`）: `p` を含む子リストを返し、`p` のスコアがさらに高くなるように設定する (例: 95)。
+
         - 3回目の呼び出し（対象: `p`）: 子がいないため空リスト `[]` を返す。これによりループが終了する。
 
+
+
 - **検証ステップ:**
+
     1.  `extract_main_content` を呼び出す。
+
     2.  内部で `MainContentScorer` が実行され、最初の候補として `div#wrapper` が選択されることを確認する。
+
     3.  `while` ループが開始される。
+
     4.  1回目の `rescore_main_content_with_children` 呼び出し後、次の最有力候補が `article#main-article` になることを確認する。
+
     5.  2回目の呼び出し後、次の最有力候補が `p` になることを確認する。
+
     6.  3回目の呼び出し後、空リストが返されループが終了することを確認する。
+
     7.  最終的に `extract_main_content` が `p` ノードを返すことをアサートする。
 
+
+
 - **期待値:**
+
   最終的に返される `final_content` オブジェクトが、最も深い階層にある `p` タグのノードと一致する。
+
+
 
 **Test Case 2: エラーハンドリングと代替パス (Error Handling and Alternate Paths)**
 
+
+
 - **目的:** `extract_main_content`が、処理中のさまざまな失敗シナリオや代替フローを正しく処理できることを確認する。
+
 - **シナリオ 1: robots.txtによるクロール禁止**
+
     - **内容:** `robots.txt`によって対象URLのスクレイピングが禁止されている場合、関数が早期に`None`を返して処理を終了することを確認する。
+
     - **入力:** `is_scraping_allowed`が`False`を返すようにモック。
+
     - **期待値:** `None`が返されること。
+
 - **シナリオ 2: ページ設定の失敗**
+
     - **内容:** `setup_page`が`None`を返した場合（ページの読み込み失敗など）、関数が`None`を返して処理を終了することを確認する。
+
     - **入力:** `setup_page`が`None`を返すようにモック。
+
     - **期待値:** `None`が返されること。
+
 - **シナリオ 3: DOMツリー構築の失敗**
+
     - **内容:** `make_tree`が`None`を返した場合、関数が`None`を返して処理を終了することを確認する。
+
     - **入力:** `make_tree`が`None`を返すようにモック。
+
     - **期待値:** `None`が返されること。
+
 - **シナリオ 4: メインコンテンツ候補なし**
+
     - **内容:** `MainContentScorer.find_candidates`が空のリストを返した場合、関数が`None`を返して処理を終了することを確認する。
+
     - **入力:** `find_candidates`が`[]`を返すようにモック。
+
     - **期待値:** `None`が返されること。
+
 - **シナリオ 5: ページネーションによる再帰呼び出し**
+
     - **内容:** `WebTypeCHK`が新しい`watch_url`（次のページ）を検知した場合、`extract_main_content`が新しいURLで自身を再帰的に呼び出すことを確認する。
+
     - **入力:** `WebTypeCHK`のモックが新しいURLを返す。
+
     - **期待値:** 内部で`setup_page`が2回呼び出され、2回目の呼び出しが新しいURLで行われること。
+
 - **シナリオ 6: 再スコアリングでスコアが改善しない**
+
     - **内容:** 再評価ループにおいて、子要素のスコアが親要素のスコアを上回らない場合、ループが正しく終了し、親要素が最終コンテンツとして返されることを確認する。
+
     - **入力:** `rescore_main_content_with_children`が親よりスコアの低い子を返すようにモック。
+
     - **期待値:** ループが1回で終了し、親ノードが返されること。
+
 - **シナリオ 7: 再スコアリングが最大ループ回数に到達**
+
     - **内容:** スコアの改善が続き、再評価ループが最大回数（`max_loop_count`）に達した場合に、ループが強制的に終了することを確認する。
+
     - **入力:** `rescore_main_content_with_children`が常にスコアの高い子を返すようにモック。
+
     - **期待値:** ループが`max_loop_count`で停止し、その時点での最良のノードが返されること。
 
+
+
 - **Test Case 3: CSSセレクタとセレクタリストの生成**
+
     - **目的:** `extract_main_content`が最終的に選択されたメインコンテンツの`css_selector`および`css_selector_list`を正しく生成し、格納することを確認する。特に、コンテンツが葉ノード（子要素を持たない）である場合の`css_selector_list`の挙動を検証する。
+
     - **シナリオ:** 絞り込みループを通じて最終的に子要素を持たない葉ノード（例: `<p>`タグ）がメインコンテンツとして選択されるようなモック設定を行う。
+
     - **入力:**
+
         - `make_tree`が、複数の階層を持ち、最終的に`<p>`タグが選ばれるようなDOMツリーを返すようにモックする。
+
         - `rescore_main_content_with_children`は、`extract_main_content_refinement_loop`と同様に、`div.section -> article#main-article -> p.content`と絞り込んでいくようにモックし、`p.content`の子要素は空リストを返すように設定する。
+
     - **期待値:**
+
         - 返される`final_content`が`<p>`タグのノードであること。
+
         - `final_content.css_selector`が`p`タグの正確なCSSセレクタ（例: `'div#main-article > p.content'`）であること。
+
         - `final_content.css_selector_list`が、`final_content.css_selector`のみを含むリストであること（葉ノードであるため、他の子孫セレクタは生成されない）。
+
+
+
 
 
 ## 4. 新規テストの追加手順
 
+
+
 新しいテストを追加する際は、以下の手順に従います。これにより、設計と実装の同期を保ちます。
 
+
+
 1.  **設計書の更新:**
+
     本ドキュメント（`doc/test/test_design_content_extractor.md`）に、テスト対象の関数と具体的なテストケース（目的、入力、期待値）を追記します。
 
+
+
 2.  **テストコードの実装:**
+
     対応するテストファイル（例: `test/test_scorer.py`）に、設計書に追記したテストケースを実装します。docstringのコメントで、設計書のどのテストケースに対応するかを明記します。
 
+
+
 3.  **テストの実行と確認:**
+
     プロジェクトルートで `$env:PYTHONPATH = '.'; pytest` を実行し、追加したテストを含め、すべてのテストが成功することを確認します。
+
+
 
 ## 5. テストデータと実行
 
-- **テストデータ:** `DOMTreeSt`と`BoundingBox`を`dataclass`からインポートし、テストケースごとにオブジェクトを生成して利用する。
-- **実行方法:** プロジェクトのルートディレクトリで `$env:PYTHONPATH = '.'; pytest` を実行する。
+
+
+-   **テストデータ:** `DOMTreeSt`と`BoundingBox`を`dataclass`からインポートし、テストケースごとにオブジェクトを生成して利用する。
+
+-   **実行方法:** プロジェクトのルートディレクトリで `$env:PYTHONPATH = '.'; pytest` を実行する。
+
+
 
 ## 6. エラー処理とエッジケースの考慮
 
--   **目的**: 予期せぬ入力やエラー条件に対するシステムの挙動を検証し、堅牢性を高める。
+
+
+-   **目的**: 予期せぬ入力やエラー条件に対するシステムの挙動を検証し、堅牢性を高める。また、明示的に文書化されていない追加のエッジケースやシナリオもテストスイートに含まれており、積極的なテストが行われていることを示しています。
+
 -   **検討事項**:
+
     *   **無効な入力値**: スコアリング関数 (`_calculate_screen_occupancy_multiplier`, `_score_link_length`, `_score_text_length`) における数値の範囲外 (`occupancy_rate`が負の値や1.0超)、`None`値、不正な型 (`DOMTreeSt`以外) の入力に対するテスト。
+
     *   **空のデータ**: `make_tree`が空のDOMツリーや`None`を返した場合、`MainContentScorer`が候補を全く見つけられなかった場合の`extract_main_content`の挙動。
+
     *   **例外処理**: 特定の操作で例外が発生した場合のハンドリング（例: 外部リソースへのアクセス失敗）。
 
 ## 7. パフォーマンス要件とテストの検討
