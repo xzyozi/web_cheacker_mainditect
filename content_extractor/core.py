@@ -120,6 +120,9 @@ async def extract_main_content(url: str,
             # =================================================================
             # メインコンテンツ候補の再評価ループ
             # =================================================================
+            # 初期候補(mainタグなど)は大きすぎることがある。そのため、その子要素を再評価し、
+            # よりスコアの高い(＝よりコンテンツ本体に近い)要素へと絞り込んでいく。
+            # 画面占有率などがスコアに大きく影響するため、この絞り込みが重要となる。
             loop_count = 0
             current_best = main_contents[0]
             rescored_children = main_contents # Initialize with initial candidates
@@ -131,6 +134,8 @@ async def extract_main_content(url: str,
                 if rescored_children_next:
                     logger.debug(f" -> Best Child selector: {rescored_children_next[0].css_selector} / Score: {rescored_children_next[0].score}")
 
+                # 子要素が見つからない、または子要素のスコアが親を超えなくなったら、
+                # 親が最良のコンテンツブロックと判断してループを抜ける。
                 if not rescored_children_next or current_best.score >= rescored_children_next[0].score:
                     break
 
@@ -147,11 +152,14 @@ async def extract_main_content(url: str,
             logger.info(final_content)
 
             # css_selector_list setting
+            # 堅牢なセレクタ候補を上位3つまで取得（空のセレクタは除外）
             selector_candidates = [node.css_selector for node in rescored_children[1:4] if node.css_selector]
             
+            # 自身のセレクタも候補の先頭に追加しておく
             if final_content.css_selector and final_content.css_selector not in selector_candidates:
                 selector_candidates.insert(0, final_content.css_selector)
 
+            # 最終的に選ばれたコンテンツに、セレクタ候補リストとプライマリセレクタを格納
             final_content.css_selector_list = selector_candidates
             if selector_candidates and not final_content.css_selector:
                 final_content.css_selector = selector_candidates[0]
