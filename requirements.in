@@ -8,3 +8,4 @@ pytest
 pytest-mock
 pytest-asyncio
 scipy
+numpy<2

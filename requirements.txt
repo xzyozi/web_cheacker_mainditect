@@ -38,8 +38,9 @@ multidict==6.7.0
     # via
     #   aiohttp
     #   yarl
-numpy==2.2.6
+numpy==1.26.4
     # via
+    #   -r requirements.in
     #   pandas
     #   scipy
 packaging==25.0
