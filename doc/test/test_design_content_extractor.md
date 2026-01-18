@@ -27,6 +27,10 @@
     - **内容:** 占有率が0の場合。
     - **入力:** `occupancy_rate=0.0`
     - **期待値:** `1.0`より大幅に低い正の値。
+- **Test Case 4: 範囲外の値やNoneの場合のエッジケース**
+    - **内容:** 負の値、1.0を超える値、Noneが入力された場合。
+    - **入力:** `occupancy_rate=-0.1`、`occupancy_rate=1.1`、`occupancy_rate=None`
+    - **期待値:** スコアは0より大きく1.0以下になること。
 
 #### `_score_link_length(node)`
 - **目的:** リンク数に応じてスコアが変動することを確認する。
@@ -42,6 +46,14 @@
     - **内容:** ナビゲーションの可能性が高い（スコアが低くなる）。
     - **入力:** `DOMTreeSt(links=[""] * 100)`
     - **期待値:** `0.0`に近い低いスコア。
+- **Test Case 4: links属性がNoneの場合**
+    - **内容:** `links`属性が`None`の場合でも、正しく処理されることを確認する。
+    - **入力:** `DOMTreeSt(links=None)`
+    - **期待値:** `0.1`
+- **Test Case 5: links属性がリストでない場合**
+    - **内容:** `links`属性がリスト以外の型の場合でも、正しく処理されることを確認する。
+    - **入力:** `DOMTreeSt(links="not_a_list")`
+    - **期待値:** `0.1`
 
 #### `_score_text_length(node)`
 - **目的:** テキスト長に応じてスコアが変動することを確認する。
@@ -57,6 +69,14 @@
     - **内容:** スコアが低くなる。
     - **入力:** `DOMTreeSt(text="a" * 2000)`
     - **期待値:** `0.0`に近い低いスコア。
+- **Test Case 4: text属性がNoneの場合**
+    - **内容:** `text`属性が`None`の場合でも、正しく処理されることを確認する。
+    - **入力:** `DOMTreeSt(text=None)`
+    - **期待値:** `0.0`
+- **Test Case 5: text属性が文字列でない場合**
+    - **内容:** `text`属性が文字列以外の型の場合でも、正しく処理されることを確認する。
+    - **入力:** `DOMTreeSt(text=123)`
+    - **期待値:** `0.0`
 
 #### `calculate_depth_weight(current_depth)`
 - **目的:** DOMの階層が深いほど高い重みが返されることを確認する。
@@ -66,6 +86,18 @@
 - **Test Case 2: 深い階層**
     - **入力:** `current_depth=5` (max_depth)
     - **期待値:** `4.0` (weight_factor)
+- **Test Case 3: 中間的な深さ**
+    - **内容:** 計算式に従って中間的な深さの重みが正しく計算されることを確認する。
+    - **入力:** `current_depth=2.5` (max_depth=5, base_weight=1.0, weight_factor=4.0)
+    - **期待値:** `2.0`
+- **Test Case 4: 最大値を超える深さ**
+    - **内容:** 深さが最大値を超えても、計算式に従って重みが正しく計算されることを確認する。
+    - **入力:** `current_depth=6` (max_depth=5, base_weight=1.0, weight_factor=4.0)
+    - **期待値:** `4.0 ** (6/5.0)`
+- **Test Case 5: 負の深さ**
+    - **内容:** 負の深さが0として扱われ、重みが正しく計算されることを確認する。
+    - **入力:** `current_depth=-1`
+    - **期待値:** `1.0` (0深度と同じ結果)
 
 #### `is_main_element(node)`
 - **目的:** タグやIDから、ノードがメインコンテンツ要素のヒントを持つか判定する。
@@ -78,6 +110,30 @@
 - **Test Case 3: 該当しない**
     - **入力:** `DOMTreeSt(tag="div", attributes={"id": "sub-content"})`
     - **期待値:** `False`
+- **Test Case 4: IDに"main"を含む (大文字小文字無視)**
+    - **内容:** ID属性に'main'（大文字小文字を区別しない）が含まれる場合。
+    - **入力:** `DOMTreeSt(tag="div", attributes={"id": "has-MAIN-in-it"})`
+    - **期待値:** `True`
+- **Test Case 5: 属性なし**
+    - **内容:** 属性を持たないタグの場合。
+    - **入力:** `DOMTreeSt(tag="section")`
+    - **期待値:** `False`
+- **Test Case 6: 空の属性辞書**
+    - **内容:** 属性辞書が空の場合。
+    - **入力:** `DOMTreeSt(tag="div", attributes={})`
+    - **期待値:** `False`
+- **Test Case 7: IDに"main"を含む (混在ケース)**
+    - **内容:** ID属性に'Main'（混在ケース）が含まれる場合。
+    - **入力:** `DOMTreeSt(tag="div", attributes={"id": "my-Main-section"})`
+    - **期待値:** `True`
+- **Test Case 8: class属性に"main"を含む (idなし)**
+    - **内容:** class属性に'main'が含まれるが、id属性には含まれない場合。
+    - **入力:** `DOMTreeSt(tag="div", attributes={"class": "main-body", "id": "content"})`
+    - **期待値:** `False`
+- **Test Case 9: None入力やattributes/tagがNoneの場合のエッジケース**
+    - **内容:** `node`自体が`None`、または`attributes`や`tag`が`None`の場合。
+    - **入力:** `None`または`DOMTreeSt(tag=None, attributes={"id": "main"})`など
+    - **期待値:** `AttributeError`発生、または`False`が返されること。
 
 #### `is_valid_element(node)`
 - **目的:** ノードがメインコンテンツ候補として有効か（除外タグでなく、小さすぎないか）を判定する。
@@ -88,8 +144,12 @@
     - **入力:** `DOMTreeSt(tag="nav", rect=BoundingBox(width=100, height=100))`
     - **期待値:** `False`
 - **Test Case 3: 面積が小さすぎる**
-    - **入力:** `DOMTreeSt(tag="div", rect=BoundingBox(width=1, height=1))`
+    - **入力:** `DOMTreeSt(tag="div", rect=BoundingBox(width=0.2, height=0.2))`
     - **期待値:** `False`
+- **Test Case 4: None入力やrect/tagがNoneの場合のエッジケース**
+    - **内容:** `node`自体が`None`、または`rect`や`tag`が`None`の場合。
+    - **入力:** `None`または`DOMTreeSt(tag="div", rect=None)`など
+    - **期待値:** `AttributeError`発生、または`False`が返されること。
 
 #### `find_candidates()`
 - **目的:** `MainContentScorer`がDOMツリーからメインコンテンツの候補を正しく抽出し、スコア順にソートすることを確認する。
@@ -133,6 +193,14 @@
     - **内容:** 指定された`selector`に合致する要素がページ上に存在しない場合に、`None`が返されることを確認する。
     - **入力:** 存在しないセレクタ。
     - **期待値:** `make_tree`が`None`を返すこと。
+- **Test Case 6: `wait_for_load`が`True`の場合**
+    - **内容:** `wait_for_load`が`True`の場合に、`page.wait_for_load_state`が`networkidle`状態で呼び出されることを確認する。
+    - **入力:** `wait_for_load=True`
+    - **期待値:** `page.wait_for_load_state('networkidle', timeout=30000)`が呼び出されること。
+- **Test Case 7: `wait_for_load`が`False`の場合**
+    - **内容:** `wait_for_load`が`False`の場合に、`page.wait_for_load_state`が呼び出されないことを確認する。
+    - **入力:** `wait_for_load=False`
+    - **期待値:** `page.wait_for_load_state`が呼び出されないこと。
 
 #### `make_css_selector(properties)` (ユニットテスト)
 - **目的:** 要素のプロパティから安定したCSSセレクタが正しく生成されることを確認する。
@@ -156,6 +224,22 @@
     - **内容:** 必須プロパティが欠けている場合の挙動。
     - **入力:** `{'tag': ''}` または `{}`
     - **期待値:** `''` または適切なデフォルト値。
+- **Test Case 6: タグが欠けている場合**
+    - **内容:** `tag`属性が空の場合に、IDやクラスのみでセレクタが生成されることを確認する。
+    - **入力:** `{'tag': '', 'id': 'my-id', 'attributes': {'class': 'my-class'}}`
+    - **期待値:** `'#my-id'`
+- **Test Case 7: タグもIDも空の場合**
+    - **内容:** `tag`も`id`も空の場合。
+    - **入力:** `{'tag': '', 'id': '', 'attributes': {}}`
+    - **期待値:** `''`
+- **Test Case 8: class属性に複数のスペースを含む場合**
+    - **内容:** class属性値の間に複数のスペースが含まれていても、正しく処理されることを確認する。
+    - **入力:** `{'tag': 'div', 'id': '', 'attributes': {'class': '  class1   class2  '}}`
+    - **期待値:** `'div.class1.class2'`
+- **Test Case 9: class属性がない場合**
+    - **内容:** class属性がない場合でも、IDが優先され正しくセレクタが生成されることを確認する。
+    - **入力:** `{'tag': 'div', 'id': 'my-id', 'attributes': {'style': 'color: red;'}}`
+    - **期待値:** `'div#my-id'`
 
 ---
 
@@ -198,6 +282,10 @@
     - **内容:** 複数レベルでネストされたDOMツリーが、期待される順序（深さ優先検索順）でフラット化されることを確認する。
     - **入力:** `body -> div1 -> p1, div2 -> p2` のような複雑な構造。
     - **期待値:** `[body, div1, p1, div2, p2]`
+- **Test Case 4: 空の`children`リストを持つノード**
+    - **内容:** `children`リストが空のノードが入力された場合。
+    - **入力:** `DOMTreeSt(tag='span', children=[])`
+    - **期待値:** `[DOMTreeSt(tag='span')]`
 
 #### `rescore_main_content_with_children(main_content)`
 - **目的:** 指定されたメインコンテンツ候補とその子孫ノードが、`MainContentScorer`を用いて正しく再スコアリングされ、スコアの高い順にソートされたリストとして返されることを確認する。
@@ -213,6 +301,10 @@
     - **内容:** `main_content`ノードに子がない場合でも、正しく処理され、自身のみを含む（または空の）ソート済みリストが返されることを確認する。
     - **入力:** 子ノードがない`DOMTreeSt`。
     - **期待値:** `main_content`ノード自体を含む（または`MainContentScorer`の動作によっては空の）リストが返されること。
+- **Test Case 4: `MainContentScorer`が空リストを返す場合**
+    - **内容:** `MainContentScorer.score_parent_and_children`が空リストを返した場合。
+    - **入力:** `MainContentScorer`が空リストを返すようにモックされた`main_content`。
+    - **期待値:** 空のリスト`[]`が返されること。
 
 ---
 
@@ -364,6 +456,10 @@
 - **Test Case 3: ページネーションでない場合**
     - **内容:** `base_url`もリンクもページネーションパターンに一致しない場合。
     - **入力:** `base_url=".../article.html"`, `links=[]`
+    - **期待値:** `webtype`が`"plane"`、`next_url`が`None`となること。
+- **Test Case 4: ページネーションでなく、リンクも存在しない場合**
+    - **内容:** `base_url`がページネーションパターンに一致せず、ページ内にリンクも存在しない場合。
+    - **入力:** `base_url=".../article.html"`, `links=[]` (`node_data_no_links`使用)
     - **期待値:** `webtype`が`"plane"`、`next_url`が`None`となること。
 
 ---
