@@ -1,13 +1,12 @@
 import pytest
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
+import sys
 
 from content_extractor.dom_treeSt import DOMTreeSt, BoundingBox
 from content_extractor.core import extract_main_content
 
 # =================================================================
 # core.py のテスト
-#
-# 参照: doc/test/test_design_content_extractor.md
 # =================================================================
 
 # -----------------------------------------------------------------
@@ -112,3 +111,147 @@ async def test_extract_main_content_refinement_loop(mocker, mock_browser, dom_tr
     
     # 3回目の呼び出しは、2回目の勝者であるp_nodeに対して行われる
     mock_rescore.assert_any_call(p_node)
+
+
+@pytest.mark.asyncio
+async def test_extract_main_content_robots_disallowed(mocker, mock_browser):
+    """Test that extract_main_content returns None if robots.txt disallows scraping."""
+    mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value="User-agent: *\nDisallow: /")
+    mocker.patch('content_extractor.core.is_scraping_allowed', return_value=False)
+    
+    result = await extract_main_content(url="http://mock.url/some/path", browser=mock_browser)
+    
+    assert result is None
+
+@pytest.mark.asyncio
+async def test_extract_main_content_setup_page_fails(mocker, mock_browser):
+    """Test that extract_main_content returns None if setup_page fails."""
+    mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value=None)
+    mocker.patch('content_extractor.core.setup_page', new_callable=AsyncMock, return_value=None)
+    
+    result = await extract_main_content(url="http://mock.url", browser=mock_browser)
+    
+    assert result is None
+
+@pytest.mark.asyncio
+async def test_extract_main_content_make_tree_fails(mocker, mock_browser):
+    """Test that extract_main_content returns None if make_tree fails."""
+    mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value=None)
+    mock_page = AsyncMock()
+    mocker.patch('content_extractor.core.setup_page', new_callable=AsyncMock, return_value=mock_page)
+    mocker.patch('content_extractor.core.adjust_page_view', new_callable=AsyncMock, return_value={'width': 1920, 'height': 1080})
+    mocker.patch('content_extractor.core.make_tree', new_callable=AsyncMock, return_value=None)
+    
+    result = await extract_main_content(url="http://mock.url", browser=mock_browser)
+    
+    assert result is None
+
+@pytest.mark.asyncio
+async def test_extract_main_content_no_candidates(mocker, mock_browser, dom_tree_fixture):
+    """Test that extract_main_content returns None if no candidates are found."""
+    mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value=None)
+    mock_page = AsyncMock()
+    mocker.patch('content_extractor.core.setup_page', new_callable=AsyncMock, return_value=mock_page)
+    mocker.patch('content_extractor.core.adjust_page_view', new_callable=AsyncMock, return_value={'width': 1920, 'height': 1080})
+    mocker.patch('content_extractor.core.make_tree', new_callable=AsyncMock, return_value=dom_tree_fixture[0])
+    
+    mock_scorer_instance = MagicMock()
+    mock_scorer_instance.find_candidates.return_value = [] # No candidates
+    mock_scorer_class = mocker.patch('content_extractor.core.MainContentScorer')
+    mock_scorer_class.return_value = mock_scorer_instance
+    
+    result = await extract_main_content(url="http://mock.url", browser=mock_browser)
+    
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_extract_main_content_recursive_call(mocker, mock_browser, dom_tree_fixture):
+    """Test that extract_main_content calls itself recursively if a new watch_url is found."""
+    # This test is complex because it involves recursion of the function under test.
+    # We will spy on the function and mock its dependencies for the recursive call.
+    
+    spy = mocker.spy(sys.modules[extract_main_content.__module__], 'extract_main_content')
+
+    # Mock dependencies for the first call
+    mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value=None)
+    mock_page = AsyncMock()
+    mocker.patch('content_extractor.core.setup_page', new_callable=AsyncMock, return_value=mock_page)
+    mocker.patch('content_extractor.core.adjust_page_view', new_callable=AsyncMock, return_value={'width': 1920, 'height': 1080})
+    mocker.patch('content_extractor.core.make_tree', new_callable=AsyncMock, return_value=dom_tree_fixture[0])
+
+    # Mock WebTypeCHK: first call returns a new URL, second call does not.
+    mock_webtype_instance1 = MagicMock()
+    mock_webtype_instance1.webtype_chk.return_value = "page_changer"
+    mock_webtype_instance1.next_url = "http://mock.url/page/2"
+    
+    mock_webtype_instance2 = MagicMock()
+    mock_webtype_instance2.webtype_chk.return_value = "page_changer"
+    mock_webtype_instance2.next_url = None
+    mocker.patch('content_extractor.core.WebTypeCHK', side_effect=[mock_webtype_instance1, mock_webtype_instance2])
+    
+    # Mock scorer for the recursive call to prevent further complex logic
+    mock_scorer_instance = MagicMock()
+    mock_scorer_instance.find_candidates.return_value = []
+    mocker.patch('content_extractor.core.MainContentScorer', return_value=mock_scorer_instance)
+
+    await extract_main_content(url="http://mock.url/page/1", browser=mock_browser)
+
+    assert spy.call_count == 2
+    spy.assert_called_with("http://mock.url/page/2", mock_browser, 1, arg_webtype="page_changer")
+
+@pytest.mark.asyncio
+async def test_extract_main_content_rescore_no_improvement(mocker, mock_browser, dom_tree_fixture):
+    """Test that the rescoring loop terminates if the score does not improve."""
+    mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value=None)
+    mock_page = AsyncMock()
+    mocker.patch('content_extractor.core.setup_page', new_callable=AsyncMock, return_value=mock_page)
+    mocker.patch('content_extractor.core.adjust_page_view', new_callable=AsyncMock, return_value={'width': 1920, 'height': 1080})
+    mocker.patch('content_extractor.core.make_tree', new_callable=AsyncMock, return_value=dom_tree_fixture[0])
+    mocker.patch('content_extractor.core.save_json')
+
+    parent_node = dom_tree_fixture[0].children[0]
+    parent_node.score = 90
+    child_node = parent_node.children[0]
+    child_node.score = 80
+
+    mock_scorer_instance = MagicMock()
+    mock_scorer_instance.find_candidates.return_value = [parent_node]
+    mocker.patch('content_extractor.core.MainContentScorer', return_value=mock_scorer_instance)
+    
+    # rescore returns child with lower score, then empty list
+    mocker.patch('content_extractor.core.rescore_main_content_with_children', side_effect=[[child_node], []])
+
+    result = await extract_main_content(url="http://mock.url", browser=mock_browser)
+    
+    # The loop should find child's score (80) is not > parent's (90), so it breaks.
+    # The returned content should be the parent from before the break.
+    assert result is parent_node
+
+@pytest.mark.asyncio
+async def test_extract_main_content_rescore_max_loops(mocker, mock_browser, dom_tree_fixture):
+    """Test that the rescoring loop terminates at max_loop_count."""
+    mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value=None)
+    mock_page = AsyncMock()
+    mocker.patch('content_extractor.core.setup_page', new_callable=AsyncMock, return_value=mock_page)
+    mocker.patch('content_extractor.core.adjust_page_view', new_callable=AsyncMock, return_value={'width': 1920, 'height': 1080})
+    mocker.patch('content_extractor.core.make_tree', new_callable=AsyncMock, return_value=dom_tree_fixture[0])
+    mocker.patch('content_extractor.core.save_json')
+
+    nodes = [DOMTreeSt(tag=f'div{i}', score=80 + i) for i in range(10)]
+    for i in range(9):
+        nodes[i].children = [nodes[i+1]]
+
+    mock_scorer_instance = MagicMock()
+    mock_scorer_instance.find_candidates.return_value = [nodes[0]]
+    mocker.patch('content_extractor.core.MainContentScorer', return_value=mock_scorer_instance)
+
+    # rescore will always return the next child with a higher score
+    mocker.patch('content_extractor.core.rescore_main_content_with_children', side_effect=[[n] for n in nodes[1:]])
+
+    result = await extract_main_content(url="http://mock.url", browser=mock_browser)
+
+    # The loop runs 5 times, `tmp_main_content` is updated 5 times.
+    # On 6th iteration, loop_count is 5, loop breaks.
+    # The content is from the 5th iteration, which is nodes[5].
+    assert result.tag == 'div5'
