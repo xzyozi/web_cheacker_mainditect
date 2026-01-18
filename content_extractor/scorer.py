@@ -191,18 +191,14 @@ class MainContentScorer:
         """
         if not self.tree:
             return []
-
+        
         # ツリーの最上位の深さを基準(0)とするための差分
         depth_diff = self.tree[0].depth
-
-        scored_nodes: List[DOMTreeSt] = []
-        nodes_to_score = list(self.tree)  # Make a copy to iterate over
-
-        while nodes_to_score:
-            node = nodes_to_score.pop(0)
+        
+        scored_nodes : List[DOMTreeSt] = []
+        for node in self.tree:
             self._score_for_refinement(node, depth_diff=depth_diff)
-            scored_nodes.append(node)
-            nodes_to_score.extend(node.children)
+            scored_nodes.append(node) 
 
         scored_nodes.sort(key=lambda x: x.score, reverse=True)
 
