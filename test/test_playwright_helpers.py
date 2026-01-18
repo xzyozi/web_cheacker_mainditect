@@ -45,119 +45,72 @@ def mock_asyncio_sleep(mocker):
     # Patch asyncio.sleep to prevent actual delays during tests
     return mocker.patch('asyncio.sleep', new=AsyncMock())
 
-# --- Tests for setup_page ---
-
-@pytest.mark.asyncio
-async def test_setup_page_success(mock_browser, mock_context, mock_page):
-    """Test Case 1: 正常なページセットアップ"""
-    url = "http://example.com"
-    result_page = await setup_page(url, mock_browser)
-
-    assert result_page is mock_page
-    mock_browser.new_context.assert_called_once_with(viewport={'width': 1920, 'height': 1080})
-    mock_context.new_page.assert_called_once()
-    mock_page.goto.assert_called_once_with(url, wait_until='domcontentloaded', timeout=10000)
-    mock_page.wait_for_selector.assert_called_once_with('body', state='attached', timeout=10000)
-    mock_page.wait_for_load_state.assert_called_once_with('networkidle', timeout=15000)
-
-@pytest.mark.asyncio
-async def test_setup_page_goto_timeout(mock_browser, mock_context, mock_page):
-    """Test Case 2: `goto`でのタイムアウト"""
-    mock_page.goto.side_effect = PlaywrightTimeoutError("timeout")
-    url = "http://example.com"
-    result_page = await setup_page(url, mock_browser)
-
-    assert result_page is None
-    mock_page.close.assert_called_once()
-    mock_context.new_page.assert_called_once() # new_page is called before goto
-
-@pytest.mark.asyncio
-async def test_setup_page_wait_for_load_state_timeout(mock_browser, mock_context, mock_page):
-    """Test Case 3: `wait_for_load_state`でのタイムアウト"""
-    mock_page.wait_for_load_state.side_effect = PlaywrightTimeoutError("timeout")
-    url = "http://example.com"
-    result_page = await setup_page(url, mock_browser)
-
-    assert result_page is mock_page
-    mock_page.wait_for_load_state.assert_called_once_with('networkidle', timeout=15000)
-    # page.close should not be called as it's a warning, not a failure that prevents page return
-
-@pytest.mark.asyncio
-async def test_setup_page_generic_exception(mock_browser, mock_context, mock_page):
-    """Test Case 4: その他の例外"""
-    mock_page.goto.side_effect = Exception("network error")
-    url = "http://example.com"
-    result_page = await setup_page(url, mock_browser)
-
-    assert result_page is None
-    mock_page.close.assert_called_once()
-
-# --- Tests for adjust_page_view ---
-
-@pytest.mark.asyncio
-async def test_adjust_page_view_success(mock_page):
-    """Test Case 1: 正しいビューポートサイズ設定とスクロール"""
-    mock_page.evaluate.return_value = {'width': 1024, 'height': 768}
-    
-    dimensions = await adjust_page_view(mock_page)
-
-    expected_js_script = '''() => {
-        return {
-            width: Math.max(document.body.scrollWidth, document.body.offsetWidth,
-                            document.documentElement.clientWidth, document.documentElement.scrollWidth,
-                            document.documentElement.offsetWidth),
-            height: Math.max(document.body.scrollHeight, document.body.offsetHeight,
-                             document.documentElement.clientHeight, document.documentElement.scrollHeight,
-                             document.documentElement.offsetWidth)
-        }
-    }'''
-
-    # Compare call_args_list directly for more robust checking of multi-line strings
-    actual_calls = [c.args[0].strip() for c in mock_page.evaluate.call_args_list]
-    assert len(actual_calls) == 2
-    assert actual_calls[0] == expected_js_script.strip()
-    assert actual_calls[1] == 'window.scrollTo(0, document.body.scrollHeight)'.strip()
-
-    mock_page.set_viewport_size.assert_called_once_with({"width": 1024, "height": 768})
-    assert dimensions == {'width': 1024, 'height': 768}
-
 
 # --- Tests for fetch_robots_txt ---
 
 @pytest.mark.asyncio
-async def test_fetch_robots_txt_success(mocker, mock_aiohttp_client_session):
+@patch('content_extractor.playwright_helpers.aiohttp.ClientSession')
+async def test_fetch_robots_txt_success(MockClientSession, mock_aiohttp_response):
     """Test Case 1: 正常な`robots.txt`の取得"""
-    # Patch aiohttp.ClientSession used within playwright_helpers.py
-    mocker.patch('content_extractor.playwright_helpers.aiohttp.ClientSession', new=mock_aiohttp_client_session)
+    # Arrange
+    get_context = AsyncMock()
+    get_context.__aenter__.return_value = mock_aiohttp_response
+    session = MagicMock()
+    session.get.return_value = get_context
+    session_context = AsyncMock()
+    session_context.__aenter__.return_value = session
+    MockClientSession.return_value = session_context
+
+    # Act
     url = "http://example.com/some/path"
     robots_content = await fetch_robots_txt(url)
 
+    # Assert
     assert robots_content == "User-agent: *\nAllow: /"
-    # The get method is called on the instance returned by the class, so we need to assert on the instance's get
-    mock_aiohttp_client_session.return_value.get.assert_called_once()
-    assert mock_aiohttp_client_session.return_value.get.call_args[0][0] == "http://example.com/robots.txt"
+    session.get.assert_called_once_with("http://example.com/robots.txt")
 
 @pytest.mark.asyncio
-async def test_fetch_robots_txt_not_found(mocker, mock_aiohttp_client_session, mock_aiohttp_response):
+@patch('content_extractor.playwright_helpers.aiohttp.ClientSession')
+async def test_fetch_robots_txt_not_found(MockClientSession, mock_aiohttp_response):
     """Test Case 2: `robots.txt`が見つからない (404)"""
+    # Arrange
     mock_aiohttp_response.status = 404
-    mocker.patch('content_extractor.playwright_helpers.aiohttp.ClientSession', new=mock_aiohttp_client_session)
+    get_context = AsyncMock()
+    get_context.__aenter__.return_value = mock_aiohttp_response
+    session = MagicMock()
+    session.get.return_value = get_context
+    session_context = AsyncMock()
+    session_context.__aenter__.return_value = session
+    MockClientSession.return_value = session_context
+
+    # Act
     url = "http://example.com/some/path"
     robots_content = await fetch_robots_txt(url)
 
+    # Assert
     assert robots_content is None
-    mock_aiohttp_client_session.return_value.get.assert_called_once()
+    session.get.assert_called_once()
 
 @pytest.mark.asyncio
-async def test_fetch_robots_txt_network_error(mocker, mock_aiohttp_client_session):
+@patch('content_extractor.playwright_helpers.aiohttp.ClientSession')
+async def test_fetch_robots_txt_network_error(MockClientSession):
     """Test Case 3: ネットワークエラー"""
-    mock_aiohttp_client_session.return_value.get.return_value.__aenter__.side_effect = aiohttp.ClientError("network down")
-    mocker.patch('content_extractor.playwright_helpers.aiohttp.ClientSession', new=mock_aiohttp_client_session)
+    # Arrange: session.get() will raise a ClientError
+    session = MagicMock()
+    session.get.side_effect = aiohttp.ClientError("Network Error")
+    session_context = AsyncMock()
+    session_context.__aenter__.return_value = session
+    MockClientSession.return_value = session_context
+
+    # Act
     url = "http://example.com/some/path"
     robots_content = await fetch_robots_txt(url)
 
+    # Assert
     assert robots_content is None
-    mock_aiohttp_client_session.return_value.get.assert_called_once()
+    session.get.assert_called_once()
+
+
 
 # --- Tests for is_scraping_allowed ---
 

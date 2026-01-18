@@ -75,11 +75,18 @@ async def fetch_robots_txt(url):
     parsed_url = urlparse(url)
     robots_url = urljoin(f"{parsed_url.scheme}://{parsed_url.netloc}", '/robots.txt')
     
-    async with aiohttp.ClientSession() as session:
-        async with session.get(robots_url) as response:
-            if response.status == 200:
-                return await response.text()
-            return None
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(robots_url) as response:
+                if response.status == 200:
+                    return await response.text()
+                return None
+    except aiohttp.ClientError as e:
+        logger.error(f"robots.txtの取得中にエラーが発生: {robots_url} - {e}")
+        return None
+    except Exception as e:
+        logger.error(f"robots.txtの取得中に予期せぬエラーが発生: {robots_url} - {e}")
+        return None
 
 def is_scraping_allowed(robots_txt : str,
                         target_path : str,
