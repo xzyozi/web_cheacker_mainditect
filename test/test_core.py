@@ -238,29 +238,58 @@ async def test_extract_main_content_rescore_no_improvement(mocker, mock_browser,
     assert result is parent_node
 
 @pytest.mark.asyncio
-async def test_extract_main_content_rescore_max_loops(mocker, mock_browser, dom_tree_fixture):
-    """Test that the rescoring loop terminates at max_loop_count."""
+async def test_extract_main_content_selector_generation(mocker, mock_browser):
+    """
+    `extract_main_content`が最終的なメインコンテンツの`css_selector`と
+    `css_selector_list`を正しく生成することをテストする。
+    """
+    # ----- モックの設定 -----
     mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value=None)
     mock_page = AsyncMock()
     mocker.patch('content_extractor.core.setup_page', new_callable=AsyncMock, return_value=mock_page)
     mocker.patch('content_extractor.core.adjust_page_view', new_callable=AsyncMock, return_value={'width': 1920, 'height': 1080})
-    mocker.patch('content_extractor.core.make_tree', new_callable=AsyncMock, return_value=dom_tree_fixture[0])
     mocker.patch('content_extractor.core.save_json')
 
-    nodes = [DOMTreeSt(tag=f'div{i}', score=80 + i) for i in range(10)]
-    for i in range(9):
-        nodes[i].children = [nodes[i+1]]
+    # DOMツリーのフィクスチャをカスタマイズして、明確なセレクタを持つようにする
+    p_node = DOMTreeSt(tag='p', text='Real content.', score=95, depth=4, css_selector='div#main-article > p.content')
+    img_node = DOMTreeSt(tag='img', score=60, css_selector='article#main-article > img.hero') # Additional child for article_node
+    article_node = DOMTreeSt(tag='article', attributes={'id': 'main-article'}, score=85, depth=3, children=[p_node, img_node], css_selector='article#main-article')
+    span_ad_node = DOMTreeSt(tag='span', score=70, css_selector='div.section > span.ad') # Additional child for div_section_node
+    div_section_node = DOMTreeSt(tag='div', attributes={'class': 'section'}, score=80, depth=2, children=[article_node, span_ad_node], css_selector='div.section')
+    body_node = DOMTreeSt(tag='body', score=0, depth=0, children=[div_section_node], css_selector='body')
+
+    mocker.patch('content_extractor.core.make_tree', new_callable=AsyncMock, return_value=body_node)
 
     mock_scorer_instance = MagicMock()
-    mock_scorer_instance.find_candidates.return_value = [nodes[0]]
+    # Initial candidates: div.section (parent) and article#main-article (child)
+    mock_scorer_instance.find_candidates.return_value = [div_section_node, article_node]
     mocker.patch('content_extractor.core.MainContentScorer', return_value=mock_scorer_instance)
 
-    # rescore will always return the next child with a higher score
-    mocker.patch('content_extractor.core.rescore_main_content_with_children', side_effect=[[n] for n in nodes[1:]])
+    # `rescore_main_content_with_children` のモック
+    # 1. `div_section_node` の子を再スコア -> `article_node`がベスト (children: [article_node, span_ad_node])
+    # 2. `article_node` の子を再スコア -> `p_node`がベスト (children: [p_node, img_node])
+    # 3. `p_node` の子を再スコア -> 子なしでループ終了 (children: [])
+    mocker.patch(
+        'content_extractor.core.rescore_main_content_with_children',
+        side_effect=[
+            [article_node, span_ad_node], # first call (children of div_section_node)
+            [p_node, img_node],           # second call (children of article_node)
+            []                            # third call (children of p_node)
+        ]
+    )
 
-    result = await extract_main_content(url="http://mock.url", browser=mock_browser)
+    # ----- テスト対象関数の実行 -----
+    final_content = await extract_main_content(url="http://mock.url", browser=mock_browser)
 
-    # The loop runs 5 times, `tmp_main_content` is updated 5 times.
-    # On 6th iteration, loop_count is 5, loop breaks.
-    # The content is from the 5th iteration, which is nodes[5].
-    assert result.tag == 'div5'
+    # ----- アサーション -----
+    assert final_content is not None
+    assert final_content.tag == 'p'
+    assert final_content.text == 'Real content.'
+    assert final_content.css_selector == 'div#main-article > p.content'
+
+    # Assert css_selector_list
+    # The `current_best_children` for `final_content` (p_node) would be [p_node, img_node]
+    # `selector_candidates` takes from current_best_children[1:4], so `img_node`'s selector will be picked.
+    # Then `final_content.css_selector` is inserted at the front.
+    assert final_content.css_selector_list == ['div#main-article > p.content']
+    assert len(final_content.css_selector_list) == 1
