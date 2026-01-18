@@ -550,6 +550,18 @@
     - **入力:** `rescore_main_content_with_children`が常にスコアの高い子を返すようにモック。
     - **期待値:** ループが`max_loop_count`で停止し、その時点での最良のノードが返されること。
 
+- **Test Case 3: CSSセレクタとセレクタリストの生成**
+    - **目的:** `extract_main_content`が最終的に選択されたメインコンテンツの`css_selector`および`css_selector_list`を正しく生成し、格納することを確認する。特に、コンテンツが葉ノード（子要素を持たない）である場合の`css_selector_list`の挙動を検証する。
+    - **シナリオ:** 絞り込みループを通じて最終的に子要素を持たない葉ノード（例: `<p>`タグ）がメインコンテンツとして選択されるようなモック設定を行う。
+    - **入力:**
+        - `make_tree`が、複数の階層を持ち、最終的に`<p>`タグが選ばれるようなDOMツリーを返すようにモックする。
+        - `rescore_main_content_with_children`は、`extract_main_content_refinement_loop`と同様に、`div.section -> article#main-article -> p.content`と絞り込んでいくようにモックし、`p.content`の子要素は空リストを返すように設定する。
+    - **期待値:**
+        - 返される`final_content`が`<p>`タグのノードであること。
+        - `final_content.css_selector`が`p`タグの正確なCSSセレクタ（例: `'div#main-article > p.content'`）であること。
+        - `final_content.css_selector_list`が、`final_content.css_selector`のみを含むリストであること（葉ノードであるため、他の子孫セレクタは生成されない）。
+
+
 ## 4. 新規テストの追加手順
 
 新しいテストを追加する際は、以下の手順に従います。これにより、設計と実装の同期を保ちます。
