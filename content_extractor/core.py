@@ -124,15 +124,10 @@ async def extract_main_content(url: str,
             # よりスコアの高い(＝よりコンテンツ本体に近い)要素へと絞り込んでいく。
             # 画面占有率などがスコアに大きく影響するため、この絞り込みが重要となる。
             # =================================================================
-            # メインコンテンツ候補の再評価ループ
-            # 初期候補(mainタグなど)は大きすぎることがある。そのため、その子要素を再評価し、
-            # よりスコアの高い(＝よりコンテンツ本体に近い)要素へと絞り込んでいく。
-            # 画面占有率などがスコアに大きく影響するため、この絞り込みが重要となる。
-            # =================================================================
             loop_count = 0
             current_best = main_contents[0]
-            # This list will hold the children of `current_best` that were evaluated in the last iteration.
-            # It's used for generating `selector_candidates`.
+            # このリストは、前回のイテレーションで評価された`current_best`の子要素を保持します。
+            # これは`selector_candidates`を生成するために使用されます。
             current_best_children = []
 
             while loop_count < max_loop_count:
@@ -182,13 +177,13 @@ async def extract_main_content(url: str,
             # 最終的に選ばれたコンテンツに、セレクタ候補リストとプライマリセレクタを格納
             # この時点では品質評価は行わない
             final_content.css_selector_list = selector_candidates
-            if selector_candidates and not final_content.css_selector: # Only assign if final_content.css_selector is not already set
+            if selector_candidates and not final_content.css_selector: # final_content.css_selectorがまだ設定されていない場合にのみ割り当てる
                 final_content.css_selector = selector_candidates[0]
-            # css_selector_list setting end
+            # css_selector_list 設定終了
 
             final_content.url = url
 
-            # web_type setting
+            # web_type 設定
             current_type = WebType.from_string(chktype)
             if arg_webtype:
                 previous_type = WebType.from_string(arg_webtype)
@@ -428,8 +423,8 @@ if __name__ == "__main__":
     # --- コマンドライン引数の設定 ---
     parser = argparse.ArgumentParser(
         description="""
-        Playwright Main Content Detection Script.
-        Used for testing the content extraction logic on a single URL.
+        Playwrightを用いたメインコンテンツ検出スクリプト。
+        単一URLにおけるコンテンツ抽出ロジックのテストに使用されます。
         """
     )
     parser.add_argument("url", help="The URL to test.")
@@ -437,16 +432,16 @@ if __name__ == "__main__":
         "--mode", "-m",
         choices=["full", "quick", "quality"],
         default="full",
-        help="Scan mode to execute. 'full' runs full scan, 'quick' runs quick scan. Default: full"
+        help="実行するスキャンモード。'full'はフルスキャン、'quick'はクイックスキャンを実行します。デフォルト: full"
     )
     parser.add_argument(
         "--selectors",
         nargs='+',
-        help="CSS selector(s) to use for 'quick' mode."
+        help="'quick'モードで使用するCSSセレクタ。"
     )
     parser.add_argument(
         "--query", "-q",
-        help="Search query to use for 'quality' mode."
+        help="'quality'モードで使用する検索クエリ。"
     )
     args = parser.parse_args()
 
@@ -491,7 +486,7 @@ if __name__ == "__main__":
             logger.info("品質評価結果: 結果なしページ")
         elif result_obj.result_count > 0:
             logger.info(f"品質評価結果: {result_obj.result_count}件のアイテムを検出 (AvgRelevance: {result_obj.avg_relevance:.2f})")
-        # print(result_obj) # オブジェクト全体を詳細に見たい場合はコメントを外す
+        # print(result_obj) # オブジェクト全体を詳細に見たい場合は、この行のコメントを外してください
     else:
         logger.warning("テストは終了しましたが、コンテンツは抽出されませんでした。")
 
