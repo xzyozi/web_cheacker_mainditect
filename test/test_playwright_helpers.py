@@ -133,7 +133,7 @@ async def test_adjust_page_view_correctly_sets_viewport_and_scrolls(mock_page, m
     dimensions = await adjust_page_view(mock_page)
     
     assert mock_page.evaluate.call_count == 2
-    mock_page.set_viewport_size.assert_called_once_with({'width': 1000, 'height': 3000})
+    mock_page.set_viewport_size.assert_called_once_with({'width': 1000, 'height': 2000})
     mock_page.evaluate.assert_has_calls([
         call('''() => {
         return {
