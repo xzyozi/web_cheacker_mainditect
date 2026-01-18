@@ -123,24 +123,38 @@ async def extract_main_content(url: str,
             # 初期候補(mainタグなど)は大きすぎることがある。そのため、その子要素を再評価し、
             # よりスコアの高い(＝よりコンテンツ本体に近い)要素へと絞り込んでいく。
             # 画面占有率などがスコアに大きく影響するため、この絞り込みが重要となる。
+            # =================================================================
+            # メインコンテンツ候補の再評価ループ
+            # 初期候補(mainタグなど)は大きすぎることがある。そのため、その子要素を再評価し、
+            # よりスコアの高い(＝よりコンテンツ本体に近い)要素へと絞り込んでいく。
+            # 画面占有率などがスコアに大きく影響するため、この絞り込みが重要となる。
+            # =================================================================
             loop_count = 0
             current_best = main_contents[0]
-            rescored_children = main_contents # Initialize with initial candidates
+            # This list will hold the children of `current_best` that were evaluated in the last iteration.
+            # It's used for generating `selector_candidates`.
+            current_best_children = []
 
             while loop_count < max_loop_count:
-                rescored_children_next = rescore_main_content_with_children(current_best)
+                # 現在の最有力候補を一時保存 (次のイテレーションでprev_bestとなる)
+                prev_best = current_best
+                
+                # 最有力候補の子要素を再スコアリングし、新たな候補リストとする
+                rescored_children_of_prev_best = rescore_main_content_with_children(prev_best)
 
-                logger.debug(f" Parent selector : {current_best.css_selector} / Score: {current_best.score}")
-                if rescored_children_next:
-                    logger.debug(f" -> Best Child selector: {rescored_children_next[0].css_selector} / Score: {rescored_children_next[0].score}")
+                logger.debug(f" Parent selector : {prev_best.css_selector} / Score: {prev_best.score}")
+                if rescored_children_of_prev_best:
+                    logger.debug(f" -> Best Child selector: {rescored_children_of_prev_best[0].css_selector} / Score: {rescored_children_of_prev_best[0].score}")
 
                 # 子要素が見つからない、または子要素のスコアが親を超えなくなったら、
                 # 親が最良のコンテンツブロックと判断してループを抜ける。
-                if not rescored_children_next or current_best.score >= rescored_children_next[0].score:
+                if not rescored_children_of_prev_best or prev_best.score >= rescored_children_of_prev_best[0].score:
+                    current_best_children = rescored_children_of_prev_best # Keep these for selector generation
                     break
-
-                current_best = rescored_children_next[0]
-                rescored_children = rescored_children_next
+                
+                # もしより良い子要素が見つかったら、それを新たなcurrent_bestとし、その子リストを保持する
+                current_best = rescored_children_of_prev_best[0]
+                current_best_children = rescored_children_of_prev_best # Update children for the new current_best
                 loop_count += 1
             
             if loop_count == max_loop_count:
@@ -151,17 +165,24 @@ async def extract_main_content(url: str,
             logger.info("最終的に選択されたメインコンテンツ:")
             logger.info(final_content)
 
+            # 最終的に選択されたコンテンツの子ノードをログ出力
+            logger.info("Rescored child nodes of final content:")
+            for child in current_best_children[:5]: # Display up to 5 children
+                logger.debug(child)
+
             # css_selector_list setting
             # 堅牢なセレクタ候補を上位3つまで取得（空のセレクタは除外）
-            selector_candidates = [node.css_selector for node in rescored_children[1:4] if node.css_selector]
+            # `current_best_children`は`final_content`の子要素のリストになっている
+            selector_candidates = [node.css_selector for node in current_best_children[1:4] if node.css_selector]
             
             # 自身のセレクタも候補の先頭に追加しておく
             if final_content.css_selector and final_content.css_selector not in selector_candidates:
                 selector_candidates.insert(0, final_content.css_selector)
 
             # 最終的に選ばれたコンテンツに、セレクタ候補リストとプライマリセレクタを格納
+            # この時点では品質評価は行わない
             final_content.css_selector_list = selector_candidates
-            if selector_candidates and not final_content.css_selector:
+            if selector_candidates and not final_content.css_selector: # Only assign if final_content.css_selector is not already set
                 final_content.css_selector = selector_candidates[0]
             # css_selector_list setting end
 
