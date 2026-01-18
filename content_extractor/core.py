@@ -4,6 +4,7 @@ import os
 from collections import Counter
 import asyncio
 from playwright.async_api import async_playwright, Page, Browser, TimeoutError as PlaywrightTimeoutError
+from aiohttp import ClientError
 
 import traceback
 import sys
@@ -16,13 +17,14 @@ from .scorer import MainContentScorer
 from .make_tree import make_tree
 from .web_type_chk import WebTypeCHK, WebType
 from .dom_treeSt import DOMTreeSt, BoundingBox
-from .dom_utils import update_nodes_with_children, rescore_main_content_with_children
+from .dom_utils import rescore_main_content_with_children
 from .playwright_helpers import setup_page, adjust_page_view, fetch_robots_txt, is_scraping_allowed
 from .quality_evaluator import is_no_results_page, quantify_search_results
 from setup_logger import setup_logger
 from utils.file_handler import save_json
 
-asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 # logger setting 
 LOGGER_DATEFORMAT = "%Y%m%d_%H%M%S"
@@ -46,7 +48,7 @@ def print_error_details(e : Exception) -> None :
 async def extract_main_content(url: str,
                     browser: Browser,
                     count : int = 0,
-                    arg_webtype : any = None
+                    arg_webtype : Any = None
                     ) -> DOMTreeSt | None:       
     """
     URLからメインコンテンツを抽出し、DOMTreeStオブジェクトとして返します。(Fullスキャン)
@@ -56,30 +58,30 @@ async def extract_main_content(url: str,
         url (str): 解析対象のURL。
         browser (Browser): 使用するPlaywrightのBrowserインスタンス。
         count (int, optional): ページ遷移の再帰呼び出し回数カウンタ。デフォルトは 0。
-        arg_webtype (any, optional): 前の処理から引き継がれたWebページタイプ。デフォルトは None。
+        arg_webtype (Any, optional): 前の処理から引き継がれたWebページタイプ。デフォルトは None。
 
     Returns:
         DOMTreeSt | None: 抽出されたメインコンテンツのDOMTreeStオブジェクト。失敗した場合はNone。
     """
-    # robots.txtを取得
-    robots_txt = await fetch_robots_txt(url)
-    
-    if robots_txt:
-        # スクレイピングが許可されているか確認
-        from urllib.parse import urlparse
-        parsed_url = urlparse(url)
-        target_path = parsed_url.path or "/"
+    page = None
+    try:
+        # robots.txtを取得
+        robots_txt = await fetch_robots_txt(url)
         
-        if not is_scraping_allowed(robots_txt, target_path):
-            logger.info(f"robots.txtにより、このURLのスクレイピングは許可されていません: {url}")
+        if robots_txt:
+            # スクレイピングが許可されているか確認
+            from urllib.parse import urlparse
+            parsed_url = urlparse(url)
+            target_path = parsed_url.path or "/"
+            
+            if not is_scraping_allowed(robots_txt, target_path):
+                logger.info(f"robots.txtにより、このURLのスクレイピングは許可されていません: {url}")
+                return None
+
+        page = await setup_page(url, browser)
+        if not page:
             return None
 
-
-    page = await setup_page(url, browser)
-    if not page:
-        return None
-
-    try:
         max_loop_count = 5
         dimensions = await adjust_page_view(page)
 
@@ -110,60 +112,77 @@ async def extract_main_content(url: str,
 
         if not main_contents:
             logger.info("メインコンテンツ候補が見つかりませんでした。")
-            return {}
+            return None
 
         logger.info(f"Top candidates:{len(main_contents)}")
-        for content in main_contents[:0]:
-            logger.info(content)
 
         if main_contents:
-            main_contents = rescore_main_content_with_children(main_contents[0])
-            
-            # logger.info("再評価前のコンテンツ差分:")
-            # for content in main_contents[:2]:
-            #     print_content(content)
-
+            # =================================================================
+            # メインコンテンツ候補の再評価ループ
+            # =================================================================
+            # 初期候補(mainタグなど)は大きすぎることがある。そのため、その子要素を再評価し、
+            # よりスコアの高い(＝よりコンテンツ本体に近い)要素へと絞り込んでいく。
+            # 画面占有率などがスコアに大きく影響するため、この絞り込みが重要となる。
+            # =================================================================
+            # メインコンテンツ候補の再評価ループ
+            # 初期候補(mainタグなど)は大きすぎることがある。そのため、その子要素を再評価し、
+            # よりスコアの高い(＝よりコンテンツ本体に近い)要素へと絞り込んでいく。
+            # 画面占有率などがスコアに大きく影響するため、この絞り込みが重要となる。
+            # =================================================================
             loop_count = 0
-            # tmp_main_content = DOMTreeSt()
-            while main_contents:
-                tmp_main_content = main_contents[0] 
+            current_best = main_contents[0]
+            # This list will hold the children of `current_best` that were evaluated in the last iteration.
+            # It's used for generating `selector_candidates`.
+            current_best_children = []
 
-                main_contents = rescore_main_content_with_children(tmp_main_content)
+            while loop_count < max_loop_count:
+                # 現在の最有力候補を一時保存 (次のイテレーションでprev_bestとなる)
+                prev_best = current_best
+                
+                # 最有力候補の子要素を再スコアリングし、新たな候補リストとする
+                rescored_children_of_prev_best = rescore_main_content_with_children(prev_best)
 
-                logger.debug(f" tmp_main selector : {tmp_main_content.css_selector} main selector: {main_contents[0].css_selector}")
-                logger.debug(f'tmp_candidates score : {tmp_main_content.score}  & main_contents {main_contents[0].score}')
-                if tmp_main_content.score >= main_contents[0].score:
+                logger.debug(f" Parent selector : {prev_best.css_selector} / Score: {prev_best.score}")
+                if rescored_children_of_prev_best:
+                    logger.debug(f" -> Best Child selector: {rescored_children_of_prev_best[0].css_selector} / Score: {rescored_children_of_prev_best[0].score}")
+
+                # 子要素が見つからない、または子要素のスコアが親を超えなくなったら、
+                # 親が最良のコンテンツブロックと判断してループを抜ける。
+                if not rescored_children_of_prev_best or prev_best.score >= rescored_children_of_prev_best[0].score:
+                    current_best_children = rescored_children_of_prev_best # Keep these for selector generation
                     break
-
+                
+                # もしより良い子要素が見つかったら、それを新たなcurrent_bestとし、その子リストを保持する
+                current_best = rescored_children_of_prev_best[0]
+                current_best_children = rescored_children_of_prev_best # Update children for the new current_best
                 loop_count += 1
-                if loop_count == max_loop_count:
-                    logger.warning("再評価ループが上限に達しました。")
-                    break
-            # while loop end
+            
+            if loop_count == max_loop_count:
+                logger.warning("再評価ループが上限に達しました。")
 
-            logger.info("Rescored child nodes:")
-            for child in main_contents[:5]:
-                logger.debug(child)
+            final_content = current_best
 
             logger.info("最終的に選択されたメインコンテンツ:")
-            # print_content(tmp_main_content)
-            logger.info(tmp_main_content)
+            logger.info(final_content)
 
-            # 最終的に選択されたコンテンツを final_content とする
-            # この時点では品質評価は行わない
-            final_content = tmp_main_content
+            # 最終的に選択されたコンテンツの子ノードをログ出力
+            logger.info("Rescored child nodes of final content:")
+            for child in current_best_children[:5]: # Display up to 5 children
+                logger.debug(child)
 
             # css_selector_list setting
             # 堅牢なセレクタ候補を上位3つまで取得（空のセレクタは除外）
-            selector_candidates = [node.css_selector for node in main_contents[:3] if node.css_selector]
+            # `current_best_children`は`final_content`の子要素のリストになっている
+            selector_candidates = [node.css_selector for node in current_best_children[1:4] if node.css_selector]
             
             # 自身のセレクタも候補の先頭に追加しておく
-            if tmp_main_content.css_selector and tmp_main_content.css_selector not in selector_candidates:
-                selector_candidates.insert(0, tmp_main_content.css_selector)
+            if final_content.css_selector and final_content.css_selector not in selector_candidates:
+                selector_candidates.insert(0, final_content.css_selector)
 
             # 最終的に選ばれたコンテンツに、セレクタ候補リストとプライマリセレクタを格納
+            # この時点では品質評価は行わない
             final_content.css_selector_list = selector_candidates
-            if selector_candidates:
+            if selector_candidates and not final_content.css_selector: # Only assign if final_content.css_selector is not already set
                 final_content.css_selector = selector_candidates[0]
             # css_selector_list setting end
 
@@ -192,9 +211,18 @@ async def extract_main_content(url: str,
 
             return None
 
-    except Exception as e:
-        logger.error("extract_main_contentの実行中にエラーが発生しました:")
+    except PlaywrightTimeoutError as e:
+        logger.error(f"Playwrightの操作中にタイムアウトが発生しました: {url} - {e}")
         print_error_details(e)
+        return None
+    except ClientError as e:
+        logger.error(f"HTTPリクエスト中にエラーが発生しました: {url} - {e}")
+        print_error_details(e)
+        return None
+    except Exception as e:
+        logger.error(f"extract_main_contentの実行中に予期せぬエラーが発生しました: {url}")
+        print_error_details(e)
+        return None
 
     finally:
         if page:
@@ -258,7 +286,14 @@ async def evaluate_search_quality(url: str,
             logger.info(f"関連性スコアを計算しました: Avg={content_node.avg_relevance:.2f}, Var={content_node.relevance_variance:.2f}, Max={content_node.max_relevance:.2f}")
 
             # フェーズ4: SQS計算と最終判定
-            scorer.calculate_sqs(content_node)
+            sqs, category = scorer.calculate_sqs(
+                result_count=content_node.result_count,
+                avg_relevance=content_node.avg_relevance,
+                relevance_variance=content_node.relevance_variance,
+                max_relevance=content_node.max_relevance
+            )
+            content_node.sqs_score = sqs
+            content_node.quality_category = category
 
         return content_node
     finally:
@@ -304,7 +339,7 @@ async def quick_extract_content(url: str,
     try:
         found_tree = None
         # ページ移動と初期待機を簡略化
-        await page.goto(url, wait_until='load', timeout=10000)
+        await page.goto(url, wait_until='domcontentloaded', timeout=10000)
 
         # セレクタをループで試す
         for selector in css_selector_list:
@@ -333,14 +368,18 @@ async def quick_extract_content(url: str,
         found_tree.web_type = webtype_str
         return found_tree
 
+    except PlaywrightTimeoutError as e:
+        logger.error(f"Quickスキャン中のPlaywright操作でタイムアウトしました: {url} - {e}")
+        return None # Quickスキャン失敗
     except Exception as e:
-        logger.error(f"コンテンツ抽出中にエラーが発生: {str(e)}")
+        logger.error(f"Quickスキャン中に予期せぬエラーが発生: {url}")
+        print_error_details(e)
         return None # Quickスキャン失敗
     finally:
         await context.close()
 
 
-async def run_full_scan_standalone(url: str, arg_webtype: any = None):
+async def run_full_scan_standalone(url: str, arg_webtype: Any = None):
     """
     従来のtest_mainと同様に、単一URLのフルスキャンをスタンドアロンで実行します。
     ブラウザの起動と終了を内包します。
@@ -396,7 +435,7 @@ if __name__ == "__main__":
     parser.add_argument("url", help="The URL to test.")
     parser.add_argument(
         "--mode", "-m",
-        choices=["full", "quick"],
+        choices=["full", "quick", "quality"],
         default="full",
         help="Scan mode to execute. 'full' runs full scan, 'quick' runs quick scan. Default: full"
     )

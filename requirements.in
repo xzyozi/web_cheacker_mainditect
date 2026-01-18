@@ -4,3 +4,9 @@ playwright
 Pillow
 aiohttp
 jinja2
+pytest
+pytest-mock
+pytest-asyncio
+pytest-cov
+scipy
+numpy<2
