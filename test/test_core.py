@@ -313,7 +313,7 @@ class TestEscapeCssSelectorColons:
                                            # but if it were to be interpreted as two separate class-colon parts
                                            # then it should be escaped as such. The regex handles this by escaping
                                            # any colon that follows a class-like pattern.
-        expected = 'span.sm\:text-lg\:hover'
+        expected = 'span.sm\:text-lg:hover'
         assert _escape_css_selector_colons(selector) == expected
 
     def test_no_colons_in_selector(self):
