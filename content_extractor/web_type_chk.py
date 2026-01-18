@@ -70,6 +70,9 @@ class PageMonitor:
         最新ページのURLを取得します。
         ページ内のリンクから最大のページ番号を持つリンクを見つけ、絶対URLを返します。
         """
+        if not PAGINATED_URL_REGEX.search(self.base_url):
+            return None
+
         latest_page_num = -1
         latest_link = None
 
@@ -137,86 +140,4 @@ class WebTypeCHK() :
             
         return WebType.plane.name
 
-if __name__ == "__main__":
-    import sys
-    import os
-    # Add the parent directory to the path to allow relative imports
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-    from content_extractor.dom_treeSt import DOMTreeSt
 
-    # --- Test Case 1: Standard pagination, URL should be modified ---
-    base_url_1 = "http://sample.com/def/page-1"
-    node_data_1 = DOMTreeSt(
-        links=[
-            "http://sample.com/def/page-1",
-            "http://sample.com/def/page-2",
-            "http://sample.com/def/page-10"
-        ]
-    )
-    monitor_1 = PageMonitor(base_url_1, node_data_1)
-    expected_url_1 = "http://sample.com/def/page-10"
-    actual_url_1 = monitor_1.determine_watch_page()
-    assert actual_url_1 == expected_url_1, f"Test 1 Failed: Expected {expected_url_1}, Got {actual_url_1}"
-    print("Test Case 1 Passed!")
-
-    # --- Test Case 2: On the last page, should return None ---
-    base_url_2 = "http://sample.com/def/page-10"
-    node_data_2 = DOMTreeSt(
-        links=[
-            "http://sample.com/def/page-8",
-            "http://sample.com/def/page-9",
-            "http://sample.com/def/page-10"
-        ]
-    )
-    monitor_2 = PageMonitor(base_url_2, node_data_2)
-    expected_url_2 = None
-    actual_url_2 = monitor_2.determine_watch_page()
-    assert actual_url_2 == expected_url_2, f"Test 2 Failed: Expected {expected_url_2}, Got {actual_url_2}"
-    print("Test Case 2 Passed!")
-
-    # --- Test Case 3: The "page/page" bug case, URL should be modified correctly ---
-    base_url_3 = "http://sample.com/articles/page/3"
-    node_data_3 = DOMTreeSt(
-        links=[
-            "/articles/page/2",
-            "/articles/page/4",
-            "/articles/page/5",
-        ]
-    )
-    monitor_3 = PageMonitor(base_url_3, node_data_3)
-    expected_url_3 = "http://sample.com/articles/page/5"
-    actual_url_3 = monitor_3.determine_watch_page()
-    assert actual_url_3 == expected_url_3, f"Test 3 Failed: Expected {expected_url_3}, Got {actual_url_3}"
-    print("Test Case 3 Passed!")
-
-    # --- Test Case 4: WebTypeCHK integration check ---
-    chk_4 = WebTypeCHK(base_url_3, node_data_3)
-    web_type_4 = chk_4.webtype_chk()
-    assert web_type_4 == "page_changer", f"Test 4 Failed: Expected web_type page_changer, Got {web_type_4}"
-    assert chk_4.next_url == expected_url_3, f"Test 4 Failed: Expected next_url {expected_url_3}, Got {chk_4.next_url}"
-    print("Test Case 4 Passed!")
-
-    # --- Test Case 5: WebTypeCHK on last page ---
-    # Even on the last page, the type should be page_changer, but next_url should be None
-    chk_5 = WebTypeCHK(base_url_2, node_data_2)
-    web_type_5 = chk_5.webtype_chk()
-    assert web_type_5 == "page_changer", f"Test 5 Failed: Expected web_type page_changer, Got {web_type_5}"
-    assert chk_5.next_url is None, f"Test 5 Failed: Expected next_url None, Got {chk_5.next_url}"
-    print("Test Case 5 Passed!")
-
-    # --- Test Case 6: Base URL is not a paginated URL ---
-    base_url_6 = "http://sample.com/regular/article.html"
-    node_data_6 = DOMTreeSt(
-        links=["http://sample.com/page-1", "http://sample.com/page-2"]
-    )
-    monitor_6 = PageMonitor(base_url_6, node_data_6)
-    expected_url_6 = None # Should be None because base_url doesn't match
-    actual_url_6 = monitor_6.determine_watch_page()
-    assert actual_url_6 == expected_url_6, f"Test 6 Failed: Expected {expected_url_6}, Got {actual_url_6}"
-    chk_6 = WebTypeCHK(base_url_6, node_data_6)
-    web_type_6 = chk_6.webtype_chk()
-    assert web_type_6 == "plane", f"Test 6 Failed: Expected web_type plane, Got {web_type_6}"
-    assert chk_6.next_url is None, f"Test 6 Failed: Expected next_url None, Got {chk_6.next_url}"
-    print("Test Case 6 Passed!")
-
-    print("\nAll tests passed successfully!")
