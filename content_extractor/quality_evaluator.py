@@ -94,6 +94,10 @@ def _find_result_container(main_content_node: DOMTreeSt) -> Optional[DOMTreeSt]:
 
         most_common_class, count = class_counts.most_common(1)[0]
         
+        # A basic threshold to avoid identifying containers with no real repetition.
+        if count <= 1:
+            continue
+
         # スコアリングロジックを改善：純度（purity）を考慮に入れる
         # 純度 = 繰り返し回数 / 全子要素数
         # これにより、ノイズの少ない（均質な）コンテナが評価されやすくなる
