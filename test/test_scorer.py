@@ -40,6 +40,11 @@ def test_calculate_depth_weight_exceeding_max():
     expected = 1.0 * (4.0 ** (6 / 5.0)) # 4.0 ** 1.2
     assert calculate_depth_weight(current_depth=6, max_depth=5, base_weight=1.0, weight_factor=4.0) == pytest.approx(expected)
 
+def test_calculate_depth_weight_negative_depth():
+    """新しいテスト: 負の深さの場合をテストする。"""
+    # scorer.pyの変更により、負の深さは0として扱われるようになった
+    assert calculate_depth_weight(current_depth=-1, max_depth=5, base_weight=1.0, weight_factor=4.0) == 1.0 # 0深度と同じ結果
+
 
 # -----------------------------------------------------------------
 # is_main_element() のテスト
@@ -89,6 +94,21 @@ def test_is_main_element_with_main_in_class():
     node = DOMTreeSt(tag="div", attributes={"class": "main-body", "id": "content"})
     assert is_main_element(node) is False
 
+@pytest.mark.parametrize("node_input, expected_result", [
+    (None, False), # Noneノード
+    (DOMTreeSt(tag="div", attributes=None), False), # attributesがNone
+    (DOMTreeSt(tag="div", attributes={"id": None}), False), # idがNone
+    (DOMTreeSt(tag=None, attributes={"id": "main"}), False), # tagがNone
+])
+def test_is_main_element_edge_cases(node_input, expected_result):
+    """新しいテスト: None入力やattributes/tagがNoneの場合のエッジケース。"""
+    if node_input is None:
+        with pytest.raises(AttributeError): # node.tag, node.attributesへのアクセスでAttributeError
+            is_main_element(node_input)
+    else:
+        # scorer.pyの変更により、None値は適切に処理され、Falseが返るようになった
+        assert is_main_element(node_input) == expected_result
+
 
 # -----------------------------------------------------------------
 # is_valid_element() のテスト
@@ -112,6 +132,21 @@ def test_is_valid_element_with_too_small_area():
     # このテストは、非常に小さい面積を持つノードをテストする。
     node = DOMTreeSt(tag="div", rect=BoundingBox(x=0, y=0, width=0.2, height=0.2)) # area = 0.04
     assert is_valid_element(node) is False
+
+@pytest.mark.parametrize("node_input, expected_exception, expected_result", [
+    (None, AttributeError, None), # Noneノード
+    (DOMTreeSt(tag="div", rect=None), None, False), # rectがNoneの場合はarea=0でFalse
+    (DOMTreeSt(tag=None, rect=BoundingBox(x=0, y=0, width=100, height=100)), None, False), # tagがNoneの場合は無効
+])
+def test_is_valid_element_edge_cases(node_input, expected_exception, expected_result):
+    """新しいテスト: None入力やrect/tagがNoneの場合のエッジケース。"""
+    if expected_exception:
+        with pytest.raises(expected_exception):
+            is_valid_element(node_input)
+    else:
+        # scorer.pyの変更により、None値は適切に処理され、期待される結果が返るようになった
+        assert is_valid_element(node_input) == expected_result
+
 
 # -----------------------------------------------------------------
 # _calculate_screen_occupancy_multiplier() のテスト
@@ -139,6 +174,19 @@ def test_screen_occupancy_multiplier_at_zero(scorer_instance):
     assert scorer_instance._calculate_screen_occupancy_multiplier(0.0) < 0.1
     assert scorer_instance._calculate_screen_occupancy_multiplier(0.0) > 0
 
+@pytest.mark.parametrize("occupancy_rate, expected_value_range_lower", [
+    (-0.1, 0), # 負の値は0として扱われる
+    (1.1, 0),  # 1.0を超える値
+    (None, 0)       # Noneは0として扱われる
+])
+def test_screen_occupancy_multiplier_edge_cases(scorer_instance, occupancy_rate, expected_value_range_lower):
+    """新しいテスト: 画面占有率の範囲外の値やNoneの場合のエッジケース。"""
+    # scorer.pyの変更により、Noneや負の値は適切に処理され、例外は発生しない
+    result = scorer_instance._calculate_screen_occupancy_multiplier(occupancy_rate)
+    assert result > expected_value_range_lower # スコアは常に0より大きい
+    assert result <= 1.0 # 最大値は1.0
+
+
 # -----------------------------------------------------------------
 # _score_link_length() のテスト
 #
@@ -162,6 +210,19 @@ def test_score_link_length_very_high(scorer_instance):
     node = DOMTreeSt(links=[""] * 100)
     assert scorer_instance._score_link_length(node) < 0.1
 
+def test_score_link_length_none_links(scorer_instance):
+    """新しいテスト: links属性がNoneの場合のエッジケース。"""
+    node = DOMTreeSt(links=None)
+    # scorer.pyの変更により、linksがNoneの場合は0として扱われる
+    assert scorer_instance._score_link_length(node) == pytest.approx(0.1)
+
+def test_score_link_length_non_list_links(scorer_instance):
+    """新しいテスト: links属性がリストでない場合のエッジケース。"""
+    node = DOMTreeSt(links="not_a_list")
+    # scorer.pyの変更により、linksがリストでない場合は0として扱われる
+    assert scorer_instance._score_link_length(node) == pytest.approx(0.1)
+
+
 # -----------------------------------------------------------------
 # _score_text_length() のテスト
 #
@@ -182,7 +243,21 @@ def test_score_text_length_at_mean(scorer_instance):
 def test_score_text_length_very_high(scorer_instance):
     """Test Case 3: テキスト長が非常に長い。"""
     node = DOMTreeSt(text="a" * 2000)
-    assert scorer_instance._score_text_length(node) < 0.1
+    # scorer.pyの計算結果に基づいて期待値を修正 (約0.0577)
+    assert scorer_instance._score_text_length(node) == pytest.approx(0.0577, abs=0.001)
+
+def test_score_text_length_none_text(scorer_instance):
+    """新しいテスト: text属性がNoneの場合のエッジケース。"""
+    node = DOMTreeSt(text=None)
+    # scorer.pyの変更により、textがNoneの場合は0として扱われる
+    assert scorer_instance._score_text_length(node) == pytest.approx(0.0)
+
+def test_score_text_length_non_string_text(scorer_instance):
+    """新しいテスト: text属性が文字列でない場合のエッジケース。"""
+    node = DOMTreeSt(text=123)
+    # scorer.pyの変更により、textが文字列でない場合は0として扱われる
+    assert scorer_instance._score_text_length(node) == pytest.approx(0.0)
+
 
 # -----------------------------------------------------------------
 # MainContentScorer クラスのテスト
@@ -239,4 +314,3 @@ def test_score_parent_and_children_depth_weighting(scorer_instance):
     print(f"Child score (depth 2): {child_score}")
 
     assert child_score > parent_score
-
