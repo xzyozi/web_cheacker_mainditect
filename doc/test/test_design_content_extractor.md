@@ -307,6 +307,152 @@
 
 ---
 
+### 3.8. `web_type_chk.py` (ユニットテスト)
+
+`web_type_chk.py`は、URLとDOM情報から、ページがページネーション（複数ページにまたがる一覧）の一部であるかを判定し、次のページ（最新ページ）のURLを特定する役割を担います。
+
+#### `PageMonitor.determine_watch_page()`
+- **目的:** 現在のURLとページ内のリンクから、次に巡回すべき最新ページのURLを正しく特定できることを確認する。
+- **Test Case 1: 標準的なページネーション**
+    - **内容:** `page-` 形式のURLで、より新しいページ番号のリンクが存在する場合。
+    - **入力:** `base_url=".../page-1"`, `links=[".../page-2", ".../page-10"]`
+    - **期待値:** `".../page-10"`
+- **Test Case 2: 既に最新ページにいる場合**
+    - **内容:** `base_url`のページ番号が、リンク内の最大ページ番号と同じか、それより大きい場合。
+    - **入力:** `base_url=".../page-10"`, `links=[".../page-8", ".../page-9"]`
+    - **期待値:** `None`
+- **Test Case 3: 相対パスのリンク**
+    - **内容:** リンクが相対パスで指定されている場合に、`base_url`を基準に正しく絶対URLに解決できることを確認する。
+    - **入力:** `base_url="http://example.com/articles/page/3"`, `links=["/articles/page/5"]`
+    - **期待値:** `"http://example.com/articles/page/5"`
+- **Test Case 4: ベースURLがページネーション形式でない場合**
+    - **内容:** `base_url`自体がページネーションのパターンに一致しない場合、何も返さないことを確認する。
+    - **入力:** `base_url=".../article.html"`, `links=[".../page-2"]`
+    - **期待値:** `None`
+
+#### `WebTypeCHK.webtype_chk()`
+- **目的:** `PageMonitor`と連携し、ページの種別（`page_changer`または`plane`）を判定し、次のページのURLを正しく設定できることを確認する。
+- **Test Case 1: 次ページが存在する場合**
+    - **内容:** `determine_watch_page`が新しいURLを返す場合。
+    - **入力:** `base_url=".../page/3"`, `links=[".../page/5"]`
+    - **期待値:** `webtype`が`"page_changer"`、`next_url`が`".../page/5"`となること。
+- **Test Case 2: 最新ページだが、URL自体はページャー形式**
+    - **内容:** `determine_watch_page`が`None`を返すものの、`base_url`自体がページネーションパターンに一致する場合。
+    - **入力:** `base_url=".../page-10"`, `links=[".../page-9"]`
+    - **期待値:** `webtype`が`"page_changer"`、`next_url`が`None`となること。
+- **Test Case 3: ページネーションでない場合**
+    - **内容:** `base_url`もリンクもページネーションパターンに一致しない場合。
+    - **入力:** `base_url=".../article.html"`, `links=[]`
+    - **期待値:** `webtype`が`"plane"`、`next_url`が`None`となること。
+
+---
+
+### 3.7. `relevance_scorer.py` (ユニットテスト)
+
+`relevance_scorer.py`は、検索クエリと検索結果アイテムの関連性を評価し、総合的な品質スコア（SQS）を算出します。
+
+#### `_calculate_jaccard(text1, text2)`
+- **目的:** 2つのテキスト間のジャカード類似度を正しく計算できることを確認する。
+- **Test Case 1: 通常の計算**
+    - **内容:** 共通の単語とユニークな単語を持つ2つの文。
+    - **入力:** `text1="hello world from python"`, `text2="hello python universe"`
+    - **期待値:** `0.4` (共通2語 / 全体5語)
+- **Test Case 2: 共通語なし**
+    - **内容:** 共通の単語が一つもない場合。
+    - **入力:** `text1="a b c"`, `text2="d e f"`
+    - **期待値:** `0.0`
+- **Test Case 3: 空文字列**
+    - **内容:** 両方の文字列が空の場合。
+    - **入力:** `text1=""`, `text2=""`
+    - **期待値:** `0.0`
+
+#### `score_relevance(query, items)`
+- **目的:** Jaccard、TF-IDF、Semantic-Transformerの3つのスコアを組み合わせたハイブリッド関連性スコアを正しく計算できることを確認する。
+- **Test Case 1: ハイブリッドスコアの計算**
+    - **内容:** `_calculate_jaccard`, `cosine_similarity`, `cos_sim` をモックし、各スコアに重みを掛けた合計が期待通りになることを確認する。
+    - **入力:** クエリ文字列と`DOMTreeSt`アイテムのリスト。
+    - **期待値:** 各アイテムの`relevance_score`が、重み付けされたスコアの合計値と一致すること。
+- **Test Case 2: 空のアイテムリスト**
+    - **内容:** スコアリング対象のアイテムがない場合。
+    - **入力:** `items=[]`
+    - **期待値:** 空のリスト `[]` が返されること。
+
+#### `calculate_sqs(result_count, avg_relevance, relevance_variance, max_relevance)`
+- **目的:** 検索結果の統計情報から、品質スコア（SQS）と品質カテゴリを正しく計算できることを確認する。
+- **Test Case 1: 「Valid」カテゴリの計算**
+    - **内容:** 高品質な検索結果を示す入力値。
+    - **入力:** `result_count=10`, `avg_relevance=0.8`, `relevance_variance=0.1`, `max_relevance=0.9`
+    - **期待値:** SQSスコアが「Valid」の閾値（例: 60）以上になり、カテゴリが "Valid" となること。
+- **Test Case 2: 「Low Quality」カテゴリの計算**
+    - **内容:** 低品質な検索結果を示す入力値。
+    - **入力:** `result_count=3`, `avg_relevance=0.4`, `relevance_variance=0.3`, `max_relevance=0.5`
+    - **期待値:** SQSスコアが「Low Quality」の範囲内（例: 20-60）になり、カテゴリが "Low Quality" となること。
+- **Test Case 3: 「Invalid/Empty」カテゴリの計算**
+    - **内容:** 非常に低い品質の検索結果を示す入力値。
+    - **入力:** `result_count=1`, `avg_relevance=0.1`, `relevance_variance=0.5`, `max_relevance=0.2`
+    - **期待値:** SQSスコアが「Invalid/Empty」の閾値（例: 20）未満になり、カテゴリが "Invalid/Empty" となること。
+- **Test Case 4: 結果ゼロの場合**
+    - **内容:** 検索結果が0件の場合。
+    - **入力:** `result_count=0`
+    - **期待値:** SQSスコアが `0`、カテゴリが "Invalid/Empty" となること。
+- **Test Case 5: SQSスコアがマイナスになる場合**
+    - **内容:** 計算結果が負になるような入力値の場合、スコアが0に丸められることを確認する。
+    - **入力:** `result_count=1`, `avg_relevance=0.1`, `relevance_variance=1.0`, `max_relevance=0.1`
+    - **期待値:** SQSスコアが `0` となること。
+
+---
+
+### 3.6. `quality_evaluator.py` (ユニットテスト)
+
+`quality_evaluator.py`は、抽出されたコンテンツが「検索結果なしかどうか」を判定し、検索結果の品質を定量化する役割を担います。
+
+#### `is_no_results_page(page, dom_tree)`
+- **目的:** ページが「結果なし」の状態であるかを、キーワード、CSSセレクタ、期待されるコンテナの有無から正しく判定できることを確認する。
+- **Test Case 1: キーワードによる判定**
+    - **内容:** DOMツリーのテキストに「結果なし」を示すキーワードが含まれている場合。
+    - **入力:** `dom_tree`に "no results found" を含むテキスト、モックされた`page`オブジェクト。
+    - **期待値:** `True`が返されること。
+- **Test Case 2: 「結果なし」セレクタによる判定**
+    - **内容:** ページ内に「結果なし」を示すCSSセレクタを持つ要素が存在する場合。
+    - **入力:** `page.evaluate`が`True`を返すようにモックされた`page`オブジェクト。
+    - **期待値:** `True`が返されること。
+- **Test Case 3: 期待される結果コンテナが存在することによる判定**
+    - **内容:** ページ内に期待される結果コンテナのセレクタが存在する場合、「結果なし」ではないと判定されること。
+    - **入力:** `page.evaluate`が1回目の呼び出しで`False`（「結果なし」セレクタなし）、2回目の呼び出しで`True`（期待セレクタあり）を返すようにモック。
+    - **期待値:** `False`が返されること。
+- **Test Case 4: キーワードもセレクタも存在しない場合**
+    - **内容:** 「結果なし」の兆候がなく、かつ期待される結果コンテナも見つからない場合、「結果なし」と判定されること。
+    - **入力:** `page.evaluate`が常に`False`を返すようにモック。
+    - **期待値:** `True`が返されること。
+
+#### `_find_result_container(main_content_node)`
+- **目的:** メインコンテンツノード内から、最も繰り返し構造を持つ子要素のコンテナを正しく特定できることを確認する。
+- **Test Case 1: 繰り返しクラスを持つコンテナの特定**
+    - **内容:** 子要素に同じクラス名が複数回出現するコンテナを特定する。
+    - **入力:** `class="result-item"` を持つ子要素が複数含まれる`DOMTreeSt`ノード。
+    - **期待値:** `class="results-list"` を持つ親ノードが返されること。
+- **Test Case 2: 明確なコンテナがない場合**
+    - **内容:** 子要素に繰り返し構造が見られない場合。
+    - **入力:** 子要素がすべて異なるクラス名を持つ`DOMTreeSt`ノード。
+    - **期待値:** `None`が返されること。
+
+#### `quantify_search_results(main_content_node)`
+- **目的:** 特定された結果コンテナから、有効な検索結果アイテムを抽出し、その数をカウントできることを確認する。
+- **Test Case 1: 有効なアイテムのカウント**
+    - **内容:** コンテナ内に有効なアイテム（リンクと十分なテキストを持つ）と無効なアイテムが混在している場合に、有効なものだけをカウントする。
+    - **入力:** `_find_result_container`がコンテナを返し、その中に有効・無効な子要素が含まれる`DOMTreeSt`。
+    - **期待値:** 有効なアイテム数（例: 2）が`result_count`に設定され、`result_items`にそのノードが含まれること。
+- **Test Case 2: コンテナが見つからない場合**
+    - **内容:** `_find_result_container`が`None`を返した場合、結果が0件として処理されること。
+    - **入力:** `_find_result_container`が`None`を返すような`DOMTreeSt`。
+    - **期待値:** `result_count`が0に設定されること。
+- **Test Case 3: 有効なアイテムがない場合**
+    - **内容:** コンテナは見つかるが、その中に有効なアイテムが一つもない場合。
+    - **入力:** コンテナ内にリンクや十分なテキストを持たない子要素のみが含まれる`DOMTreeSt`。
+    - **期待値:** `result_count`が0に設定されること。
+
+---
+
 ### 3.6. `core.py` (インテグレーションテスト)
 
 **目的:** `content_extractor.core.extract_main_content` が、複数のモジュール（`make_tree`, `MainContentScorer`）と連携し、最も確からしいコンテンツブロックを特定するまでの絞り込みプロセス全体を検証する。
