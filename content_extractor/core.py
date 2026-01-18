@@ -4,7 +4,6 @@ import os
 from collections import Counter
 import asyncio
 from playwright.async_api import async_playwright, Page, Browser, TimeoutError as PlaywrightTimeoutError
-from aiohttp import ClientError
 
 import traceback
 import sys
@@ -17,14 +16,13 @@ from .scorer import MainContentScorer
 from .make_tree import make_tree
 from .web_type_chk import WebTypeCHK, WebType
 from .dom_treeSt import DOMTreeSt, BoundingBox
-from .dom_utils import rescore_main_content_with_children
+from .dom_utils import update_nodes_with_children, rescore_main_content_with_children
 from .playwright_helpers import setup_page, adjust_page_view, fetch_robots_txt, is_scraping_allowed
 from .quality_evaluator import is_no_results_page, quantify_search_results
 from setup_logger import setup_logger
 from utils.file_handler import save_json
 
-if sys.platform == 'win32':
-    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 # logger setting 
 LOGGER_DATEFORMAT = "%Y%m%d_%H%M%S"
@@ -48,7 +46,7 @@ def print_error_details(e : Exception) -> None :
 async def extract_main_content(url: str,
                     browser: Browser,
                     count : int = 0,
-                    arg_webtype : Any = None
+                    arg_webtype : any = None
                     ) -> DOMTreeSt | None:       
     """
     URLからメインコンテンツを抽出し、DOMTreeStオブジェクトとして返します。(Fullスキャン)
@@ -58,30 +56,30 @@ async def extract_main_content(url: str,
         url (str): 解析対象のURL。
         browser (Browser): 使用するPlaywrightのBrowserインスタンス。
         count (int, optional): ページ遷移の再帰呼び出し回数カウンタ。デフォルトは 0。
-        arg_webtype (Any, optional): 前の処理から引き継がれたWebページタイプ。デフォルトは None。
+        arg_webtype (any, optional): 前の処理から引き継がれたWebページタイプ。デフォルトは None。
 
     Returns:
         DOMTreeSt | None: 抽出されたメインコンテンツのDOMTreeStオブジェクト。失敗した場合はNone。
     """
-    page = None
-    try:
-        # robots.txtを取得
-        robots_txt = await fetch_robots_txt(url)
+    # robots.txtを取得
+    robots_txt = await fetch_robots_txt(url)
+    
+    if robots_txt:
+        # スクレイピングが許可されているか確認
+        from urllib.parse import urlparse
+        parsed_url = urlparse(url)
+        target_path = parsed_url.path or "/"
         
-        if robots_txt:
-            # スクレイピングが許可されているか確認
-            from urllib.parse import urlparse
-            parsed_url = urlparse(url)
-            target_path = parsed_url.path or "/"
-            
-            if not is_scraping_allowed(robots_txt, target_path):
-                logger.info(f"robots.txtにより、このURLのスクレイピングは許可されていません: {url}")
-                return None
-
-        page = await setup_page(url, browser)
-        if not page:
+        if not is_scraping_allowed(robots_txt, target_path):
+            logger.info(f"robots.txtにより、このURLのスクレイピングは許可されていません: {url}")
             return None
 
+
+    page = await setup_page(url, browser)
+    if not page:
+        return None
+
+    try:
         max_loop_count = 5
         dimensions = await adjust_page_view(page)
 
@@ -112,9 +110,11 @@ async def extract_main_content(url: str,
 
         if not main_contents:
             logger.info("メインコンテンツ候補が見つかりませんでした。")
-            return None
+            return {}
 
         logger.info(f"Top candidates:{len(main_contents)}")
+        for content in main_contents[:0]:
+            logger.info(content)
 
         if main_contents:
             main_contents = rescore_main_content_with_children(main_contents[0])
@@ -123,27 +123,16 @@ async def extract_main_content(url: str,
             # for content in main_contents[:2]:
             #     print_content(content)
 
-            # =================================================================
-            # メインコンテンツ候補の再評価ループ
-            # =================================================================
-            # 初期候補(mainタグなど)は大きすぎることがある。そのため、その子要素を再評価し、
-            # よりスコアの高い(＝よりコンテンツ本体に近い)要素へと絞り込んでいく。
-            # 画面占有率などがスコアに大きく影響するため、この絞り込みが重要となる。
             loop_count = 0
+            # tmp_main_content = DOMTreeSt()
             while main_contents:
-                # 現在の最有力候補を一時保存
-                tmp_main_content = main_contents[0]
+                tmp_main_content = main_contents[0] 
 
-                # 最有力候補の子要素を再スコアリングし、新たな候補リストとする
                 main_contents = rescore_main_content_with_children(tmp_main_content)
 
-                logger.debug(f" Parent selector : {tmp_main_content.css_selector} / Score: {tmp_main_content.score}")
-                if main_contents:
-                    logger.debug(f" -> Best Child selector: {main_contents[0].css_selector} / Score: {main_contents[0].score}")
-
-                # 子要素が見つからない、または子要素のスコアが親を超えなくなったら、
-                # 親が最良のコンテンツブロックと判断してループを抜ける。
-                if not main_contents or tmp_main_content.score >= main_contents[0].score:
+                logger.debug(f" tmp_main selector : {tmp_main_content.css_selector} main selector: {main_contents[0].css_selector}")
+                logger.debug(f'tmp_candidates score : {tmp_main_content.score}  & main_contents {main_contents[0].score}')
+                if tmp_main_content.score >= main_contents[0].score:
                     break
 
                 loop_count += 1
@@ -157,6 +146,7 @@ async def extract_main_content(url: str,
                 logger.debug(child)
 
             logger.info("最終的に選択されたメインコンテンツ:")
+            # print_content(tmp_main_content)
             logger.info(tmp_main_content)
 
             # 最終的に選択されたコンテンツを final_content とする
@@ -202,18 +192,9 @@ async def extract_main_content(url: str,
 
             return None
 
-    except PlaywrightTimeoutError as e:
-        logger.error(f"Playwrightの操作中にタイムアウトが発生しました: {url} - {e}")
-        print_error_details(e)
-        return None
-    except ClientError as e:
-        logger.error(f"HTTPリクエスト中にエラーが発生しました: {url} - {e}")
-        print_error_details(e)
-        return None
     except Exception as e:
-        logger.error(f"extract_main_contentの実行中に予期せぬエラーが発生しました: {url}")
+        logger.error("extract_main_contentの実行中にエラーが発生しました:")
         print_error_details(e)
-        return None
 
     finally:
         if page:
@@ -277,14 +258,7 @@ async def evaluate_search_quality(url: str,
             logger.info(f"関連性スコアを計算しました: Avg={content_node.avg_relevance:.2f}, Var={content_node.relevance_variance:.2f}, Max={content_node.max_relevance:.2f}")
 
             # フェーズ4: SQS計算と最終判定
-            sqs, category = scorer.calculate_sqs(
-                result_count=content_node.result_count,
-                avg_relevance=content_node.avg_relevance,
-                relevance_variance=content_node.relevance_variance,
-                max_relevance=content_node.max_relevance
-            )
-            content_node.sqs_score = sqs
-            content_node.quality_category = category
+            scorer.calculate_sqs(content_node)
 
         return content_node
     finally:
@@ -330,7 +304,7 @@ async def quick_extract_content(url: str,
     try:
         found_tree = None
         # ページ移動と初期待機を簡略化
-        await page.goto(url, wait_until='domcontentloaded', timeout=10000)
+        await page.goto(url, wait_until='load', timeout=10000)
 
         # セレクタをループで試す
         for selector in css_selector_list:
@@ -359,18 +333,14 @@ async def quick_extract_content(url: str,
         found_tree.web_type = webtype_str
         return found_tree
 
-    except PlaywrightTimeoutError as e:
-        logger.error(f"Quickスキャン中のPlaywright操作でタイムアウトしました: {url} - {e}")
-        return None # Quickスキャン失敗
     except Exception as e:
-        logger.error(f"Quickスキャン中に予期せぬエラーが発生: {url}")
-        print_error_details(e)
+        logger.error(f"コンテンツ抽出中にエラーが発生: {str(e)}")
         return None # Quickスキャン失敗
     finally:
         await context.close()
 
 
-async def run_full_scan_standalone(url: str, arg_webtype: Any = None):
+async def run_full_scan_standalone(url: str, arg_webtype: any = None):
     """
     従来のtest_mainと同様に、単一URLのフルスキャンをスタンドアロンで実行します。
     ブラウザの起動と終了を内包します。
@@ -426,7 +396,7 @@ if __name__ == "__main__":
     parser.add_argument("url", help="The URL to test.")
     parser.add_argument(
         "--mode", "-m",
-        choices=["full", "quick", "quality"],
+        choices=["full", "quick"],
         default="full",
         help="Scan mode to execute. 'full' runs full scan, 'quick' runs quick scan. Default: full"
     )
