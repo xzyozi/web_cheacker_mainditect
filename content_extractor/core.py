@@ -18,10 +18,22 @@ def _escape_css_selector_colons(selector: str) -> str:
     TailwindCSSなどで生成されるクラス名（例: 'md:px-4'）が
     Playwrightのwait_for_selectorで正しく解釈されるようにします。
     """
-    # 正規表現を使って、ドットの後に続くコロンをエスケープ
-    # 例: .md:px-12 -> .md\:px-12
-    # ただし、すでにエスケープされている場合は無視する
-    escaped_selector = re.sub(r'(?<!\\)([.][a-zA-Z0-9_-]+):([a-zA-Z0-9_-]+)', r'\1\\:\2', selector)
+    def escape_colons_in_identifier(match):
+        # グループ1はセレクタの開始文字（'.'または'#'）
+        # グループ2は識別子部分（例: 'md:px-12'、'sm:text-lg:hover'）
+        # この識別子部分内のエスケープされていないコロンをエスケープする
+        identifier_content = match.group(2)
+        escaped_content = re.sub(r'(?<!\\):', r'\\:', identifier_content)
+        return match.group(1) + escaped_content
+
+    # ドット(.)またはシャープ(#)で始まる識別子をマッチし、
+    # その識別子内部でコロンをエスケープする
+    # これはTailwindCSSのクラス名やID内のコロンを対象とする
+    escaped_selector = re.sub(
+        r'([.#])([a-zA-Z0-9_-]+(?:(?<!\\):[a-zA-Z0-9_-]+)*)',
+        escape_colons_in_identifier,
+        selector
+    )
     return escaped_selector
 
 # my module 
