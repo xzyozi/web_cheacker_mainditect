@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, AsyncMock, patch
 import sys
 
 from content_extractor.dom_treeSt import DOMTreeSt, BoundingBox
-from content_extractor.core import extract_main_content
+from content_extractor.core import extract_main_content, _escape_css_selector_colons
 
 # =================================================================
 # core.py のテスト
@@ -56,7 +56,7 @@ async def test_extract_main_content_refinement_loop(mocker, mock_browser, dom_tr
     `extract_main_content`が、スコアの低い親からスコアの高い子孫へと
     正しくコンテンツを絞り込んでいくプロセスをテストする。
     """
-    # ----- モックの設定 -----
+    # ----- モックの設定 ----- 
 
     # 外部依存や副作用のある関数をモック化
     mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value=None)
@@ -92,10 +92,10 @@ async def test_extract_main_content_refinement_loop(mocker, mock_browser, dom_tr
         ]
     )
 
-    # ----- テスト対象関数の実行 -----
+    # ----- テスト対象関数の実行 ----- 
     final_content = await extract_main_content(url="http://mock.url", browser=mock_browser)
 
-    # ----- アサーション -----
+    # ----- アサーション ----- 
 
     assert final_content is not None
     assert final_content.tag == 'p'
@@ -243,7 +243,7 @@ async def test_extract_main_content_selector_generation(mocker, mock_browser):
     `extract_main_content`が最終的なメインコンテンツの`css_selector`と
     `css_selector_list`を正しく生成することをテストする。
     """
-    # ----- モックの設定 -----
+    # ----- モックの設定 ----- 
     mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value=None)
     mock_page = AsyncMock()
     mocker.patch('content_extractor.core.setup_page', new_callable=AsyncMock, return_value=mock_page)
@@ -278,10 +278,10 @@ async def test_extract_main_content_selector_generation(mocker, mock_browser):
         ]
     )
 
-    # ----- テスト対象関数の実行 -----
+    # ----- テスト対象関数の実行 ----- 
     final_content = await extract_main_content(url="http://mock.url", browser=mock_browser)
 
-    # ----- アサーション -----
+    # ----- アサーション ----- 
     assert final_content is not None
     assert final_content.tag == 'p'
     assert final_content.text == 'Real content.'
@@ -293,3 +293,53 @@ async def test_extract_main_content_selector_generation(mocker, mock_browser):
     # Then `final_content.css_selector` is inserted at the front.
     assert final_content.css_selector_list == ['div#main-article > p.content']
     assert len(final_content.css_selector_list) == 1
+
+# -----------------------------------------------------------------
+# Test Case 3.9: `_escape_css_selector_colons` (ユニットテスト)
+# -----------------------------------------------------------------
+
+class TestEscapeCssSelectorColons:
+    """_escape_css_selector_colons関数のユニットテスト"""
+
+    def test_standard_tailwind_class(self):
+        """標準的なTailwindCSSクラスが正しくエスケープされることを確認"""
+        selector = 'div.px-6.py-12.md:px-12.md:py-16'
+        expected = 'div.px-6.py-12.md\:px-12.md\:py-16'
+        assert _escape_css_selector_colons(selector) == expected
+
+    def test_multiple_colons_in_class_name(self):
+        """複数のコロンを含むクラス名が正しくエスケープされることを確認"""
+        selector = 'span.sm:text-lg:hover' # This selector itself is slightly malformed for standard CSS,
+                                           # but if it were to be interpreted as two separate class-colon parts
+                                           # then it should be escaped as such. The regex handles this by escaping
+                                           # any colon that follows a class-like pattern.
+        expected = 'span.sm\:text-lg\:hover'
+        assert _escape_css_selector_colons(selector) == expected
+
+    def test_no_colons_in_selector(self):
+        """コロンを含まない通常のCSSセレクタが変更されないことを確認"""
+        selector = 'div.container'
+        expected = 'div.container'
+        assert _escape_css_selector_colons(selector) == expected
+
+    def test_pseudo_class_colon_not_escaped(self):
+        """擬似クラスのコロンがエスケープされないことを確認"""
+        selector = 'a:hover'
+        expected = 'a:hover'
+        assert _escape_css_selector_colons(selector) == expected
+
+        selector_nth = 'p:nth-child(2n+1)'
+        expected_nth = 'p:nth-child(2n+1)'
+        assert _escape_css_selector_colons(selector_nth) == expected_nth
+
+    def test_already_escaped_colon(self):
+        """既にエスケープされているコロンが二重にエスケープされないことを確認"""
+        selector = 'div.md\:px-12'
+        expected = 'div.md\:px-12'
+        assert _escape_css_selector_colons(selector) == expected
+
+    def test_complex_selector_combination(self):
+        """ID、クラス、擬似クラスなどが混在する複雑なセレクタで正しくエスケープされることを確認"""
+        selector = '#header > div.md:flex-col:first-child a:hover'
+        expected = '#header > div.md\:flex-col:first-child a:hover'
+        assert _escape_css_selector_colons(selector) == expected
