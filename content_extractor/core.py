@@ -1,5 +1,5 @@
 from typing import Dict, List, Any, Union , Optional
-
+import re
 import os
 from collections import Counter
 import asyncio
@@ -11,6 +11,18 @@ import sys
 import hashlib
 from datetime import datetime
 import numpy as np
+
+def _escape_css_selector_colons(selector: str) -> str:
+    """
+    CSSセレクタ内のクラス名に含まれるコロンをエスケープします。
+    TailwindCSSなどで生成されるクラス名（例: 'md:px-4'）が
+    Playwrightのwait_for_selectorで正しく解釈されるようにします。
+    """
+    # 正規表現を使って、ドットの後に続くコロンをエスケープ
+    # 例: .md:px-12 -> .md\:px-12
+    # ただし、すでにエスケープされている場合は無視する
+    escaped_selector = re.sub(r'(?<!\\)([.][a-zA-Z0-9_-]+):([a-zA-Z0-9_-]+)', r'\1\\:\2', selector)
+    return escaped_selector
 
 # my module 
 from .scorer import MainContentScorer
@@ -338,11 +350,12 @@ async def quick_extract_content(url: str,
 
         # セレクタをループで試す
         for selector in css_selector_list:
+            escaped_selector = _escape_css_selector_colons(selector)
             try:
                 # 短いタイムアウトでセレクタの存在を確認
-                await page.wait_for_selector(selector, state='attached', timeout=5000)
-                logger.info(f"Selector found, extracting content with: {selector}")
-                tree = await make_tree(page, selector=selector)
+                await page.wait_for_selector(escaped_selector, state='attached', timeout=5000)
+                logger.info(f"Selector found, extracting content with: {escaped_selector}")
+                tree = await make_tree(page, selector=escaped_selector)
                 if tree:
                     found_tree = tree
                     # Quickスキャン成功時は、成功したセレクタをプライマリとし、リストの先頭に持ってくる
@@ -352,7 +365,7 @@ async def quick_extract_content(url: str,
                     found_tree.css_selector = selector
                     break # 見つかったらループを抜ける
             except PlaywrightTimeoutError:
-                logger.debug(f"Selector failed, trying next: {selector}")
+                logger.debug(f"Selector failed, trying next: {escaped_selector}")
                 continue # 次のセレクタへ
         
         if not found_tree:
@@ -400,6 +413,7 @@ async def run_quick_scan_standalone(url: str, css_selector_list: list[str], webt
         finally:
             if browser:
                 await browser.close()
+
 
 
 async def run_search_quality_evaluation_standalone(url: str, search_query: str):
