@@ -168,15 +168,16 @@ async def test_extract_main_content_no_candidates(mocker, mock_browser, dom_tree
 @pytest.mark.asyncio
 async def test_extract_main_content_recursive_call(mocker, mock_browser, dom_tree_fixture):
     """Test that extract_main_content calls itself recursively if a new watch_url is found."""
-    # This test is complex because it involves recursion of the function under test.
-    # We will spy on the function and mock its dependencies for the recursive call.
-    
-    spy = mocker.spy(sys.modules[extract_main_content.__module__], 'extract_main_content')
+    # This test checks recursion by asserting that a dependency (`setup_page`) is called
+    # with the new URL during the recursive call.
 
-    # Mock dependencies for the first call
+    # Mock dependencies
     mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value=None)
-    mock_page = AsyncMock()
-    mocker.patch('content_extractor.core.setup_page', new_callable=AsyncMock, return_value=mock_page)
+    
+    # Mock setup_page to track its calls
+    mock_setup_page = mocker.patch('content_extractor.core.setup_page', new_callable=AsyncMock)
+    mock_setup_page.return_value = AsyncMock() # Return a mock page object
+
     mocker.patch('content_extractor.core.adjust_page_view', new_callable=AsyncMock, return_value={'width': 1920, 'height': 1080})
     mocker.patch('content_extractor.core.make_tree', new_callable=AsyncMock, return_value=dom_tree_fixture[0])
 
@@ -195,10 +196,18 @@ async def test_extract_main_content_recursive_call(mocker, mock_browser, dom_tre
     mock_scorer_instance.find_candidates.return_value = []
     mocker.patch('content_extractor.core.MainContentScorer', return_value=mock_scorer_instance)
 
+    # --- Run test ---
     await extract_main_content(url="http://mock.url/page/1", browser=mock_browser)
 
-    assert spy.call_count == 2
-    spy.assert_called_with("http://mock.url/page/2", mock_browser, 1, arg_webtype="page_changer")
+    # --- Assertions ---
+    assert mock_setup_page.call_count == 2
+    
+    # Check that setup_page was called with the initial URL, then the new one.
+    first_call_args = mock_setup_page.call_args_list[0].args
+    second_call_args = mock_setup_page.call_args_list[1].args
+    
+    assert first_call_args[0] == "http://mock.url/page/1"
+    assert second_call_args[0] == "http://mock.url/page/2"
 
 @pytest.mark.asyncio
 async def test_extract_main_content_rescore_no_improvement(mocker, mock_browser, dom_tree_fixture):

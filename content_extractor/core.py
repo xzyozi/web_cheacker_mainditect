@@ -117,63 +117,43 @@ async def extract_main_content(url: str,
         logger.info(f"Top candidates:{len(main_contents)}")
 
         if main_contents:
-            main_contents = rescore_main_content_with_children(main_contents[0])
-            
-            # logger.info("再評価前のコンテンツ差分:")
-            # for content in main_contents[:2]:
-            #     print_content(content)
-
             # =================================================================
             # メインコンテンツ候補の再評価ループ
             # =================================================================
-            # 初期候補(mainタグなど)は大きすぎることがある。そのため、その子要素を再評価し、
-            # よりスコアの高い(＝よりコンテンツ本体に近い)要素へと絞り込んでいく。
-            # 画面占有率などがスコアに大きく影響するため、この絞り込みが重要となる。
             loop_count = 0
-            while main_contents:
-                # 現在の最有力候補を一時保存
-                tmp_main_content = main_contents[0]
+            current_best = main_contents[0]
+            rescored_children = main_contents # Initialize with initial candidates
 
-                # 最有力候補の子要素を再スコアリングし、新たな候補リストとする
-                main_contents = rescore_main_content_with_children(tmp_main_content)
+            while loop_count < max_loop_count:
+                rescored_children_next = rescore_main_content_with_children(current_best)
 
-                logger.debug(f" Parent selector : {tmp_main_content.css_selector} / Score: {tmp_main_content.score}")
-                if main_contents:
-                    logger.debug(f" -> Best Child selector: {main_contents[0].css_selector} / Score: {main_contents[0].score}")
+                logger.debug(f" Parent selector : {current_best.css_selector} / Score: {current_best.score}")
+                if rescored_children_next:
+                    logger.debug(f" -> Best Child selector: {rescored_children_next[0].css_selector} / Score: {rescored_children_next[0].score}")
 
-                # 子要素が見つからない、または子要素のスコアが親を超えなくなったら、
-                # 親が最良のコンテンツブロックと判断してループを抜ける。
-                if not main_contents or tmp_main_content.score >= main_contents[0].score:
+                if not rescored_children_next or current_best.score >= rescored_children_next[0].score:
                     break
 
+                current_best = rescored_children_next[0]
+                rescored_children = rescored_children_next
                 loop_count += 1
-                if loop_count == max_loop_count:
-                    logger.warning("再評価ループが上限に達しました。")
-                    break
-            # while loop end
+            
+            if loop_count == max_loop_count:
+                logger.warning("再評価ループが上限に達しました。")
 
-            logger.info("Rescored child nodes:")
-            for child in main_contents[:5]:
-                logger.debug(child)
+            final_content = current_best
 
             logger.info("最終的に選択されたメインコンテンツ:")
-            logger.info(tmp_main_content)
-
-            # 最終的に選択されたコンテンツを final_content とする
-            # この時点では品質評価は行わない
-            final_content = tmp_main_content
+            logger.info(final_content)
 
             # css_selector_list setting
-            # 堅牢なセレクタ候補を上位3つまで取得（空のセレクタは除外）
-            selector_candidates = [node.css_selector for node in main_contents[:3] if node.css_selector]
+            selector_candidates = [node.css_selector for node in rescored_children[1:4] if node.css_selector]
             
-            # 自身のセレクタも候補の先頭に追加しておく
-            if tmp_main_content.css_selector and tmp_main_content.css_selector not in selector_candidates:
-                selector_candidates.insert(0, tmp_main_content.css_selector)
+            if final_content.css_selector and final_content.css_selector not in selector_candidates:
+                selector_candidates.insert(0, final_content.css_selector)
 
-            # 最終的に選ばれたコンテンツに、セレクタ候補リストとプライマリセレクタを格納
             final_content.css_selector_list = selector_candidates
-            if selector_candidates:
+            if selector_candidates and not final_content.css_selector:
                 final_content.css_selector = selector_candidates[0]
             # css_selector_list setting end
 
