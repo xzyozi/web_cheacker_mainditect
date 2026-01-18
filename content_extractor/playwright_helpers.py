@@ -64,7 +64,7 @@ async def adjust_page_view(page: Page) -> dict:
         }
     }''')
 
-    await page.set_viewport_size({"width": dimensions['width'], "height": dimensions['scrollHeight']})
+    await page.set_viewport_size({"width": dimensions['width'], "height": dimensions['height']})
     await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
     await page.wait_for_timeout(2000)
 
