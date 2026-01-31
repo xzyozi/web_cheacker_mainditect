@@ -10,3 +10,4 @@ pytest-asyncio
 pytest-cov
 scipy
 numpy<2
+requests
