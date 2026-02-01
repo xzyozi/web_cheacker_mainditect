@@ -21,3 +21,4 @@ test/*.txt
 .coverage
 .venv
 venv
+cheack.bat
