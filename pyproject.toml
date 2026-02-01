@@ -41,13 +41,14 @@ dev = [
 
 [tool.hatch.scripts]
 # Defines custom scripts runnable with `hatch run <script_name>`
-all = ["setup", "test"]
+all = ["setup", "test", "create-shortcut"]
 
 # Setup script: Compiles requirements, syncs environment, and installs browsers
 setup = [
   "pip-compile requirements.in -o requirements.txt",
   "pip-sync requirements.txt",
-  "playwright install"
+  "playwright install",
+  "python create_shortcut.py"
 ]
 
 # Sync environment with requirements.txt
@@ -55,3 +56,6 @@ sync = "pip-sync requirements.txt"
 
 # Run tests using pytest
 test = "pytest"
+
+# Create the .bat shortcut for running the application
+create-shortcut = "python create_shortcut.py"
