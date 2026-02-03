@@ -19,3 +19,6 @@ text_struct/__pycache__/text_struct.cpython-310.pyc
 users/jav/cheacker_url.csv
 test/*.txt
 .coverage
+.venv
+venv
+cheack.bat

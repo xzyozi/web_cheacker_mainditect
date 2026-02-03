@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "web-cheacker-mainditect"
+version = "0.1.0"
+description = "A web checker and content extraction tool."
+readme = "readme.md"
+requires-python = ">=3.8"
+license = "MIT"
+authors = [
+  { name = "Your Name", email = "you@example.com" },
+]
+
+# Main application dependencies
+dependencies = [
+  "pandas",
+  "PyYAML",
+  "playwright",
+  "Pillow",
+  "aiohttp",
+  "jinja2",
+  "scipy",
+  "numpy<2",
+  "requests",
+]
+
+[project.urls]
+Homepage = "https://github.com/user/repo" # Change to your repo URL
+
+[project.optional-dependencies]
+# Development and testing tools
+dev = [
+  "pip-tools",
+  "pytest",
+  "pytest-mock",
+  "pytest-asyncio",
+  "pytest-cov",
+]
+
+[tool.hatch.scripts]
+# Defines custom scripts runnable with `hatch run <script_name>`
+all = ["setup", "test", "create-shortcut"]
+
+# Setup script: Compiles requirements, syncs environment, and installs browsers
+setup = [
+  "pip-compile requirements.in -o requirements.txt",
+  "pip-sync requirements.txt",
+  "playwright install",
+  "python create_shortcut.py"
+]
+
+# Sync environment with requirements.txt
+sync = "pip-sync requirements.txt"
+
+# Run tests using pytest
+test = "pytest"
+
+# Create the .bat shortcut for running the application
+create-shortcut = "python create_shortcut.py"
