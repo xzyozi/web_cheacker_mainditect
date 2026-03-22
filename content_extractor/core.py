@@ -1,5 +1,5 @@
 from typing import Dict, List, Any, Union , Optional
-
+import re
 import os
 from collections import Counter
 import asyncio
@@ -11,6 +11,18 @@ import sys
 import hashlib
 from datetime import datetime
 import numpy as np
+
+def _escape_css_selector_colons(selector: str) -> str:
+    """
+    CSSセレクタ内のクラス名に含まれるコロンをエスケープします。
+    TailwindCSSなどで生成されるクラス名（例: 'md:px-4'）が
+    Playwrightのwait_for_selectorで正しく解釈されるようにします。
+    """
+    # 正規表現を使って、ドットの後に続くコロンをエスケープ
+    # 例: .md:px-12 -> .md\:px-12
+    # ただし、すでにエスケープされている場合は無視する
+    escaped_selector = re.sub(r'(?<!\\)([.][a-zA-Z0-9_-]+):([a-zA-Z0-9_-]+)', r'\1\\:\2', selector)
+    return escaped_selector
 
 # my module 
 from .scorer import MainContentScorer
@@ -124,15 +136,10 @@ async def extract_main_content(url: str,
             # よりスコアの高い(＝よりコンテンツ本体に近い)要素へと絞り込んでいく。
             # 画面占有率などがスコアに大きく影響するため、この絞り込みが重要となる。
             # =================================================================
-            # メインコンテンツ候補の再評価ループ
-            # 初期候補(mainタグなど)は大きすぎることがある。そのため、その子要素を再評価し、
-            # よりスコアの高い(＝よりコンテンツ本体に近い)要素へと絞り込んでいく。
-            # 画面占有率などがスコアに大きく影響するため、この絞り込みが重要となる。
-            # =================================================================
             loop_count = 0
             current_best = main_contents[0]
-            # This list will hold the children of `current_best` that were evaluated in the last iteration.
-            # It's used for generating `selector_candidates`.
+            # このリストは、前回のイテレーションで評価された`current_best`の子要素を保持します。
+            # これは`selector_candidates`を生成するために使用されます。
             current_best_children = []
 
             while loop_count < max_loop_count:
@@ -182,13 +189,13 @@ async def extract_main_content(url: str,
             # 最終的に選ばれたコンテンツに、セレクタ候補リストとプライマリセレクタを格納
             # この時点では品質評価は行わない
             final_content.css_selector_list = selector_candidates
-            if selector_candidates and not final_content.css_selector: # Only assign if final_content.css_selector is not already set
+            if selector_candidates and not final_content.css_selector: # final_content.css_selectorがまだ設定されていない場合にのみ割り当てる
                 final_content.css_selector = selector_candidates[0]
-            # css_selector_list setting end
+            # css_selector_list 設定終了
 
             final_content.url = url
 
-            # web_type setting
+            # web_type 設定
             current_type = WebType.from_string(chktype)
             if arg_webtype:
                 previous_type = WebType.from_string(arg_webtype)
@@ -343,11 +350,12 @@ async def quick_extract_content(url: str,
 
         # セレクタをループで試す
         for selector in css_selector_list:
+            escaped_selector = _escape_css_selector_colons(selector)
             try:
                 # 短いタイムアウトでセレクタの存在を確認
-                await page.wait_for_selector(selector, state='attached', timeout=5000)
-                logger.info(f"Selector found, extracting content with: {selector}")
-                tree = await make_tree(page, selector=selector)
+                await page.wait_for_selector(escaped_selector, state='attached', timeout=5000)
+                logger.info(f"Selector found, extracting content with: {escaped_selector}")
+                tree = await make_tree(page, selector=escaped_selector)
                 if tree:
                     found_tree = tree
                     # Quickスキャン成功時は、成功したセレクタをプライマリとし、リストの先頭に持ってくる
@@ -357,7 +365,7 @@ async def quick_extract_content(url: str,
                     found_tree.css_selector = selector
                     break # 見つかったらループを抜ける
             except PlaywrightTimeoutError:
-                logger.debug(f"Selector failed, trying next: {selector}")
+                logger.debug(f"Selector failed, trying next: {escaped_selector}")
                 continue # 次のセレクタへ
         
         if not found_tree:
@@ -407,6 +415,7 @@ async def run_quick_scan_standalone(url: str, css_selector_list: list[str], webt
                 await browser.close()
 
 
+
 async def run_search_quality_evaluation_standalone(url: str, search_query: str):
     """
     単一URLの検索品質評価をスタンドアロンで実行します。
@@ -428,8 +437,8 @@ if __name__ == "__main__":
     # --- コマンドライン引数の設定 ---
     parser = argparse.ArgumentParser(
         description="""
-        Playwright Main Content Detection Script.
-        Used for testing the content extraction logic on a single URL.
+        Playwrightを用いたメインコンテンツ検出スクリプト。
+        単一URLにおけるコンテンツ抽出ロジックのテストに使用されます。
         """
     )
     parser.add_argument("url", help="The URL to test.")
@@ -437,16 +446,16 @@ if __name__ == "__main__":
         "--mode", "-m",
         choices=["full", "quick", "quality"],
         default="full",
-        help="Scan mode to execute. 'full' runs full scan, 'quick' runs quick scan. Default: full"
+        help="実行するスキャンモード。'full'はフルスキャン、'quick'はクイックスキャンを実行します。デフォルト: full"
     )
     parser.add_argument(
         "--selectors",
         nargs='+',
-        help="CSS selector(s) to use for 'quick' mode."
+        help="'quick'モードで使用するCSSセレクタ。"
     )
     parser.add_argument(
         "--query", "-q",
-        help="Search query to use for 'quality' mode."
+        help="'quality'モードで使用する検索クエリ。"
     )
     args = parser.parse_args()
 
@@ -491,7 +500,7 @@ if __name__ == "__main__":
             logger.info("品質評価結果: 結果なしページ")
         elif result_obj.result_count > 0:
             logger.info(f"品質評価結果: {result_obj.result_count}件のアイテムを検出 (AvgRelevance: {result_obj.avg_relevance:.2f})")
-        # print(result_obj) # オブジェクト全体を詳細に見たい場合はコメントを外す
+        # print(result_obj) # オブジェクト全体を詳細に見たい場合は、この行のコメントを外してください
     else:
         logger.warning("テストは終了しましたが、コンテンツは抽出されませんでした。")
 
