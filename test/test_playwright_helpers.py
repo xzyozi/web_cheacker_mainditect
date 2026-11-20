@@ -6,12 +6,14 @@ from playwright.async_api import Browser, BrowserContext, Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 import pytest
 
+from content_extractor import playwright_helpers
 from content_extractor.playwright_helpers import (
     adjust_page_view,
     close_page,
     fetch_robots_txt,
     generate_filename,
     is_scraping_allowed,
+    is_url_allowed,
     save_screenshot,
     setup_page,
 )
@@ -50,6 +52,22 @@ def mock_aiohttp_response():
 def mock_asyncio_sleep(mocker):
     # Patch asyncio.sleep to prevent actual delays during tests
     return mocker.patch("asyncio.sleep", new=AsyncMock())
+
+
+@pytest.fixture(autouse=True)
+def allow_all_urls(mocker):
+    """save_screenshot が呼ぶ is_url_allowed が、テスト中に実ネットワークへ robots.txt を取りに行かないようにする。
+
+    is_url_allowed 自体のテストは、import 済みの関数オブジェクトを直接呼ぶため、この差し替えの影響を受けない。
+    """
+    return mocker.patch.object(playwright_helpers, "is_url_allowed", new=AsyncMock(return_value=True))
+
+
+@pytest.fixture(autouse=True)
+def clear_robots_cache():
+    playwright_helpers._ROBOTS_CACHE.clear()
+    yield
+    playwright_helpers._ROBOTS_CACHE.clear()
 
 
 # --- Tests for setup_page ---
@@ -295,6 +313,65 @@ Disallow: /secret
 """
     assert is_scraping_allowed(robots_txt, "/secret/page") is False
     assert is_scraping_allowed(robots_txt, "/public/page") is True
+
+
+# --- Tests for is_url_allowed ---
+
+
+@pytest.mark.asyncio
+async def test_is_url_allowed_disallowed_path(mocker):
+    """robots.txt が禁止しているパスは許可されない。"""
+    mocker.patch.object(
+        playwright_helpers, "fetch_robots_txt", new=AsyncMock(return_value="User-agent: *\nDisallow: /private")
+    )
+
+    assert await is_url_allowed("http://example.com/private/data") is False
+    assert await is_url_allowed("http://example.com/public/page") is True
+
+
+@pytest.mark.asyncio
+async def test_is_url_allowed_fetches_robots_once_per_origin(mocker):
+    """同じオリジンへの判定では、robots.txt を1回しか取得しない（アクセス回数の削減）。"""
+    fetch = mocker.patch.object(
+        playwright_helpers, "fetch_robots_txt", new=AsyncMock(return_value="User-agent: *\nAllow: /")
+    )
+
+    await is_url_allowed("http://example.com/a")
+    await is_url_allowed("http://example.com/b")
+    await is_url_allowed("http://other.example.org/a")
+
+    assert fetch.await_count == 2  # example.com と other.example.org の2オリジン
+
+
+@pytest.mark.asyncio
+async def test_is_url_allowed_caches_fetch_failure(mocker):
+    """robots.txt が取得できない場合は許可し、失敗も含めて再取得しない。"""
+    fetch = mocker.patch.object(playwright_helpers, "fetch_robots_txt", new=AsyncMock(return_value=None))
+
+    assert await is_url_allowed("http://example.com/a") is True
+    assert await is_url_allowed("http://example.com/b") is True
+    assert fetch.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_is_url_allowed_invalid_url_is_allowed(mocker):
+    """URL を解析できない場合は判定せず許可とする（検証は呼び出し側の責務）。"""
+    fetch = mocker.patch.object(playwright_helpers, "fetch_robots_txt", new=AsyncMock())
+
+    assert await is_url_allowed("invalid-url") is True
+    fetch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_save_screenshot_skips_disallowed_url(mock_browser, allow_all_urls, mocker):
+    """robots.txt で許可されていない URL は、ブラウザを開かず None を返す。"""
+    mocker.patch("os.makedirs")
+    allow_all_urls.return_value = False  # 既定の「許可」を、このテストだけ「禁止」に切り替える
+
+    result = await save_screenshot(mock_browser, ["http://example.com/private"])
+
+    assert result == [None]
+    mock_browser.new_context.assert_not_called()
 
 
 # --- Tests for generate_filename ---

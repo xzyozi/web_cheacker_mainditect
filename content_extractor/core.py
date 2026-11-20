@@ -18,7 +18,14 @@ from utils.file_handler import save_json
 from .dom_treeSt import DOMTreeSt
 from .dom_utils import rescore_main_content_with_children
 from .make_tree import make_tree
-from .playwright_helpers import adjust_page_view, close_page, fetch_robots_txt, is_scraping_allowed, setup_page
+from .playwright_helpers import (
+    adjust_page_view,
+    close_page,
+    fetch_robots_txt,
+    is_scraping_allowed,
+    is_url_allowed,
+    setup_page,
+)
 from .quality_evaluator import is_no_results_page, quantify_search_results
 from .scorer import MainContentScorer
 from .web_type_chk import WebType, WebTypeCHK
@@ -348,6 +355,11 @@ async def quick_extract_content(
     if not css_selector_list:
         logger.warning("No selectors provided for quick scan, starting full scan.")
         return await extract_main_content(url, browser, arg_webtype=webtype)
+
+    # Full スキャンと同様に、robots.txt で許可されていない URL にはアクセスしない
+    if not await is_url_allowed(url):
+        logger.info(f"robots.txtにより、このURLのQuickスキャンは許可されていません: {url}")
+        return None
 
     context = await browser.new_context(viewport={"width": 1920, "height": 1080})
     page = await context.new_page()
