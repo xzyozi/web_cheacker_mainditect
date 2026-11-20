@@ -8,6 +8,7 @@ import pytest
 
 from content_extractor.playwright_helpers import (
     adjust_page_view,
+    close_page,
     fetch_robots_txt,
     generate_filename,
     is_scraping_allowed,
@@ -126,6 +127,34 @@ async def test_setup_page_other_exception(mock_browser, mock_context, mock_page,
     mock_logger_error.assert_called_once()
     mock_page.close.assert_awaited_once()  # Page should be closed on failure
     mock_context.close.assert_not_called()  # Context is not explicitly closed if page was created
+
+
+# --- Tests for close_page ---
+
+
+@pytest.mark.asyncio
+async def test_close_page_closes_page_and_context(mock_page):
+    """ページを閉じた後、そのブラウザコンテキストも閉じる（コンテキストのリーク防止）。"""
+    # spec 付きの AsyncMock では、プロパティ context は MagicMock になるため、明示的に差し替える
+    mock_context = AsyncMock(spec=BrowserContext)
+    mock_page.context = mock_context
+
+    await close_page(mock_page)
+
+    mock_page.close.assert_awaited_once()
+    mock_context.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_close_page_does_not_raise_when_close_fails(mock_page, mocker):
+    """解放の失敗は記録のみとし、後続のURL処理を止めない。"""
+    mock_page.context = AsyncMock(spec=BrowserContext)
+    mock_page.close.side_effect = Exception("target closed")
+    mock_logger_warning = mocker.patch("content_extractor.playwright_helpers.logger.warning")
+
+    await close_page(mock_page)  # 例外を送出しない
+
+    mock_logger_warning.assert_called_once()
 
 
 # --- Tests for adjust_page_view ---
