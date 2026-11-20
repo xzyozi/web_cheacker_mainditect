@@ -10,17 +10,15 @@ from .dom_treeSt import BoundingBox, DOMTreeSt
 # Use standard logging practice; configuration should be at the application entry point.
 logger = logging.getLogger(__name__)
 
+
 async def make_tree(
-    page: Page,
-    selector: str = "body",
-    wait_for_load: bool = True,
-    timeout: int = 30000,
-    debug: bool = True
+    page: Page, selector: str = "body", wait_for_load: bool = True, timeout: int = 30000, debug: bool = True
 ) -> Optional[DOMTreeSt]:
     """
     Get DOM tree starting from a specific selector or body.
     Page.goto(url)後に使用
     """
+
     async def parse_element(el: ElementHandle, current_depth: int = 1) -> Optional[DOMTreeSt]:
         """
         HTML 要素とその子要素を再帰的に解析し、関連する詳細を抽出します。
@@ -30,7 +28,7 @@ async def make_tree(
 
         try:
             # Element may be detached from the DOM, especially in dynamic pages.
-            if not await el.evaluate('el => document.body.contains(el)'):
+            if not await el.evaluate("el => document.body.contains(el)"):
                 return None
 
             try:
@@ -42,33 +40,33 @@ async def make_tree(
                 logger.debug(f"Could not get bounding box for an element, skipping it: {str(e)}")
                 return None
 
-            properties = await el.evaluate('''el => ({
+            properties = await el.evaluate("""el => ({
                 tag: el.tagName.toLowerCase(),
                 id: el.id,
                 attributes: Object.fromEntries(Array.from(el.attributes).map(attr => [attr.name, attr.value])),
                 text: el.innerText || "",
                 links: Array.from(el.getElementsByTagName('a')).map(a => a.href).filter(Boolean).sort()
-            })''')
+            })""")
 
             css_selector = make_css_selector(properties)
 
             tree = DOMTreeSt(
-                tag=properties['tag'],
-                id=properties['id'],
-                attributes=properties['attributes'],
+                tag=properties["tag"],
+                id=properties["id"],
+                attributes=properties["attributes"],
                 rect=BoundingBox(
-                    x=bounding_box['x'],
-                    y=bounding_box['y'],
-                    width=bounding_box['width'],
-                    height=bounding_box['height'],
+                    x=bounding_box["x"],
+                    y=bounding_box["y"],
+                    width=bounding_box["width"],
+                    height=bounding_box["height"],
                 ),
                 depth=current_depth,
-                text=properties['text'].strip(),
+                text=properties["text"].strip(),
                 css_selector=css_selector,
-                links=properties['links'],
+                links=properties["links"],
             )
 
-            children = await el.query_selector_all(':scope > *')
+            children = await el.query_selector_all(":scope > *")
             for child in children:
                 child_node = await parse_element(child, current_depth + 1)
                 if child_node:  # Check for None
@@ -84,7 +82,7 @@ async def make_tree(
         if wait_for_load:
             try:
                 logger.debug("Waiting for network to be idle...")
-                await page.wait_for_load_state('networkidle', timeout=timeout)
+                await page.wait_for_load_state("networkidle", timeout=timeout)
                 logger.info("Network is idle.")
             except Exception as e:
                 logger.warning(f"Network did not become idle within {timeout}ms: {str(e)}")
@@ -100,6 +98,7 @@ async def make_tree(
         logger.critical(f"Failed to create DOM tree for selector '{selector}': {str(e)}")
         return None
 
+
 def make_css_selector(properties: Dict[str, any]) -> str:
     """
     Generates a more stable CSS selector from element properties.
@@ -111,7 +110,7 @@ def make_css_selector(properties: Dict[str, any]) -> str:
     # ID is the most reliable selector.
     if element_id:
         # CSS identifiers can contain characters that need escaping, but '#' is generally safe for IDs.
-        return f'{tag}#{element_id}'
+        return f"{tag}#{element_id}"
 
     selector = tag
 
@@ -151,11 +150,11 @@ async def test_makeTree():
 
 if __name__ == "__main__":
     # Basic logger setup for standalone execution
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
     # On Windows, ProactorEventLoop is required for Playwright's async operations
     # in some environments.
-    if sys.platform == 'win32':
-         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
     asyncio.run(test_makeTree())

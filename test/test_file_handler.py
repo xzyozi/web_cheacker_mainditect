@@ -8,7 +8,8 @@ from utils.file_handler import save_json
 # file_handler.py のテスト
 # =================================================================
 
-@patch('utils.file_handler.util_str')
+
+@patch("utils.file_handler.util_str")
 def test_save_json(mock_util_str):
     """Test that save_json calls its dependencies correctly and writes the correct data."""
     # Arrange
@@ -23,13 +24,13 @@ def test_save_json(mock_util_str):
     test_url = "http://example.com/some/path"
 
     # Act
-    with patch('builtins.open', mock_open()) as mocked_file:
+    with patch("builtins.open", mock_open()) as mocked_file:
         save_json(test_data, test_url, directory=directory)
 
         # Assert
         mock_util_str.get_domain.assert_called_once_with(test_url)
         mock_util_str.util_handle_path.assert_called_once_with(expected_path)
-        mocked_file.assert_called_once_with(expected_path, 'w', encoding='utf-8')
+        mocked_file.assert_called_once_with(expected_path, "w", encoding="utf-8")
 
         # To check what was written to the file, we can inspect the mock's write calls
         handle = mocked_file()

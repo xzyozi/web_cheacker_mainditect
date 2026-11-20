@@ -23,8 +23,10 @@ import sys
 # logging.Logger.notice = notice
 # logging.Logger.alert = alert
 
+
 class ColoredFormatter(logging.Formatter):
     """ANSIカラー対応のフォーマッター"""
+
     COLORS = {
         "DEBUG": "\033[0;36m",  # CYAN
         # "NOTICE": "\033[1;34m",  # LIGHT BLUE
@@ -43,8 +45,9 @@ class ColoredFormatter(logging.Formatter):
         colored_record.levelname = f"{seq}{levelname}{self.COLORS['RESET']}"
         return super().format(colored_record)
 
+
 def setup_logger(
-    name: str ,
+    name: str,
     level: str = "INFO",
     use_colors: bool = True,
     log_file: str = None,
@@ -89,7 +92,11 @@ def setup_logger(
 
     # 標準出力のハンドラー
     stream_handler = logging.StreamHandler(sys.stdout)
-    formatter = ColoredFormatter(log_format, datefmt=date_format) if use_colors else logging.Formatter(log_format, datefmt=date_format)
+    formatter = (
+        ColoredFormatter(log_format, datefmt=date_format)
+        if use_colors
+        else logging.Formatter(log_format, datefmt=date_format)
+    )
     stream_handler.setFormatter(formatter)
 
     stream_handler.setLevel(logging.INFO)

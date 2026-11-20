@@ -46,17 +46,13 @@ class WebType(Enum):
 
 
 class PageMonitor:
-    def __init__(self,
-                 base_url : str,
-                 node : 'DOMTreeSt'
-                 ):
+    def __init__(self, base_url: str, node: "DOMTreeSt"):
         self.base_url = base_url  # 監視対象のURL（既存の探索URL）
         self.node = node  # 解析対象のDOM情報
 
     def should_check_update(self):
         """ページ更新チェックを実行すべきか判定"""
-        if PAGINATED_URL_REGEX.search(self.base_url) :
-
+        if PAGINATED_URL_REGEX.search(self.base_url):
             for link in self.node.links:
                 if PAGINATION_LINK_REGEX.search(link):
                     return True  # ページ番号を含むリンクがあれば更新チェックが必要
@@ -112,16 +108,11 @@ class PageMonitor:
         return self.typechk() if self.should_check_update() else None
 
 
-class WebTypeCHK() :
-    def __init__(self,
-                 base_url : str,
-                 node : 'DOMTreeSt'
-                 ):
-        self.pagemon = PageMonitor(base_url,node)
+class WebTypeCHK:
+    def __init__(self, base_url: str, node: "DOMTreeSt"):
+        self.pagemon = PageMonitor(base_url, node)
         self.node = node
         self.next_url = None
-
-
 
     def webtype_chk(self) -> str:
         """
@@ -140,5 +131,3 @@ class WebTypeCHK() :
             return WebType.page_changer.name
 
         return WebType.plane.name
-
-
