@@ -1,10 +1,19 @@
+import importlib.util
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
 from content_extractor.dom_treeSt import DOMTreeSt
-from content_extractor.relevance_scorer import RelevanceScorer
+
+# 検索品質評価の依存（sentence-transformers / scikit-learn）は重く、監視本体には不要なため、
+# 未導入の環境ではこのファイル全体をスキップする。
+_QUALITY_DEPS = ("sentence_transformers", "sklearn")
+_MISSING_DEPS = [m for m in _QUALITY_DEPS if importlib.util.find_spec(m) is None]
+pytestmark = pytest.mark.skipif(bool(_MISSING_DEPS), reason=f"品質評価の依存が未導入: {', '.join(_MISSING_DEPS)}")
+
+if not _MISSING_DEPS:
+    from content_extractor.relevance_scorer import RelevanceScorer
 
 # =================================================================
 # relevance_scorer.py のテスト

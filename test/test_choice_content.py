@@ -267,7 +267,9 @@ async def choice_content(url: str, **kwargs):
                 return {}
 
             # Get tree structure
-            tree = await get_tree(page, tag=tag, element_id=element_id, attributes=attributes)
+            # NOTE: get_tree は selector 引数のみを受け取る。この呼び出しは旧版の名残で実行すると TypeError になる
+            # （choice_content はどこからも呼ばれていない。整理は #28 で行う）
+            tree = await get_tree(page, tag=tag, element_id=element_id, attributes=attributes)  # type: ignore[call-arg]
 
             if not tree:
                 print(f"No matching elements found for selector: {selector}")
