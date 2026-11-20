@@ -82,7 +82,7 @@ def _find_result_container(main_content_node: DOMTreeSt) -> Optional[DOMTreeSt]:
     メインコンテンツノードの子孫から、最も繰り返し構造を持つ要素を結果コンテナとして特定します。
     """
     best_container = None
-    max_repetition_score = 0
+    max_repetition_score = 0.0
 
     candidate_nodes = flatten_dom_tree(main_content_node)
 

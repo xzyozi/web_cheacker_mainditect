@@ -120,8 +120,7 @@ async def extract_main_content(url: str, browser: Browser, count: int = 0, arg_w
                     watch_url, browser, count + 1, arg_webtype=chktype
                 )  # 再帰的に処理を実行
 
-        tree = [tree]  # Convert tree to list[Dict]
-        scorer = MainContentScorer(tree, dimensions["width"], dimensions["height"])
+        scorer = MainContentScorer([tree], dimensions["width"], dimensions["height"])
         main_contents = scorer.find_candidates()
 
         if not main_contents:
