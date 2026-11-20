@@ -7,15 +7,15 @@ from enum import Enum, auto
 # --- Regex Constants ---
 # Matches 'page' followed by an optional separator (-, =, /) and digits.
 # Used to identify URLs that are part of a paginated series.
-PAGINATED_URL_REGEX = re.compile(r"page[-=/]?\d+")
+PAGINATED_URL_REGEX = re.compile(r"(?<![A-Za-z0-9])page[-=/]?\d+")
 
 # Matches 'page' followed by a required separator (-, =) and digits.
 # Used to check for pagination links within a page.
-PAGINATION_LINK_REGEX = re.compile(r"page[-=]\d+")
+PAGINATION_LINK_REGEX = re.compile(r"(?<![A-Za-z0-9])page[-=]\d+")
 
 # Captures the page format (e.g., "page-", "page/") and the page number.
 # Used to determine the latest page number from links.
-PAGE_NUMBER_CAPTURE_REGEX = re.compile(r"(page[-=/]?)(\d+)")
+PAGE_NUMBER_CAPTURE_REGEX = re.compile(r"(?<![A-Za-z0-9])(page[-=/]?)(\d+)")
 
 
 class WebType(Enum):
@@ -34,11 +34,10 @@ class WebType(Enum):
     def __lt__(self, other: "WebType") -> bool:
         return self.priority < other.priority
 
-    def __eq__(self, other: "WebType") -> bool:
-        return self.priority == other.priority
-
     @classmethod
     def from_string(cls, enum_str: str) -> "WebType":
+        if isinstance(enum_str, cls):
+            return enum_str
         if not isinstance(enum_str, str):
             return cls.plane
         
@@ -77,7 +76,11 @@ class PageMonitor:
         latest_link = None
 
         # ページリンクから最新のページ番号と対応するリンクを見つける
+        base_netloc = urlparse(self.base_url).netloc
         for link in self.node.links:
+            # 別ドメインのリンク（広告など）は候補にしない
+            if urlparse(urljoin(self.base_url, link)).netloc != base_netloc:
+                continue
             match = PAGE_NUMBER_CAPTURE_REGEX.search(link)
             if match:
                 page_num = int(match.group(2))

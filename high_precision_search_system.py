@@ -17,7 +17,7 @@ from rank_bm25 import BM25Okapi
 from sentence_transformers import CrossEncoder
 
 # Local imports
-from content_processorl import ContentProcessor
+from content_processor import ContentProcessor
 
 # --- Logger Setup ---
 logging.basicConfig(
