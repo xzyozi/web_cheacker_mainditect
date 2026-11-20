@@ -101,6 +101,25 @@ select = ["E", "F", "W", "I"]
 force-sort-within-sections = true
 
 # ==========================================
+# Type Checker (Mypy)
+# ==========================================
+[tool.mypy]
+python_version = "3.10"
+warn_unused_configs = true
+show_error_codes = true
+# 型定義の無いサードパーティ製ライブラリ（playwright, scipy, yaml 等）で落とさない
+ignore_missing_imports = true
+exclude = [
+    "build/",
+    "venv/",
+    "\\.venv/",
+    "mutants/",
+    "review/",
+    # 旧版実装。削除予定（Issue #24）のため型検査の対象外とする
+    "playwright_mainditect_v2\\.py",
+]
+
+# ==========================================
 # Testing (Pytest)
 # ==========================================
 [tool.pytest.ini_options]
