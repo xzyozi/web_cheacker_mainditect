@@ -104,7 +104,7 @@ async def test_make_tree_extracts_links(mock_page, mock_bounding_box_data):
 async def test_make_tree_skips_elements_without_bounding_box(mock_page, mock_bounding_box_data):
     mock_body_handle = AsyncMock()
     mock_child_handle = AsyncMock()
-    
+
     mock_page.query_selector.return_value = mock_body_handle
     mock_body_handle.evaluate.side_effect = [
         True,
@@ -154,7 +154,7 @@ async def test_make_tree_root_element_not_found(mock_page):
 @pytest.mark.asyncio
 async def test_make_tree_wait_for_load_true(mock_page):
     # Ensure query_selector returns a mock handle so make_tree proceeds
-    mock_page.query_selector.return_value = AsyncMock() 
+    mock_page.query_selector.return_value = AsyncMock()
     # Make sure the evaluate and bounding_box are mocked on the returned handle
     mock_page.query_selector.return_value.evaluate.return_value = True
     mock_page.query_selector.return_value.bounding_box.return_value = {'x': 0, 'y': 0, 'width': 100, 'height': 100}

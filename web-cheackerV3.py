@@ -35,7 +35,7 @@ USER_DIR_PATH = os.path.join(SCRIPT_PATH, "./user")
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # +----------------------------------------------------------------
-# pandas option 
+# pandas option
 # +----------------------------------------------------------------
 # 表示オプションを変更して、すべての行と列を表示する
 pd.set_option('display.max_rows', None)
@@ -56,7 +56,7 @@ logger.debug(SCRIPT_PATH)
 
 
 # +----------------------------------------------------------------
-# + User class 
+# + User class
 # +----------------------------------------------------------------
 import yaml
 
@@ -130,7 +130,7 @@ class NotificationManager:
             return
 
         logger.info(f"Processing update notifications for {len(diff_urls)} URLs...")
-        
+
         notification_type = self.config.get('notification', {}).get('type', 'none')
         if notification_type != 'email':
             logger.info("Email notification is disabled in config. Skipping.")
@@ -147,7 +147,7 @@ class NotificationManager:
             return
 
         logger.info(f"Processing error notifications for {len(error_list)} errors...")
-        
+
         notification_config = self.config.get('notification', {})
         if notification_config.get('type', 'none') != 'email' or not notification_config.get('notify_on_error', False):
             logger.info("Error notification via email is disabled in config. Skipping.")
@@ -157,15 +157,15 @@ class NotificationManager:
         for error_msg in error_list:
             error_body_lines.append(f"<li>{html.escape(str(error_msg))}</li>")
         error_body_lines.append("</ul>")
-        
+
         logger.info("Sending error report email...")
         self.user.send_resultmail("\n".join(error_body_lines), body_type="html")
 
 # +----------------------------------------------------------------
 # + json function
 # +----------------------------------------------------------------
-def save_json(data : dict, 
-              url : str, 
+def save_json(data : dict,
+              url : str,
               directory=SAVE_JSON_DIR_PATH):
     """
     辞書型のデータをJSONファイルとして保存する
@@ -180,13 +180,13 @@ def save_json(data : dict,
     domain = util_str.get_domain(url)
     file_path = os.path.join(directory, f"{domain}.json")
     util_str.util_handle_path(file_path)  # ファイルを作成または取得する
-    
+
     with open(file_path, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
 
 # +----------------------------------------------------------------
-# datetime edit function 
+# datetime edit function
 # +----------------------------------------------------------------
 # New standard for datetime strings, compliant with ISO 8601.
 DEFAULT_DATETIME = "1970-01-01T00:00:00Z"
@@ -232,7 +232,7 @@ def safe_parse_datetime(date_str: str) -> datetime:
                 return datetime.strptime(date_str, fmt).replace(tzinfo=timezone.utc)
             except ValueError:
                 continue
-    
+
     logger.warning(f"Could not parse datetime string '{date_str}'. Using default.")
     return datetime(1970, 1, 1, tzinfo=timezone.utc)
 
@@ -253,19 +253,19 @@ def get_last_modified(url: str) -> str | None:
         # タイムアウトを設定して、応答がない場合に長時間待たないようにする
         response = requests.head(url, timeout=10)
         response.raise_for_status() # 200番台以外のステータスコードで例外を発生
-        
+
         last_modified_header = response.headers.get('Last-Modified')
         if last_modified_header:
             # 例: "Wed, 21 Oct 2015 07:28:00 GMT" -> datetimeオブジェクトに変換
             dt_object = parsedate_to_datetime(last_modified_header)
             # datetimeオブジェクトを単純な文字列にフォーマットして返す
             return dt_object.strftime("%Y-%m-%d %H:%M:%S")
-            
+
     except requests.RequestException as e:
         logger.debug(f"Could not get Last-Modified for {url}: {e}")
     except (TypeError, ValueError) as e:
         logger.debug(f"Could not parse Last-Modified header for {url}: {e}")
-        
+
     return None
 
 # + ----------------------------------------------------------------
@@ -281,14 +281,14 @@ def remove_encoded_chars(url):
 
 
 # +----------------------------------------------------------------
-# csv function 
+# csv function
 # +----------------------------------------------------------------
 
 CSV_COLUMN = { "url" : 0, # scraping url
                "run_code" : 1, # datetime for code of the run for
-               "result_vl" : 2 ,  
-               "updated_datetime" : 3, 
-               "full_scan_datetime"  : 4, 
+               "result_vl" : 2 ,
+               "updated_datetime" : 3,
+               "full_scan_datetime"  : 4,
                "css_selector_list" : 5,
                "web_page_type" : 6,
 }
@@ -303,10 +303,10 @@ class DataManager:
                 self.df = pd.read_json(self.file_path, orient='records', encoding='utf-8')
         except (FileNotFoundError, ValueError):
             self.df = pd.DataFrame(columns=[
-                "url", "run_code", "result_vl", "updated_datetime", 
+                "url", "run_code", "result_vl", "updated_datetime",
                 "full_scan_datetime", "css_selector_list", "web_page_type", "image_filename"
             ])
-        
+
         if 'css_selector_list' not in self.df.columns:
             self.df['css_selector_list'] = [[] for _ in range(len(self.df))]
         if 'image_filename' not in self.df.columns:
@@ -337,13 +337,13 @@ class DataManager:
         for key, value in record.items():
             self.df.at[index, key] = value
         logger.info(f" ## update ## - index : {index}")
-        
+
     def update_scan_result(self, index: int, dom_tree: DOMTreeSt):
         """
         スキャン成功時の結果をまとめてDataFrameに書き込むメソッド。
         """
         new_hash = hashlib.sha256(str(dom_tree.links).encode()).hexdigest()
-        
+
         logger.info(f" ## UPDATE ## - index : {index} - {new_hash}")
         logger.debug(f"Updating with selectors: {dom_tree.css_selector_list}")
 
@@ -351,7 +351,7 @@ class DataManager:
         self.df.at[index, "updated_datetime"] = get_Strdatetime()
         self.df.at[index, "css_selector_list"] = dom_tree.css_selector_list
         self.df.at[index, "web_page_type"] = dom_tree.web_type
-        
+
         # URLがリダイレクト等で変更された場合に対応
         if dom_tree.url != self.df.at[index, "url"]:
             self.df.at[index, "url"] = dom_tree.url
@@ -387,7 +387,7 @@ class DataManager:
         logger.info(f"Found {len(diff_urls)} updated URLs: {diff_urls}")
         return diff_urls
 
-# csv function end ---------------------------------------------------------------- 
+# csv function end ----------------------------------------------------------------
 
 
 async def process_url_async(url: str,
@@ -518,7 +518,7 @@ async def main():
 
     # --- 差分チェック ---
     diff_urls = data_manager.chk_diff()
-    
+
     email_image_list = []
     if diff_urls:
         # --- Screenshot Generation ---
@@ -534,7 +534,7 @@ async def main():
                 browser = await p.chromium.launch()
                 logger.info(f"Generating screenshots for email to {temp_dir}...")
                 email_image_list = await save_screenshot(browser, url_list=diff_urls, save_dir=temp_dir, width=email_width)
-                
+
                 logger.info(f"Generating screenshots for permanent storage to {perm_dir}...")
                 permanent_image_list = await save_screenshot(browser, url_list=diff_urls, save_dir=perm_dir, width=perm_width)
                 await browser.close()
@@ -557,7 +557,7 @@ async def main():
         logger.info("-------- ERROR list output -----------")
         for error_msg in error_list:
             logger.warning(error_msg)
-    
+
     notification_manager.send_error_notification(error_list)
 
     # 一時フォルダの再クリーンアップ

@@ -23,12 +23,12 @@ def mock_relevance_scorer():
             np.array([[0.1, 0.2], [0.3, 0.4]]) # For items
         ]
         MockSentenceTransformer.return_value = mock_model_instance
-        
+
         scorer = RelevanceScorer()
-        
+
         mock_tfidf_instance = MagicMock()
         scorer.tfidf_vectorizer = mock_tfidf_instance
-        
+
         return scorer
 
 @pytest.fixture
@@ -51,7 +51,7 @@ def test_score_relevance_calculation(mock_relevance_scorer, sample_items):
     Test the hybrid score calculation by mocking the individual components.
     """
     query = "python"
-    
+
     # The fixture now correctly mocks the encode method.
     # We only need to mock the functions called within the method.
     mock_relevance_scorer._calculate_jaccard = MagicMock(side_effect=[0.7, 0.1])
@@ -61,7 +61,7 @@ def test_score_relevance_calculation(mock_relevance_scorer, sample_items):
          patch('content_extractor.relevance_scorer.cos_sim', return_value=np.array([[0.9, 0.1]])) as mock_semantic_sim:
 
         updated_items = mock_relevance_scorer.score_relevance(query, sample_items)
-        
+
         # Expected score for item 1: (0.2 * 0.7) + (0.3 * 0.8) + (0.5 * 0.9) = 0.14 + 0.24 + 0.45 = 0.83
         assert updated_items[0].relevance_score == pytest.approx(0.83)
         # Expected score for item 2: (0.2 * 0.1) + (0.3 * 0.2) + (0.5 * 0.1) = 0.02 + 0.06 + 0.05 = 0.13

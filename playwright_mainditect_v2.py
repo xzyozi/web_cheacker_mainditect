@@ -48,7 +48,7 @@ def score_text_length(node: Dict) -> float:
         float: テキスト量に基づくスコア
     """
     text_length = len(node.get("text", ""))  # 要素内のテキストの文字数を取得
-    # print(f'id: {node.get("id")} text: {text_length}')    
+    # print(f'id: {node.get("id")} text: {text_length}')
 
     if text_length == 0: score = 0
     elif text_length <= TEXT_LENGTH_MEAN:
@@ -60,7 +60,7 @@ def score_text_length(node: Dict) -> float:
 
     # スコアに重みを掛ける
     weighted_score = score ** TEXT_LENGTH_WEIGHT
-    
+
     return weighted_score
 
 # + ----------------------------------------------------------------
@@ -74,7 +74,7 @@ def save_json(data, file_path="./data/json.json") :
         json.dump(data, f, ensure_ascii=False, indent=4)
 
 # + ----------------------------------------------------------------
-# + link count socering 
+# + link count socering
 # + ----------------------------------------------------------------
 LINK_LENGTH_WEIGHT = 1.0  # リンクの重みの係数
 LINK_LENGTH_MEAN = 6    # 文字数の平均値
@@ -105,7 +105,7 @@ def score_link_length(node: Dict) -> float:
 
     # スコアに重みを掛ける
     weighted_score = score ** LINK_LENGTH_WEIGHT
-    
+
     return weighted_score
 
 
@@ -160,7 +160,7 @@ def is_valid_element(node: Dict) -> bool:
     ]
     if tag in invalid_tags:
         return False
-    
+
     area = node["rect"]["width"] * node["rect"]["height"]
     if area < 0.05:
         return False
@@ -219,7 +219,7 @@ async def get_tree(page: Page, tag: Optional[str] = None, element_id: Optional[s
             attributes_dict = await el.evaluate(
                 'el => Object.fromEntries(Array.from(el.attributes).map(attr => [attr.name, attr.value]))'
             )
-            
+
             # Extract element details
             node = {
                 "tag": await el.evaluate('el => el.tagName.toLowerCase()'),
@@ -298,9 +298,9 @@ def get_subtree(node):
         subtree.extend(get_subtree(child_node))
     return subtree
 '''
-def calculate_depth_weight(max_depth : int,  
-                           current_depth : int , 
-                           base_weight :float =1.0 , 
+def calculate_depth_weight(max_depth : int,
+                           current_depth : int ,
+                           base_weight :float =1.0 ,
                            weight_factor :float =4.0):
     """
     現在の階層レベルに基づいて depth の重みを計算する関数
@@ -329,13 +329,13 @@ class MainContentScorer:
             self.tree = tree
         else:
             raise TypeError("tree must be a list of dicts")
-        
+
 
         self.width = width
         self.height = height
 
         self.init_depth_flag = True
-    
+
 
     def _calculate_screen_occupancy_multiplier(self, occupancy_rate: float, peak: float = 0.6, sigma: float = 0.3) -> float:
         """
@@ -357,7 +357,7 @@ class MainContentScorer:
                      ):
         if self.init_depth_flag :
             # 一番上のtreeを0にするために差分をとる
-            self.parent_depth_diff = node["depth"] 
+            self.parent_depth_diff = node["depth"]
             self.init_depth_flag = False
             # print("★ top level depth")
             # print(f' parent depth diff : {self.parent_depth_diff}  , depth : {node["depth"]}')
@@ -375,8 +375,8 @@ class MainContentScorer:
             link_score = 0.2 * min(link_count, 5)
 
             score *= link_score
-            
-        except : 
+
+        except :
             # print("not link")
             pass
 
@@ -386,7 +386,7 @@ class MainContentScorer:
         page_area = self.width * self.height
         occupancy_rate = element_area / page_area
         multiplier = self._calculate_screen_occupancy_multiplier(occupancy_rate)
-    
+
 
         score *= multiplier
 
@@ -427,8 +427,8 @@ class MainContentScorer:
             # ネストが深いほどスコアを高く設定する
             depth_weight = calculate_depth_weight(7, node["depth"] - self.parent_depth_diff)  # 深さに基づく重みを計算
             score *= depth_weight  # スコアを計算
-            # print("★  code passed to depth weight calculation " + str(depth_weight ) ) 
-        
+            # print("★  code passed to depth weight calculation " + str(depth_weight ) )
+
         node["score"] = score * link_score  # * text_score  # 総合スコアを計算
 
 
@@ -458,17 +458,17 @@ class MainContentScorer:
             if is_valid_element(node):
                 candidates.append(node)
 
-            self._score_node(node, pre_mode=True, depth_flag=False, maintag_addscore=True) 
+            self._score_node(node, pre_mode=True, depth_flag=False, maintag_addscore=True)
             # print(f"Scored node: {node['tag']}, Score: {node['score']}, Valid: {is_valid_element(node)}")  # デバッグ用の出力
-            
+
             nodes.extend(node["children"])  # 子ノードを追加
 
         candidates.sort(key=lambda x: x["score"], reverse=True)
-        
+
         return candidates
-    
+
     # scoring for children nodes
-    def score_parent_and_children(self) -> list[Dict]: 
+    def score_parent_and_children(self) -> list[Dict]:
         """
         親ノードとその子ノードのスコアを計算する
 
@@ -487,7 +487,7 @@ class MainContentScorer:
 
         for node in self.tree:
             self._score_node(node)
-            scored_nodes.append(node) 
+            scored_nodes.append(node)
 
         scored_nodes.sort(key=lambda x: x["score"], reverse=True)
 
@@ -539,17 +539,17 @@ async def is_visible_element(element, page: Page) -> bool:
 def highlight_main_content(driver, main_content, filename):
     # 全画面スクリーンショット
     driver.save_screenshot(filename)
-    
+
     # スクリーンショットに色味をつける
     img = Image.open(filename)
     draw = ImageDraw.Draw(img)
     rect = main_content["rect"]
-    
+
     # メインコンテンツの位置を調整
     x, y = driver.execute_script("return [window.scrollX, window.scrollY];")
     rect["x"] -= x
     rect["y"] -= y
-    
+
     draw.rectangle(((rect["x"], rect["y"]), (rect["x"] + rect["width"], rect["y"] + rect["height"])), outline=(126, 185, 255), width=5)
     img.save(filename)
 
@@ -582,7 +582,7 @@ def remove_duplicate_ports(port_list):
     """
     # セットを使って重複を削除
     unique_ports = set(port_list)
-    
+
     # セットをリストに変換して返す
     return list(unique_ports)
 
@@ -619,7 +619,7 @@ def rescore_main_content(main_content : dict, driver= None):
 
     # 子ノードの情報を取得し、新しい辞書のリストを作成
     child_node_dicts = create_child_node_dicts(child_nodes)
-    
+
     # 子ノードに対してスコアリングを行う
     scorer = MainContentScorer(child_node_dicts, main_width, main_height)
     # scorer = MainContentScorer({"children": child_node_dicts, "rect": {"width": main_width, "height": main_height}}, main_width, main_height)
@@ -648,12 +648,12 @@ def create_child_node_dicts(child_nodes) -> list[Dict]:
     for child in child_nodes:
         # 子ノードの矩形情報を取得または初期化
         rect = child.get("rect", {"x": 0, "y": 0, "width": 0, "height": 0})
-        
+
         # 子ノードの属性情報を取得または初期化
         attributes = {}
         if "attributes" in child:
             attributes = child["attributes"]
-        
+
         # 新しい辞書を作成し、子ノードの情報を設定
         child_node_dict = {
             "tag": child["tag"],
@@ -666,10 +666,10 @@ def create_child_node_dicts(child_nodes) -> list[Dict]:
             "text" : child.get("text", []),  # テキスト情報を設定
             "links" : child.get("links", []),  # リンク情報を設定
         }
-        
+
         # 新しい辞書をリストに追加
         child_node_dicts.append(child_node_dict)
-    
+
     return child_node_dicts
 
 
@@ -693,12 +693,12 @@ def get_subtree(node : Dict) -> list[Dict]:
 
         # Add the current node to the subtree list
         subtree.append(current_node)
-        
+
         # Check if the node has children
         if 'children' in n:
             for child in n['children']:
                 recurse(child)
-    
+
     recurse(node)
     return subtree
 
@@ -719,11 +719,11 @@ def get_all_children(node: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     children = node.get('children', [])
     all_children = []
-    
+
     for child in children:
         all_children.append(child)
         all_children.extend(get_all_children(child))
-    
+
     return all_children
 
 def update_nodes_with_children(data: Union[Dict[str, Any], List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
@@ -755,14 +755,14 @@ def update_nodes_with_children(data: Union[Dict[str, Any], List[Dict[str, Any]]]
 async def detect_main_content(url: str, page: Page) -> List[Dict]:
     try:
         await page.goto(url, wait_until='domcontentloaded', timeout=30000)
-        
+
         await page.wait_for_selector('body', state='attached', timeout=30000)
-        
+
         try:
             await page.wait_for_load_state('networkidle', timeout=30000)
         except PlaywrightTimeoutError:
             print("Network did not become idle within 30 seconds, continuing anyway.")
-        
+
         await page.set_viewport_size({"width": 1920, "height": 1080})
 
         dimensions = await page.evaluate('''() => {
@@ -778,7 +778,7 @@ async def detect_main_content(url: str, page: Page) -> List[Dict]:
         await page.wait_for_timeout(2000)
 
         tree = await get_tree(page)
-        
+
         if not tree:
             print("Error: Empty tree structure returned")
             return []
@@ -830,7 +830,7 @@ def rescore_main_content_with_children(main_content : Dict, driver=None) -> list
 
     return scored_nodes
 
-# error chackintg 
+# error chackintg
 def print_error_details(e):
     print(f"Error type: {type(e).__name__}")
     print(f"Error message: {str(e)}")
@@ -842,7 +842,7 @@ async def fetch_robots_txt(url):
     """Fetch robots.txt content from the target website"""
     parsed_url = urlparse(url)
     robots_url = urljoin(f"{parsed_url.scheme}://{parsed_url.netloc}", '/robots.txt')
-    
+
     async with aiohttp.ClientSession() as session:
         async with session.get(robots_url) as response:
             if response.status == 200:
@@ -856,21 +856,21 @@ def is_scraping_allowed(robots_txt, target_path):
 
     robot_parser = RobotFileParser()
     robot_parser.parse(StringIO(robots_txt).readlines())
-    
+
     # Check if we are allowed to scrape the target path
     return robot_parser.can_fetch("*", target_path)
 
 
-async def test_main(url):            
+async def test_main(url):
     async with async_playwright() as p:
         # Fetch robots.txt
         robots_txt = await fetch_robots_txt(url)
-        
+
         if robots_txt:
             # Check if scraping is allowed
             parsed_url = urlparse(url)
             target_path = parsed_url.path or "/"
-            
+
             if not is_scraping_allowed(robots_txt, target_path):
                 print(f"Scraping is not allowed on this URL: {url}")
                 return
@@ -956,14 +956,14 @@ async def choice_content(url: str, **kwargs):
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
         page = await context.new_page()
-        
+
         try:
             # Navigate to the page with longer timeout
             await page.goto(url, wait_until='domcontentloaded', timeout=30000)
-            
+
             # Wait for initial page load
             await page.wait_for_selector('body', state='attached', timeout=30000)
-            
+
             try:
                 await page.wait_for_load_state('networkidle', timeout=30000)
             except PlaywrightTimeoutError:
@@ -1018,7 +1018,7 @@ async def choice_content(url: str, **kwargs):
             if attributes:
                 for key, value in attributes.items():
                     selectors.append(f"[{key}='{value}']")
-            
+
             selector = "".join(selectors) if selectors else "body"
 
             # Wait for element with longer timeout
@@ -1030,7 +1030,7 @@ async def choice_content(url: str, **kwargs):
 
             # Get tree structure
             tree = await get_tree(page, tag=tag, element_id=element_id, attributes=attributes)
-            
+
             if not tree:
                 print(f"No matching elements found for selector: {selector}")
                 # Fall back to JavaScript evaluation for debugging
@@ -1041,7 +1041,7 @@ async def choice_content(url: str, **kwargs):
                     }}
                 ''')
                 print(f"Element exists according to JavaScript: {element_exists}")
-            
+
             return tree
 
         except Exception as e:

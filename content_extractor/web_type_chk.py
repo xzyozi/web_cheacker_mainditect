@@ -23,11 +23,11 @@ class WebType(Enum):
 
     def __init__(self, value: str, priority: int):
         self._value_ = value
-        self._priority = priority 
+        self._priority = priority
 
     @property
     def priority(self) -> int:
-        return self._priority  
+        return self._priority
 
     def __lt__(self, other: "WebType") -> bool:
         return self.priority < other.priority
@@ -38,16 +38,16 @@ class WebType(Enum):
             return enum_str
         if not isinstance(enum_str, str):
             return cls.plane
-        
+
         member_name = enum_str.split(".")[-1].strip()
-        
+
         # getattrを使って安全にアクセスする
         return getattr(cls, member_name, cls.plane)
-    
+
 
 class PageMonitor:
-    def __init__(self, 
-                 base_url : str, 
+    def __init__(self,
+                 base_url : str,
                  node : 'DOMTreeSt'
                  ):
         self.base_url = base_url  # 監視対象のURL（既存の探索URL）
@@ -85,7 +85,7 @@ class PageMonitor:
                 if page_num > latest_page_num:
                     latest_page_num = page_num
                     latest_link = link
-        
+
         # ページネーションリンクが見つからなければ何もしない
         if latest_link is None:
             return None
@@ -93,13 +93,13 @@ class PageMonitor:
         # ベースURLから現在のページ番号を取得
         base_match = PAGE_NUMBER_CAPTURE_REGEX.search(self.base_url)
         current_page_num = int(base_match.group(2)) if base_match else -1
-        
+
         # 最新ページ番号が現在のページ番号より大きい場合のみURLを更新
         if latest_page_num > current_page_num:
             # `urljoin` を使って相対リンクを絶対URLに正しく解決する
             new_url = urljoin(self.base_url, latest_link)
             return new_url
-        
+
         return None
 
     def typechk(self):
@@ -113,15 +113,15 @@ class PageMonitor:
 
 
 class WebTypeCHK() :
-    def __init__(self, 
-                 base_url : str, 
+    def __init__(self,
+                 base_url : str,
                  node : 'DOMTreeSt'
                  ):
         self.pagemon = PageMonitor(base_url,node)
         self.node = node
         self.next_url = None
 
-        
+
 
     def webtype_chk(self) -> str:
         """
@@ -129,7 +129,7 @@ class WebTypeCHK() :
         """
         # ページャー形式のリンクから新しいURLを決定しようと試みる
         new_watch_url = self.pagemon.determine_watch_page()
-        
+
         # 新しいページが見つかり、それが現在のURLと異なる場合
         if new_watch_url and new_watch_url != self.pagemon.base_url:
             self.next_url = new_watch_url
@@ -138,7 +138,7 @@ class WebTypeCHK() :
         # 新しいページが見つからなくても、現在のURL自体がページャー形式の場合
         if PAGINATED_URL_REGEX.search(self.pagemon.base_url):
             return WebType.page_changer.name
-            
+
         return WebType.plane.name
 
 

@@ -22,7 +22,7 @@ class TestRunnerApp:
         self.target_script_path = os.path.join(self.project_root, "content_extractor", "core.py")
         # 読み込むテストケースファイルへの絶対パス
         self.test_cases_path = os.path.join(self.script_dir, "test_cases..json")
-        
+
 
         # これにより、playwright_mainditect_v3が依存する他のモジュールを正しく見つけられるようになります。
         if self.project_root not in sys.path:

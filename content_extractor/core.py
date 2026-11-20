@@ -24,7 +24,7 @@ def _escape_css_selector_colons(selector: str) -> str:
     escaped_selector = re.sub(r'(?<!\\)([.][a-zA-Z0-9_-]+):([a-zA-Z0-9_-]+)', r'\1\\:\2', selector)
     return escaped_selector
 
-# my module 
+# my module
 from setup_logger import setup_logger
 from utils.file_handler import save_json
 
@@ -39,7 +39,7 @@ from .web_type_chk import WebType, WebTypeCHK
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-# logger setting 
+# logger setting
 LOGGER_DATEFORMAT = "%Y%m%d_%H%M%S"
 nowtime = datetime.now()
 formatted_now = nowtime.strftime(LOGGER_DATEFORMAT)
@@ -47,9 +47,9 @@ logger = setup_logger("web-cheacker",log_file=f"./log/web-chk_{formatted_now}.lo
 
 
 # ----------------------------------------------------------------
-# debugger 
+# debugger
 # ----------------------------------------------------------------
-# error chackintg 
+# error chackintg
 def print_error_details(e : Exception) -> None :
     """例外オブジェクトから詳細なエラー情報をログに出力します。"""
     logger.error(f"Error type: {type(e).__name__}")
@@ -62,7 +62,7 @@ async def extract_main_content(url: str,
                     browser: Browser,
                     count : int = 0,
                     arg_webtype : Any = None
-                    ) -> DOMTreeSt | None:       
+                    ) -> DOMTreeSt | None:
     """
     URLからメインコンテンツを抽出し、DOMTreeStオブジェクトとして返します。(Fullスキャン)
     robots.txtの確認、ページ遷移の検知、コンテンツのスコアリングと再評価を行います。
@@ -80,13 +80,13 @@ async def extract_main_content(url: str,
     try:
         # robots.txtを取得
         robots_txt = await fetch_robots_txt(url)
-        
+
         if robots_txt:
             # スクレイピングが許可されているか確認
             from urllib.parse import urlparse
             parsed_url = urlparse(url)
             target_path = parsed_url.path or "/"
-            
+
             if not is_scraping_allowed(robots_txt, target_path):
                 logger.info(f"robots.txtにより、このURLのスクレイピングは許可されていません: {url}")
                 return None
@@ -146,7 +146,7 @@ async def extract_main_content(url: str,
             while loop_count < max_loop_count:
                 # 現在の最有力候補を一時保存 (次のイテレーションでprev_bestとなる)
                 prev_best = current_best
-                
+
                 # 最有力候補の子要素を再スコアリングし、新たな候補リストとする
                 rescored_children_of_prev_best = rescore_main_content_with_children(prev_best)
 
@@ -159,12 +159,12 @@ async def extract_main_content(url: str,
                 if not rescored_children_of_prev_best or prev_best.score >= rescored_children_of_prev_best[0].score:
                     current_best_children = rescored_children_of_prev_best # Keep these for selector generation
                     break
-                
+
                 # もしより良い子要素が見つかったら、それを新たなcurrent_bestとし、その子リストを保持する
                 current_best = rescored_children_of_prev_best[0]
                 current_best_children = rescored_children_of_prev_best # Update children for the new current_best
                 loop_count += 1
-            
+
             if loop_count == max_loop_count:
                 logger.warning("再評価ループが上限に達しました。")
 
@@ -182,7 +182,7 @@ async def extract_main_content(url: str,
             # 堅牢なセレクタ候補を上位3つまで取得（空のセレクタは除外）
             # `current_best_children`は`final_content`の子要素のリストになっている
             selector_candidates = [node.css_selector for node in current_best_children[1:4] if node.css_selector]
-            
+
             # 自身のセレクタも候補の先頭に追加しておく
             if final_content.css_selector and final_content.css_selector not in selector_candidates:
                 selector_candidates.insert(0, final_content.css_selector)
@@ -325,7 +325,7 @@ async def quick_extract_content(url: str,
     Returns:
         DOMTreeSt | None: 抽出されたメインコンテンツのDOMTreeStオブジェクト。失敗した場合はNone。
     """
-    
+
     webtype = WebType.from_string(webtype_str)
     # logger.info(f"chk webtype : {webtype}({type(webtype)}) -- {WebType.page_changer} ({type(WebType.page_changer)})")
     if webtype == WebType.page_changer or webtype == WebType.not_quickscan :
@@ -343,7 +343,7 @@ async def quick_extract_content(url: str,
 
     context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
     page = await context.new_page()
-    
+
     try:
         found_tree = None
         # ページ移動と初期待機を簡略化
@@ -369,7 +369,7 @@ async def quick_extract_content(url: str,
                 # 無効なセレクタは TimeoutError ではなく Error になるため、同様に次のセレクタへ進む
                 logger.debug(f"Selector failed, trying next: {escaped_selector}")
                 continue # 次のセレクタへ
-        
+
         if not found_tree:
             logger.warning(f"All selectors failed for URL: {url}. Quick scan failed.")
             return None # 全て失敗したらNoneを返す
@@ -477,7 +477,7 @@ if __name__ == "__main__":
         if not args.selectors:
             logger.error("エラー: 'quick'モードには --selectors が必要です。")
             sys.exit(1)
-        
+
         logger.info(f"Quickスキャンを実行します (セレクタ: {args.selectors})")
         result_obj = asyncio.run(run_quick_scan_standalone(url=args.url, css_selector_list=args.selectors, webtype_str="plane"))
 

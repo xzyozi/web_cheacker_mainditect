@@ -66,11 +66,11 @@ def generate_html(url_list, image_list):
     # 画像をBase64エンコード
     # images_base64 = []
     # for image_path in image_list:
-        
+
     #     with open(image_path, "rb") as img_file:
     #         # ファイル拡張子を判定し、適切なMIMEタイプを設定
     #         file_ext = os.path.splitext(image_path)[1].lower()
-            
+
     #         mime_type = "image/png" if file_ext == ".png" else "image/jpeg"
     #         encoded_image = str(base64.b64encode(img_file.read()))
     #         images_base64.append(f"data:{mime_type};base64,{encoded_image}")
@@ -99,11 +99,11 @@ def generate_html(url_list, image_list):
     """)
 
     html_content = template.render(items=items)
-    
+
     # URLとBase64画像のペアをテンプレートに渡す
     #html_content = template.render(items=zip(url_list, images_base64))
     # html_content = template.render(items=zip(url_list, [f"image_{i}" for i in range(len(image_list))]))
-    
+
     return html_content
 
 

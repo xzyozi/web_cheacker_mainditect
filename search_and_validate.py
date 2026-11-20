@@ -19,14 +19,14 @@ async def search_on_google(browser: Browser, keyword: str) -> List[str]:
         # "q"というname属性を持つテキストエリアを探して入力
         await page.locator('textarea[name="q"]').fill(keyword)
         await page.locator('textarea[name="q"]').press("Enter")
-        
+
         logger.info("Waiting for search results to load...")
         await page.wait_for_load_state("domcontentloaded")
-        
+
         # 検索結果のリンクを取得 (セレクタはGoogleの仕様変更で変わりうる点に注意)
         # 'div.g' は各検索結果のコンテナを指すことが多い
         link_locators = page.locator('div.g a[href^="http"]')
-        
+
         urls = []
         for i in range(await link_locators.count()):
             href = await link_locators.nth(i).get_attribute("href")
@@ -71,12 +71,12 @@ async def main(search_keyword: str):
             elif content_node and content_node.text:
                 # 4. 妥当性チェック (品質カテゴリとキーワードで判断)
                 logger.info(f"  -> Quality: {content_node.quality_category} (SQS: {content_node.sqs_score:.2f})")
-                
+
                 if content_node.quality_category == "Valid" and search_keyword.lower() in content_node.text.lower():
                     logger.info("  -> VALID: High quality and keyword found.")
                     valid_pages.append({
-                        "url": url, 
-                        "title": content_node.tag, 
+                        "url": url,
+                        "title": content_node.tag,
                         "text_snippet": content_node.text[:100],
                         "sqs": content_node.sqs_score
                     })
@@ -102,5 +102,5 @@ async def main(search_keyword: str):
 
 if __name__ == "__main__":
     # ここに検索したい一意性の高い文字列（ユーザー名など）を指定します
-    KEYWORD_TO_SEARCH = "playwright" 
+    KEYWORD_TO_SEARCH = "playwright"
     asyncio.run(main(KEYWORD_TO_SEARCH))

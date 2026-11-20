@@ -78,7 +78,7 @@ class DOMTreeSt:
             "quality_category": self.quality_category,
             "is_empty_result": self.is_empty_result,
         }
-    
+
     def format_children(self) -> str:
         """子要素の出力"""
         infos = []
@@ -92,7 +92,7 @@ class DOMTreeSt:
                 f"    CSS Selector List: {child.css_selector_list}",
             ]
             infos.append("\n".join(info) + "\n" + "-" * 60)
-        
+
         return "\n".join(infos)
 
     def __repr__(self) -> str:

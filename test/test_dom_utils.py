@@ -100,7 +100,7 @@ def test_rescore_main_content_with_children_basic_rescoring(mocker):
     child1 = DOMTreeSt(tag='div', score=10, rect=BoundingBox(0,0,10,10))
     child2 = DOMTreeSt(tag='p', score=20, rect=BoundingBox(0,0,10,10))
     main_content = DOMTreeSt(tag='article', children=[child1, child2], rect=BoundingBox(0,0,100,100))
-    
+
     # Mock MainContentScorer.score_parent_and_children to return predefined scores
     mock_scorer_instance = MagicMock()
     # The list returned by score_parent_and_children should include main_content itself and its children,
@@ -131,7 +131,7 @@ def test_rescore_main_content_with_children_basic_rescoring(mocker):
     assert result[0].tag == 'p'
     assert result[1].tag == 'article'
     assert result[2].tag == 'div'
-    
+
     mock_scorer_instance.score_parent_and_children.assert_called_once()
     # Assert on the mock class itself to check how it was instantiated
     mock_main_content_scorer_class.assert_called_once()
@@ -145,15 +145,15 @@ def test_rescore_main_content_with_children_no_children(mocker):
     mock_scorer_instance = MagicMock()
     # If no children, score_parent_and_children might just return the main_content node itself, possibly with an updated score
     mock_scorer_instance.score_parent_and_children.return_value = [DOMTreeSt(tag=main_content.tag, score=12, rect=main_content.rect)]
-    
+
     mock_main_content_scorer_class = mocker.patch('content_extractor.dom_utils.MainContentScorer', return_value=mock_scorer_instance)
 
     result = rescore_main_content_with_children(main_content)
-    
+
     assert len(result) == 1
     assert result[0].tag == 'article'
     assert result[0].score == 12 # Ensure score is updated if rescoring happened
-    
+
     mock_scorer_instance.score_parent_and_children.assert_called_once()
     # Assert on the mock class itself to check how it was instantiated
     mock_main_content_scorer_class.assert_called_once()
@@ -167,7 +167,7 @@ def test_rescore_main_content_with_children_empty_flattened_list(mocker):
 
     mock_scorer_instance = MagicMock()
     mock_scorer_instance.score_parent_and_children.return_value = [] # Scorer returns empty
-    
+
     mock_main_content_scorer_class = mocker.patch('content_extractor.dom_utils.MainContentScorer', return_value=mock_scorer_instance)
 
     result = rescore_main_content_with_children(main_content)

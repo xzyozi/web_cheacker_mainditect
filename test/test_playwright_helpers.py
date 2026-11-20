@@ -54,9 +54,9 @@ async def test_setup_page_normal_operation(mock_browser, mock_context, mock_page
     url = "http://example.com"
     mock_browser.new_context.return_value = mock_context
     mock_context.new_page.return_value = mock_page
-    
+
     result_page = await setup_page(url, mock_browser)
-    
+
     assert result_page is mock_page
     mock_browser.new_context.assert_called_once()
     mock_context.new_page.assert_called_once()
@@ -71,9 +71,9 @@ async def test_setup_page_goto_timeout(mock_browser, mock_context, mock_page, mo
     mock_browser.new_context.return_value = mock_context
     mock_context.new_page.return_value = mock_page
     mock_page.goto.side_effect = PlaywrightTimeoutError("Navigation timeout")
-    
+
     result_page = await setup_page(url, mock_browser)
-    
+
     assert result_page is None
     mock_page.goto.assert_called_once()
     mock_page.close.assert_awaited_once() # Page should be closed on failure
@@ -86,12 +86,12 @@ async def test_setup_page_wait_for_load_state_timeout_warns_but_returns_page(moc
     mock_browser.new_context.return_value = mock_context
     mock_context.new_page.return_value = mock_page
     mock_page.wait_for_load_state.side_effect = PlaywrightTimeoutError("Load state timeout")
-    
+
     # Mock logger to check for warning
     mock_logger_warning = mocker.patch('content_extractor.playwright_helpers.logger.warning')
 
     result_page = await setup_page(url, mock_browser)
-    
+
     assert result_page is mock_page # Page should still be returned
     mock_page.wait_for_load_state.assert_called_once()
     mock_logger_warning.assert_called_once()
@@ -104,12 +104,12 @@ async def test_setup_page_other_exception(mock_browser, mock_context, mock_page,
     mock_browser.new_context.return_value = mock_context
     mock_context.new_page.return_value = mock_page
     mock_page.goto.side_effect = Exception("Some other error")
-    
+
     # Mock logger to check for error
     mock_logger_error = mocker.patch('content_extractor.playwright_helpers.logger.error')
 
     result_page = await setup_page(url, mock_browser)
-    
+
     assert result_page is None
     mock_page.goto.assert_called_once()
     mock_logger_error.assert_called_once()
@@ -123,15 +123,15 @@ async def test_setup_page_other_exception(mock_browser, mock_context, mock_page,
 async def test_adjust_page_view_correctly_sets_viewport_and_scrolls(mock_page, mocker):
     """Test Case 1: 正しいビューポートサイズ設定とスクロール。"""
     mocker.patch('content_extractor.playwright_helpers.asyncio.sleep', new=AsyncMock()) # Ensure sleep is mocked
-    
+
     # Mock page.evaluate to return document dimensions
     mock_page.evaluate.side_effect = [
         {'width': 1000, 'height': 2000, 'scrollWidth': 1000, 'scrollHeight': 3000}, # First call for dimensions
         None # Second call for scrolling (return value doesn't matter)
     ]
-    
+
     dimensions = await adjust_page_view(mock_page)
-    
+
     assert mock_page.evaluate.call_count == 2
     mock_page.set_viewport_size.assert_called_once_with({'width': 1000, 'height': 2000})
     mock_page.evaluate.assert_has_calls([
@@ -401,7 +401,7 @@ async def test_save_screenshot_max_retries_exceeded(mock_image_open, mock_path_j
                                                       mock_asyncio_sleep):
     """Test Case 4: 最大リトライ回数を超えた失敗"""
     url = "http://example.com/fail"
-    
+
     mock_browser.new_context.return_value = mock_context
     mock_context.new_page.return_value = mock_page
 
