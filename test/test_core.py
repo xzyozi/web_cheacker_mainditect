@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from content_extractor.core import _escape_css_selector_colons, extract_main_content
+from content_extractor.core import _escape_css_selector_colons, extract_main_content, quick_extract_content
 from content_extractor.dom_treeSt import DOMTreeSt
 
 # =================================================================
@@ -130,6 +130,17 @@ async def test_extract_main_content_robots_disallowed(mocker, mock_browser):
     result = await extract_main_content(url="http://mock.url/some/path", browser=mock_browser)
 
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_quick_extract_content_robots_disallowed(mocker, mock_browser):
+    """Quickスキャンでも、robots.txtで許可されていないURLにはブラウザを開かず None を返す。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=False)
+
+    result = await quick_extract_content("http://mock.url/private", mock_browser, ["div.main"], "plane")
+
+    assert result is None
+    mock_browser.new_context.assert_not_called()
 
 
 @pytest.mark.asyncio
