@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 import hashlib
 import html
 import json
@@ -13,6 +14,7 @@ import traceback
 import pandas as pd
 from playwright.async_api import async_playwright
 import requests
+import yaml
 
 # +----------------------------------------------------------------
 # + my module imports
@@ -57,9 +59,6 @@ logger.debug(SCRIPT_PATH)
 # +----------------------------------------------------------------
 # + User class
 # +----------------------------------------------------------------
-import yaml
-
-
 class User:
     def __init__(self, directory):
         util_str.util_handle_path("./users/")
@@ -240,10 +239,6 @@ def safe_parse_datetime(date_str: str) -> datetime:
 # +----------------------------------------------------------------
 #   Last-Modified function
 # +----------------------------------------------------------------
-
-from email.utils import parsedate_to_datetime
-
-
 def get_last_modified(url: str) -> str | None:
     """
     URLのLast-Modifiedヘッダを取得し、単純な文字列として返す。
@@ -272,9 +267,6 @@ def get_last_modified(url: str) -> str | None:
 # + ----------------------------------------------------------------
 #  remove encoded chars
 # + ----------------------------------------------------------------
-import re
-
-
 def remove_encoded_chars(url):
     encoded_pattern = r"%[0-9A-F]{2}"
     cleaned_url = re.sub(encoded_pattern, "", url)

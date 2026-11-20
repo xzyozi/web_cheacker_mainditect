@@ -152,7 +152,8 @@ async def save_screenshot(
             except Exception as e:
                 if isinstance(e, (PlaywrightTimeoutError, IOError)):
                     logger.warning(
-                        f"{url} のスクリーンショット処理で既知のエラー (試行 {attempt + 1}/{MAX_RETRIES}): {type(e).__name__} - {e}"
+                        f"{url} のスクリーンショット処理で既知のエラー "
+                        f"(試行 {attempt + 1}/{MAX_RETRIES}): {type(e).__name__} - {e}"
                     )
                 else:
                     logger.error(

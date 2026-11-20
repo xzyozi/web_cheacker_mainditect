@@ -11,6 +11,18 @@ from playwright.async_api import Browser, async_playwright
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
+# my module
+from setup_logger import setup_logger
+from utils.file_handler import save_json
+
+from .dom_treeSt import DOMTreeSt
+from .dom_utils import rescore_main_content_with_children
+from .make_tree import make_tree
+from .playwright_helpers import adjust_page_view, fetch_robots_txt, is_scraping_allowed, setup_page
+from .quality_evaluator import is_no_results_page, quantify_search_results
+from .scorer import MainContentScorer
+from .web_type_chk import WebType, WebTypeCHK
+
 
 def _escape_css_selector_colons(selector: str) -> str:
     """
@@ -24,18 +36,6 @@ def _escape_css_selector_colons(selector: str) -> str:
     escaped_selector = re.sub(r"(?<!\\)([.][a-zA-Z0-9_-]+):([a-zA-Z0-9_-]+)", r"\1\\:\2", selector)
     return escaped_selector
 
-
-# my module
-from setup_logger import setup_logger
-from utils.file_handler import save_json
-
-from .dom_treeSt import DOMTreeSt
-from .dom_utils import rescore_main_content_with_children
-from .make_tree import make_tree
-from .playwright_helpers import adjust_page_view, fetch_robots_txt, is_scraping_allowed, setup_page
-from .quality_evaluator import is_no_results_page, quantify_search_results
-from .scorer import MainContentScorer
-from .web_type_chk import WebType, WebTypeCHK
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -154,7 +154,8 @@ async def extract_main_content(url: str, browser: Browser, count: int = 0, arg_w
                 logger.debug(f" Parent selector : {prev_best.css_selector} / Score: {prev_best.score}")
                 if rescored_children_of_prev_best:
                     logger.debug(
-                        f" -> Best Child selector: {rescored_children_of_prev_best[0].css_selector} / Score: {rescored_children_of_prev_best[0].score}"
+                        f" -> Best Child selector: {rescored_children_of_prev_best[0].css_selector}"
+                        f" / Score: {rescored_children_of_prev_best[0].score}"
                     )
 
                 # 子要素が見つからない、または子要素のスコアが親を超えなくなったら、
@@ -295,7 +296,8 @@ async def evaluate_search_quality(url: str, browser: Browser, search_query: str)
             content_node.relevance_variance = np.var(scores)
             content_node.max_relevance = np.max(scores)
             logger.info(
-                f"関連性スコアを計算しました: Avg={content_node.avg_relevance:.2f}, Var={content_node.relevance_variance:.2f}, Max={content_node.max_relevance:.2f}"
+                f"関連性スコアを計算しました: Avg={content_node.avg_relevance:.2f}, "
+                f"Var={content_node.relevance_variance:.2f}, Max={content_node.max_relevance:.2f}"
             )
 
             # フェーズ4: SQS計算と最終判定
@@ -504,7 +506,8 @@ if __name__ == "__main__":
             logger.info("品質評価結果: 結果なしページ")
         elif result_obj.result_count > 0:
             logger.info(
-                f"品質評価結果: {result_obj.result_count}件のアイテムを検出 (AvgRelevance: {result_obj.avg_relevance:.2f})"
+                f"品質評価結果: {result_obj.result_count}件のアイテムを検出 "
+                f"(AvgRelevance: {result_obj.avg_relevance:.2f})"
             )
         # print(result_obj) # オブジェクト全体を詳細に見たい場合は、この行のコメントを外してください
     else:

@@ -297,7 +297,8 @@ def test_generate_filename_url_with_special_characters():
     # The actual generated part will have 'file!.html' as last_part, and spaces from the original path
     # will implicitly be handled by the URL parsing and hash generation.
     assert filename.startswith("example_com_file!.html_")  # `last_part` directly includes "file!.html"
-    # Spaces are removed during domain processing, but here we check for the original full URL's path part in the filename before hash.
+    # Spaces are removed during domain processing, but here we check for the original full URL's
+    # path part in the filename before hash.
     # The `path_hash` is based on the full path which would include spaces, but `last_part` itself is just 'file!.html'
     # The `domain` part has `_` for `.`, but the `last_part` does not replace spaces with `_`.
     # Let's adjust this to accurately reflect generated string.
