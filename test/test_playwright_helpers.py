@@ -10,6 +10,7 @@ from content_extractor import playwright_helpers
 from content_extractor.playwright_helpers import (
     adjust_page_view,
     close_page,
+    ensure_unique_selector,
     fetch_robots_txt,
     generate_filename,
     is_scraping_allowed,
@@ -173,6 +174,59 @@ async def test_close_page_does_not_raise_when_close_fails(mock_page, mocker):
     await close_page(mock_page)  # 例外を送出しない
 
     mock_logger_warning.assert_called_once()
+
+
+# --- Tests for ensure_unique_selector ---
+
+RECT = {"x": 0, "y": 0, "width": 10, "height": 10}
+
+
+@pytest.mark.asyncio
+async def test_ensure_unique_selector_keeps_selector_when_unique(mock_page):
+    """ヒットが1件のセレクタは、そのまま使う。"""
+    mock_page.evaluate.return_value = {"count": 1, "path": "html > body > div:nth-of-type(1)"}
+
+    assert await ensure_unique_selector(mock_page, "div.card", RECT) == "div.card"
+
+
+@pytest.mark.asyncio
+async def test_ensure_unique_selector_replaces_with_path_when_duplicated(mock_page):
+    """複数ヒットのときは、位置が一致した要素の nth-of-type パスに置き換える。"""
+    path = "html > body > div:nth-of-type(2)"
+    mock_page.evaluate.return_value = {"count": 3, "path": path}
+
+    assert await ensure_unique_selector(mock_page, "div.card", RECT) == path
+
+
+@pytest.mark.asyncio
+async def test_ensure_unique_selector_keeps_selector_when_position_not_matched(mock_page):
+    """位置が一致する要素が見つからないときは、元のセレクタを返す（挙動を悪化させない）。"""
+    mock_page.evaluate.return_value = {"count": 3, "path": None}
+
+    assert await ensure_unique_selector(mock_page, "div.card", RECT) == "div.card"
+
+
+@pytest.mark.asyncio
+async def test_ensure_unique_selector_keeps_selector_when_evaluate_fails(mock_page):
+    """JavaScript の評価に失敗しても、例外を出さず元のセレクタを返す。"""
+    mock_page.evaluate.side_effect = Exception("boom")
+
+    assert await ensure_unique_selector(mock_page, "div.card", RECT) == "div.card"
+
+
+@pytest.mark.asyncio
+async def test_ensure_unique_selector_ignores_unexpected_result(mock_page):
+    """戻り値が辞書でない（モックなど）場合は、元のセレクタを返す。"""
+    mock_page.evaluate.return_value = "unexpected"
+
+    assert await ensure_unique_selector(mock_page, "div.card", RECT) == "div.card"
+
+
+@pytest.mark.asyncio
+async def test_ensure_unique_selector_empty_selector(mock_page):
+    """空のセレクタは、ページを評価せずそのまま返す。"""
+    assert await ensure_unique_selector(mock_page, "", RECT) == ""
+    mock_page.evaluate.assert_not_called()
 
 
 # --- Tests for adjust_page_view ---
