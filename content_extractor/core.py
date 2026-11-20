@@ -291,9 +291,9 @@ async def evaluate_search_quality(url: str, browser: Browser, search_query: str)
 
         if scored_items:
             scores = [item.relevance_score for item in scored_items]
-            content_node.avg_relevance = np.mean(scores)
-            content_node.relevance_variance = np.var(scores)
-            content_node.max_relevance = np.max(scores)
+            content_node.avg_relevance = float(np.mean(scores))
+            content_node.relevance_variance = float(np.var(scores))
+            content_node.max_relevance = float(np.max(scores))
             logger.info(
                 f"関連性スコアを計算しました: Avg={content_node.avg_relevance:.2f}, "
                 f"Var={content_node.relevance_variance:.2f}, Max={content_node.max_relevance:.2f}"
