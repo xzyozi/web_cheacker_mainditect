@@ -98,12 +98,6 @@ exclude = [
 # E: pycodestyle errors, F: Pyflakes, W: pycodestyle warnings, I: isort
 select = ["E", "F", "W", "I"]
 
-[tool.ruff.lint.per-file-ignores]
-# 長い定数文字列（User-Agent、LLM向けプロンプト）は分割すると意味が変わるため E501 を除外
-"content_processor.py" = ["E501"]
-# 旧版実装。削除予定（Issue #24）のため整理の対象外とする
-"playwright_mainditect_v2.py" = ["E402", "E501", "W291", "W293"]
-
 [tool.ruff.lint.isort]
 force-sort-within-sections = true
 
@@ -121,8 +115,6 @@ exclude = [
     "venv/",
     "\\.venv/",
     "mutants/",
-    # 旧版実装。削除予定（Issue #24）のため型検査の対象外とする
-    "playwright_mainditect_v2\\.py",
 ]
 
 # ==========================================
