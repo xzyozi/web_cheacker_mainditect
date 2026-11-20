@@ -120,6 +120,36 @@ def is_scraping_allowed(
     return robot_parser.can_fetch("*", target_path)
 
 
+# robots.txt の取得結果をオリジン（scheme://host）ごとに保持する。
+# 1回の実行で同じサイトに何度もアクセスしないよう、取得失敗（None）もキャッシュする。
+_ROBOTS_CACHE: dict[str, str | None] = {}
+
+
+async def is_url_allowed(url: str) -> bool:
+    """robots.txt に基づき、URL へのアクセスが許可されているか判定する。
+
+    robots.txt はオリジンごとに1回だけ取得してキャッシュする。
+    robots.txt が無い・取得できない場合と、URL を解析できない場合は許可として扱う
+    （後者の検証は呼び出し側の責務）。
+    """
+    parsed_url = urlparse(url)
+    if not parsed_url.scheme or not parsed_url.netloc:
+        return True
+
+    origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
+    if origin not in _ROBOTS_CACHE:
+        _ROBOTS_CACHE[origin] = await fetch_robots_txt(url)
+
+    robots_txt = _ROBOTS_CACHE[origin]
+    if not robots_txt:
+        return True
+
+    allowed = is_scraping_allowed(robots_txt, parsed_url.path or "/")
+    if not allowed:
+        logger.info(f"robots.txtにより許可されていません: {url}")
+    return allowed
+
+
 async def save_screenshot(
     browser: Browser, url_list: list, save_dir="temp", width=500, height: Optional[int] = None
 ) -> list:
@@ -134,6 +164,11 @@ async def save_screenshot(
         parsed_url = urlparse(url)
         if not parsed_url.scheme or not parsed_url.netloc:
             logger.warning(f"無効なURLのためスキップ: {url}")
+            screenshot_paths.append(None)
+            continue
+
+        if not await is_url_allowed(url):
+            logger.info(f"robots.txtにより許可されていないため、スクリーンショットをスキップ: {url}")
             screenshot_paths.append(None)
             continue
 
