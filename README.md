@@ -21,7 +21,7 @@ main/
 │
 ├─ users/                  # ユーザーごとの設定とデータ
 │   └─ {ユーザー名}/        # ユーザーディレクトリの例 (例: 'jav')
-│       ├─ cheacker_url.jsonl # 監視対象URLとその状態のリスト (JSON Lines形式)
+│       ├─ cheacker_url.json  # 監視対象URLとその状態のリスト (JSON配列)
 │       ├─ config.yaml        # このユーザー用のメインアプリケーション設定
 │       └─ mail.yaml          # メール通知設定
 │
@@ -78,11 +78,13 @@ pip install ".[quality]"
     - `users/`ディレクトリ内に新しいディレクトリを作成します (例: `users/my_profile`)。
     - 新しいユーザーディレクトリ内に、以下の3つのファイルを作成します。
 
-    **a) `cheacker_url.jsonl`**
-    このファイルには、チェックするURLのリストが含まれています。各行はJSONオブジェクトです。新しいURLの場合、`url`のみを提供すれば十分です。
+    **a) `cheacker_url.json`**
+    このファイルには、チェックするURLのリストが含まれています。JSONオブジェクトの配列です。新しいURLの場合、`url`のみを提供すれば十分です。ファイルが無い場合は、空の状態から作成されます。
     ```json
-    {"url": "https://example.com/news", "run_code": "", "result_vl": "", "updated_datetime": "", "full_scan_datetime": "", "css_selector_list": [], "web_page_type": ""}
-    {"url": "https://another-site.org/updates", "run_code": "", "result_vl": "", "updated_datetime": "", "full_scan_datetime": "", "css_selector_list": [], "web_page_type": ""}
+    [
+      {"url": "https://example.com/news", "run_code": "", "result_vl": "", "updated_datetime": "", "full_scan_datetime": "", "css_selector_list": [], "web_page_type": ""},
+      {"url": "https://another-site.org/updates", "run_code": "", "result_vl": "", "updated_datetime": "", "full_scan_datetime": "", "css_selector_list": [], "web_page_type": ""}
+    ]
     ```
 
     **b) `config.yaml`**
@@ -117,15 +119,8 @@ pip install ".[quality]"
 
 ## ▶️ 実行方法
 
-Webチェッカーを実行するには、メインスクリプトを実行します。`web-cheackerV3.py`内の`User()`オブジェクトのインスタンス化を、ご自身のユーザープロファイルディレクトリ名を指すように変更する必要があります。
+Webチェッカーを実行するには、メインスクリプトを実行します。ユーザープロファイル名は、コマンドライン引数で指定します。省略した場合は `jav` が使われます。
 
-`web-cheackerV3.py`内:
-```python
-# "jav" をあなたのプロファイルディレクトリ名に変更してください
-user = User("jav")
-```
-
-その後、`main`ディレクトリからスクリプトを実行します:
 ```bash
-python web-cheackerV3.py
+python web-cheackerV3.py my_profile
 ```
