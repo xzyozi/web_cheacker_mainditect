@@ -42,7 +42,7 @@ main/
 
 ## ⚙️ 要件
 
-このプロジェクトにはPython 3.8以上が必要です。必要なライブラリは`requirements.txt`からインストールできます。
+このプロジェクトにはPython 3.10以上が必要です。必要なライブラリは`requirements.txt`からインストールできます。
 
 **主な依存関係:**
 - `pandas`
@@ -52,7 +52,13 @@ main/
 - `aiohttp`
 - `jinja2`
 
-`high_precision_search_system.py`スクリプトには、`requirements_search.txt`に記載されている別の依存関係があります。
+検索結果ページの品質評価（`content_extractor` の `evaluate_search_quality`、`search_and_validate.py`）を使う場合は、追加の依存関係（`scikit-learn`、`sentence-transformers`）が必要です。これらは容量が大きいため、通常のインストールには含まれません。
+
+```bash
+uv sync --extra quality
+# または
+pip install ".[quality]"
+```
 
 ## 🛠️ インストールとセットアップ
 
