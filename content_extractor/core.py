@@ -21,6 +21,7 @@ from .make_tree import make_tree
 from .playwright_helpers import (
     adjust_page_view,
     close_page,
+    ensure_unique_selector,
     fetch_robots_txt,
     is_scraping_allowed,
     is_url_allowed,
@@ -187,6 +188,12 @@ async def extract_main_content(url: str, browser: Browser, count: int = 0, arg_w
             logger.info("Rescored child nodes of final content:")
             for child in current_best_children[:5]:  # Display up to 5 children
                 logger.debug(child)
+
+            # 保存するプライマリセレクタが、ページ内で複数の要素にヒットすると、次回のQuickスキャンで
+            # 別の要素を拾って誤検知する。複数ヒットのときは、位置から一意なパスに置き換える。
+            final_content.css_selector = await ensure_unique_selector(
+                page, final_content.css_selector, final_content.rect.to_dict()
+            )
 
             # css_selector_list setting
             # 堅牢なセレクタ候補を上位3つまで取得（空のセレクタは除外）
