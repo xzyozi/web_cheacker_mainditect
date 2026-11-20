@@ -113,9 +113,9 @@ def test_is_main_element_with_main_in_class():
     "node_input, expected_result",
     [
         (None, False),  # Noneノード
-        (DOMTreeSt(tag="div", attributes=None), False),  # attributesがNone
-        (DOMTreeSt(tag="div", attributes={"id": None}), False),  # idがNone
-        (DOMTreeSt(tag=None, attributes={"id": "main"}), False),  # tagがNone
+        (DOMTreeSt(tag="div", attributes=None), False),  # type: ignore[arg-type]  # attributesがNone
+        (DOMTreeSt(tag="div", attributes={"id": None}), False),  # type: ignore[dict-item]  # idがNone
+        (DOMTreeSt(tag=None, attributes={"id": "main"}), False),  # type: ignore[arg-type]  # tagがNone
     ],
 )
 def test_is_main_element_edge_cases(node_input, expected_result):
@@ -159,8 +159,12 @@ def test_is_valid_element_with_too_small_area():
     "node_input, expected_exception, expected_result",
     [
         (None, AttributeError, None),  # Noneノード
-        (DOMTreeSt(tag="div", rect=None), None, False),  # rectがNoneの場合はarea=0でFalse
-        (DOMTreeSt(tag=None, rect=BoundingBox(x=0, y=0, width=100, height=100)), None, False),  # tagがNoneの場合は無効
+        (DOMTreeSt(tag="div", rect=None), None, False),  # type: ignore[arg-type]  # rectがNone: area=0でFalse
+        (
+            DOMTreeSt(tag=None, rect=BoundingBox(x=0, y=0, width=100, height=100)),  # type: ignore[arg-type]
+            None,
+            False,
+        ),  # tagがNoneの場合は無効
     ],
 )
 def test_is_valid_element_edge_cases(node_input, expected_exception, expected_result):
