@@ -69,3 +69,35 @@ test = "pytest"
 
 # Create the .bat shortcut for running the application
 create-shortcut = "python create_shortcut.py"
+
+# ==========================================
+# Linter & Formatter (Ruff)
+# ==========================================
+[tool.ruff]
+line-length = 120
+exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    "venv",
+    ".venv",
+    "mutants",
+    "review",
+]
+
+[tool.ruff.lint]
+# E: pycodestyle errors, F: Pyflakes, W: pycodestyle warnings, I: isort
+select = ["E", "F", "W", "I"]
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+
+# ==========================================
+# Testing (Pytest)
+# ==========================================
+[tool.pytest.ini_options]
+testpaths = ["test"]
+python_files = ["test_*.py"]
+# CI では PYTHONPATH を設定しないため、プロジェクトルートを import パスに加える
+pythonpath = ["."]
