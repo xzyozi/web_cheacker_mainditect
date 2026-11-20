@@ -1,0 +1,107 @@
+name: Mutation Test (Nightly)
+
+on:
+  schedule:
+    - cron: '0 18 * * *' # JST 03:00
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mutmut-full:
+    runs-on: ubuntu-latest # mutmut v3 は os.fork 依存のため Linux 必須
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # テンプレート初期状態や非対象プロジェクトで失敗しないための opt-in ガード
+      - name: Detect mutation testing opt-in
+        id: optin
+        shell: bash
+        run: |
+          if [ -f "pyproject.toml" ] && [ -f "uv.lock" ] && grep -Eq '^[[:space:]]*\[tool\.mutmut\][[:space:]]*$' pyproject.toml; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up uv
+        if: steps.optin.outputs.enabled == 'true'
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync dependencies
+        if: steps.optin.outputs.enabled == 'true'
+        shell: bash
+        run: uv sync --frozen --extra dev --extra mutation
+
+      - name: Restore and save mutmut cache
+        if: steps.optin.outputs.enabled == 'true'
+        uses: actions/cache@v4
+        with:
+          path: mutants/
+          key: mutmut-main-${{ hashFiles('uv.lock') }}-${{ github.run_id }}
+          restore-keys: |
+            mutmut-main-${{ hashFiles('uv.lock') }}-
+            mutmut-main-
+
+      - name: Run full mutation test
+        if: steps.optin.outputs.enabled == 'true'
+        continue-on-error: true # Survived が残っていても統計出力とキャッシュ保存を完了させる
+        shell: bash
+        run: uv run mutmut run
+
+      - name: Export stats, badge, summary, and survived diffs
+        if: steps.optin.outputs.enabled == 'true' && !cancelled()
+        shell: bash
+        run: |
+          set +e
+          uv run mutmut export-cicd-stats || true
+          uv run mutmut badge --output mutation-score.json || true
+          uv run mutmut results > mutation-results.txt 2>&1
+
+          {
+            echo "## Mutation Test Summary (Nightly Full)"
+            echo ""
+            echo '```text'
+            cat mutation-results.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # AI エージェント連携・振り返り用に Survived 差分を最大 50 件出力
+          SURVIVED=$(awk -F':' '/:[[:space:]]*survived[[:space:]]*$/ {print $1}' mutation-results.txt | head -n 50)
+          if [ -n "$SURVIVED" ]; then
+            : > mutation-survived-diffs.txt
+            while IFS= read -r mutant; do
+              [ -z "$mutant" ] && continue
+              {
+                echo "=== ${mutant} ==="
+                uv run mutmut show "$mutant"
+                echo ""
+              } >> mutation-survived-diffs.txt 2>&1
+            done <<< "$SURVIVED"
+          fi
+
+      - name: Upload mutation stats and reports
+        if: steps.optin.outputs.enabled == 'true' && !cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-nightly-stats
+          path: |
+            mutation-score.json
+            mutmut-cicd-stats.json
+            mutation-results.txt
+            mutation-survived-diffs.txt
+          if-no-files-found: ignore
+
+      - name: Skip mutation testing
+        if: steps.optin.outputs.enabled != 'true'
+        shell: bash
+        run: |
+          echo "Mutation testing is not enabled (requires active [tool.mutmut] in pyproject.toml and uv.lock)."
+          echo "See docs/setup/mutation_testing_setup.md to opt in."
