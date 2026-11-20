@@ -50,7 +50,8 @@ def rescore_main_content_with_children(main_content: DOMTreeSt) -> List[DOMTreeS
     # ツリーをフラットなリストに変換
     scorer_list = flatten_dom_tree(main_content)
 
-    scorer = MainContentScorer(scorer_list, main_width, main_height)
+    scorer = MainContentScorer(scorer_list, main_width, main_height,
+                               origin_x=main_rect.x, origin_y=main_rect.y)
 
     scored_nodes = scorer.score_parent_and_children()
 
