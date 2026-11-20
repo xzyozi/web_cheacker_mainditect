@@ -6,7 +6,7 @@ from content_extractor.scorer import MainContentScorer, calculate_depth_weight, 
 # =================================================================
 # scorer.py のテスト
 #
-# 参照: doc/test/test_design_content_extractor.md
+# 参照: docs/test/test_design_content_extractor.md
 # =================================================================
 
 
