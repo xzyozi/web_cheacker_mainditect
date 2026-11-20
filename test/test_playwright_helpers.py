@@ -460,7 +460,6 @@ async def test_save_screenshot_aspect_ratio(
 ):
     """Test Case 5: 画像リサイズ時のアスペクト比保持"""
     url = "http://example.com/aspect"
-    test_filepath = os.path.join("temp", generate_filename(url))
 
     mock_browser.new_context.return_value = mock_context
     mock_context.new_page.return_value = mock_page
@@ -493,7 +492,6 @@ async def test_save_screenshot_makedirs_called(
 ):
     """Test Case 6: ディレクトリの作成"""
     url = "http://example.com/makedirs"
-    test_filepath = os.path.join("new_temp_dir", generate_filename(url))
 
     mock_browser.new_context.return_value = mock_context
     mock_context.new_page.return_value = mock_page
