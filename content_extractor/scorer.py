@@ -4,6 +4,10 @@ from scipy import stats
 
 from .dom_treeSt import DOMTreeSt, BoundingBox
 
+# 候補とみなす最小面積（px²）。bounding_box はピクセル単位のため、1x1px の要素などを除外する
+MIN_ELEMENT_AREA_PX = 100
+
+
 class MainContentScorer:
     """
     DOMツリーを受け取り、各ノードがメインコンテンツである可能性をスコアリングします。
@@ -47,8 +51,13 @@ class MainContentScorer:
     def __init__(self,
                  tree: list[DOMTreeSt],
                  width: int,
-                 height: int
+                 height: int,
+                 origin_x: float = 0.0,
+                 origin_y: float = 0.0
                  ):
+        # origin: 評価領域の左上のページ座標。再スコアリング時は親要素の位置を渡し、相対座標で評価する
+        self.origin_x = origin_x
+        self.origin_y = origin_y
         if isinstance(tree, list):
             self.tree = tree
         else:
@@ -129,8 +138,8 @@ class MainContentScorer:
 
         # 2. 位置とサイズ: 画面中央・上部にある、幅広・高身長の要素を高スコア
         if node.rect: # rectがNoneの場合を考慮
-            x = (node.rect.x + node.rect.width / 2) / self.width if self.width > 0 else 0
-            y = node.rect.y / self.height if self.height > 0 else 0
+            x = (node.rect.x - self.origin_x + node.rect.width / 2) / self.width if self.width > 0 else 0
+            y = (node.rect.y - self.origin_y) / self.height if self.height > 0 else 0
             w = node.rect.width / self.width if self.width > 0 else 0
             h = node.rect.height / self.height if self.height > 0 else 0
         else: # rectがNoneの場合は全て0とする
@@ -214,9 +223,14 @@ class MainContentScorer:
 
         scored_nodes: List[DOMTreeSt] = []
         nodes_to_score = list(self.tree)  # Make a copy to iterate over
+        # 平坦化済みリストの子を extend すると同じノードを二重に評価するため、評価済みは飛ばす
+        seen: set[int] = set()
 
         while nodes_to_score:
-            node = nodes_to_score.pop(0) # Corrected line
+            node = nodes_to_score.pop(0)
+            if id(node) in seen:
+                continue
+            seen.add(id(node))
             self._score_for_refinement(node, depth_diff=depth_diff)
             scored_nodes.append(node)
             nodes_to_score.extend(node.children)
@@ -307,6 +321,6 @@ def is_valid_element(node: DOMTreeSt) -> bool:
     # 画面に対して極端に小さい要素は除外
     # node.rectがNoneの場合を考慮
     area = node.rect.width * node.rect.height if node.rect else 0
-    if area < 0.05:
+    if area < MIN_ELEMENT_AREA_PX:
         return False
     return True
