@@ -1,6 +1,7 @@
 from PIL import Image, ImageDraw
 
 from setup_logger import setup_logger
+
 logger = setup_logger(__name__)
 
 # スクリーンショットを撮り、対象要素に色味をつける

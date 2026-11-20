@@ -1,6 +1,6 @@
-import re
-from urllib.parse import urlparse, urljoin
 from enum import Enum
+import re
+from urllib.parse import urljoin, urlparse
 
 # --- Regex Constants ---
 # Matches 'page' followed by an optional separator (-, =, /) and digits.

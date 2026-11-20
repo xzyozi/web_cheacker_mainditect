@@ -1,5 +1,6 @@
-import os
 import json
+import os
+
 from setup_logger import setup_logger
 
 logger = setup_logger("content_extractor_config")

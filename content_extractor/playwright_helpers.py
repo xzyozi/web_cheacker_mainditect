@@ -1,14 +1,17 @@
-import os
+import asyncio  # Import asyncio for sleep
 import hashlib
-from urllib.parse import urlparse, urljoin
-from typing import Optional
-import aiohttp
-from playwright.async_api import Page, Browser, TimeoutError as PlaywrightTimeoutError
-from PIL import Image
+import os
 import traceback
-import asyncio # Import asyncio for sleep
+from typing import Optional
+from urllib.parse import urljoin, urlparse
+
+import aiohttp
+from PIL import Image
+from playwright.async_api import Browser, Page
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from setup_logger import setup_logger
+
 logger = setup_logger("playwright_helpers")
 
 # Retry settings
@@ -92,8 +95,8 @@ def is_scraping_allowed(robots_txt : str,
                         target_path : str,
                         ) -> bool:
     """robots.txtの内容に基づき、指定されたパスのスクレイピングが許可されているか確認します。"""
-    from urllib.robotparser import RobotFileParser
     from io import StringIO
+    from urllib.robotparser import RobotFileParser
 
     robot_parser = RobotFileParser()
     robot_parser.parse(StringIO(robots_txt).readlines())

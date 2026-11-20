@@ -1,16 +1,18 @@
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
-from playwright.async_api import TimeoutError as PlaywrightTimeoutError, Page, Browser, BrowserContext
-import aiohttp
 import os
+from unittest.mock import AsyncMock, MagicMock, call, patch
+
+import aiohttp
+from playwright.async_api import Browser, BrowserContext, Page
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+import pytest
 
 from content_extractor.playwright_helpers import (
-    setup_page,
     adjust_page_view,
     fetch_robots_txt,
+    generate_filename,
     is_scraping_allowed,
     save_screenshot,
-    generate_filename
+    setup_page,
 )
 
 # --- Fixtures for Playwright and Aiohttp Mocks ---

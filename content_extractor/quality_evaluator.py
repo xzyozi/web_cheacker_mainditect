@@ -1,11 +1,13 @@
-from typing import Optional
 from collections import Counter
+from typing import Optional
+
 from playwright.async_api import Page
 
-from .dom_treeSt import DOMTreeSt
-from .config import NO_RESULTS_CONFIG
-from .dom_utils import flatten_dom_tree
 from setup_logger import setup_logger
+
+from .config import NO_RESULTS_CONFIG
+from .dom_treeSt import DOMTreeSt
+from .dom_utils import flatten_dom_tree
 
 logger = setup_logger("quality_evaluator")
 

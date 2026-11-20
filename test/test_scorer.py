@@ -1,11 +1,7 @@
 import pytest
-from content_extractor.scorer import (
-    calculate_depth_weight,
-    is_main_element,
-    is_valid_element,
-    MainContentScorer
-)
-from content_extractor.dom_treeSt import DOMTreeSt, BoundingBox
+
+from content_extractor.dom_treeSt import BoundingBox, DOMTreeSt
+from content_extractor.scorer import MainContentScorer, calculate_depth_weight, is_main_element, is_valid_element
 
 # =================================================================
 # scorer.py のテスト

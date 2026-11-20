@@ -1,6 +1,8 @@
 import asyncio
-from playwright.async_api import async_playwright, Browser
 from typing import List
+
+from playwright.async_api import Browser, async_playwright
+
 from content_extractor import run_search_quality_evaluation_standalone
 from setup_logger import setup_logger
 

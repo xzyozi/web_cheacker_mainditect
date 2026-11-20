@@ -1,10 +1,11 @@
-import logging
 import asyncio
+import logging
 import sys
-from typing import Optional, Dict
-from playwright.async_api import Page, ElementHandle, async_playwright
+from typing import Dict, Optional
 
-from .dom_treeSt import DOMTreeSt, BoundingBox
+from playwright.async_api import ElementHandle, Page, async_playwright
+
+from .dom_treeSt import BoundingBox, DOMTreeSt
 
 # Use standard logging practice; configuration should be at the application entry point.
 logger = logging.getLogger(__name__)

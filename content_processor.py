@@ -2,9 +2,9 @@ import json
 import logging
 from urllib.parse import urlparse
 
+from bs4 import BeautifulSoup
 import requests
 import trafilatura
-from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 

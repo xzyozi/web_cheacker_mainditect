@@ -1,11 +1,11 @@
-from typing import Dict, Optional
-
+import asyncio
+import json
 import logging
 import traceback
-import asyncio
-from playwright.async_api import async_playwright, Page, TimeoutError as PlaywrightTimeoutError
+from typing import Dict, Optional
 
-import json
+from playwright.async_api import Page, async_playwright
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 # ログ設定
 logging.basicConfig(

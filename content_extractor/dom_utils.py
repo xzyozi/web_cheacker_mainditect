@@ -1,8 +1,9 @@
 from typing import List
 
+from setup_logger import setup_logger
+
 from .dom_treeSt import DOMTreeSt
 from .scorer import MainContentScorer
-from setup_logger import setup_logger
 
 logger = setup_logger("dom_utils")
 

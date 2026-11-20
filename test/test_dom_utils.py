@@ -1,6 +1,8 @@
-import pytest
 from unittest.mock import MagicMock
-from content_extractor.dom_treeSt import DOMTreeSt, BoundingBox
+
+import pytest
+
+from content_extractor.dom_treeSt import BoundingBox, DOMTreeSt
 from content_extractor.dom_utils import flatten_dom_tree, rescore_main_content_with_children
 
 # --- Fixtures for DOMTreeSt ---

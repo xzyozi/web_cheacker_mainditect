@@ -1,10 +1,10 @@
 # Imports
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import datetime
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 # 3rd party libraries - these need to be installed
 # pip install -r requirements_search.txt

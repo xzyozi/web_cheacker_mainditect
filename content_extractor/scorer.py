@@ -1,5 +1,6 @@
 import math
 from typing import List
+
 from scipy import stats
 
 from .dom_treeSt import DOMTreeSt
