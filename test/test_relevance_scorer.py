@@ -25,7 +25,7 @@ def mock_relevance_scorer():
     """
     A fixture that provides a RelevanceScorer instance with mocked heavy dependencies.
     """
-    with patch("sentence_transformers.SentenceTransformer") as MockSentenceTransformer:
+    with patch("content_extractor.relevance_scorer.SentenceTransformer") as MockSentenceTransformer:
         mock_model_instance = MagicMock()
         # The order of embeddings matters: query is encoded first, then items.
         mock_model_instance.encode.side_effect = [

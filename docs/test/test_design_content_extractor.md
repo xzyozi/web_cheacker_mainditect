@@ -6,7 +6,7 @@ ssot_scope: "test_evidence"
 status: "approved"
 version: "1.0"
 created_at: "2026-11-20"
-updated_at: "2026-11-20"
+updated_at: "2026-11-21"
 author: "xzyozi"
 owner: "xzyozi"
 purpose: "content_extractor モジュールのテスト方針とテストケースを定義するため"
@@ -258,6 +258,29 @@ related_documents:
     - **入力:** `{'tag': 'div', 'id': 'my-id', 'attributes': {'style': 'color: red;'}}`
     - **期待値:** `'div#my-id'`
 
+#### `escape_css_identifier(value)`
+- **目的:** CSSの識別子（ID・クラス名）をブラウザの `CSS.escape()` と同じ規則でエスケープし、数字始まりのIDやTailwindCSSの記号を含むクラス名を有効なセレクタとして扱えることを確認する。
+- **Test Case 1: 英数字・ハイフン・アンダースコア**
+    - **内容:** エスケープ不要な基本識別子がそのまま返されることを確認する。
+    - **入力:** `'main'`、 `'_x'`
+    - **期待値:** `'main'`、 `'_x'`
+- **Test Case 2: TailwindCSS等の記号（コロン・スラッシュ・ドット・空白）**
+    - **内容:** `:`, `/`, `.`, 空白を含むクラス名がバックスラッシュでエスケープされることを確認する。
+    - **入力:** `'md:px-4'`、 `'w-1/2'`、 `'a.b'`、 `'a b'`
+    - **期待値:** `'md\\:px-4'`、 `'w-1\\/2'`、 `'a\\.b'`、 `'a\\ b'`
+- **Test Case 3: 先頭が数字、または `-` の2文字目が数字、および `-` 単独**
+    - **内容:** CSS識別子として無効にならないよう、数字が16進エスケープ（後ろに空白）され、`-` 単独が `\\-` になることを確認する。
+    - **入力:** `'1abc'`、 `'-1abc'`、 `'-'`
+    - **期待値:** `'\\31 abc'`、 `'-\\31 abc'`、 `'\\-'`
+- **Test Case 4: 非ASCII文字**
+    - **内容:** 日本語などの非ASCII文字がそのまま保持されることを確認する。
+    - **入力:** `'日本語'`
+    - **期待値:** `'日本語'`
+- **Test Case 5: `make_css_selector` との連携**
+    - **内容:** 数字始まりのIDやTailwindCSSクラス名を含む要素プロパティから、エスケープ済みの有効なセレクタが生成されることを確認する。
+    - **入力:** `{'tag': 'div', 'id': '1abc', 'attributes': {}}`、 `{'tag': 'div', 'id': '', 'attributes': {'class': 'w-1/2 md:px-4'}}`
+    - **期待値:** `'div#\\31 abc'`、 `'div.w-1\\/2.md\\:px-4'`
+
 ---
 
 ### 3.3. `config.py` (ユニットテスト)
@@ -348,6 +371,78 @@ related_documents:
     - **入力:** 任意の例外を発生させるようにモックされたメソッド。
     - **期待値:** エラーがログに記録され、関数が`None`を返すこと。
 
+#### `close_page(page)`
+
+- **目的:** `setup_page` が作成した `Page` と、その `BrowserContext` の両方を閉じ、例外発生時もログ記録のみで後続処理を止めないことを確認する。
+
+- **Test Case 1: ページとコンテキストの正常クローズ**
+
+    - **内容:** ページを閉じた後、紐づくブラウザコンテキストも閉じられ、コンテキストのリークを防ぐことを確認する。
+
+    - **入力:** モックされた `Page`（`page.context` にモック `BrowserContext` を設定）。
+
+    - **期待値:** `page.close` と `page.context.close` がそれぞれ1回ずつ await されること。
+
+- **Test Case 2: クローズ失敗時の例外抑制**
+
+    - **内容:** `page.close` 等で例外が発生した場合でも例外を送出せず、警告ログのみを記録することを確認する。
+
+    - **入力:** `page.close` が例外を送出するようにモックされた `Page`。
+
+    - **期待値:** 例外を送出せず正常終了し、`logger.warning` が1回呼ばれること。
+
+#### `ensure_unique_selector(page, selector, rect)`
+
+- **目的:** セレクタがページ内で1件のみにヒットする場合はそのまま返し、複数件にヒットする場合は位置（`rect`）が一致する要素の `nth-of-type` 絶対パスへ置き換えること、および異常系では元のセレクタを返すことを確認する。
+
+- **Test Case 1: ヒット件数が1件の場合**
+
+    - **内容:** ページ内で1件だけにヒットするセレクタは変更せずにそのまま返す。
+
+    - **入力:** `selector="div.card"`、`page.evaluate` の戻り値が `{"count": 1, "path": "..."}`。
+
+    - **期待値:** `"div.card"` が返されること。
+
+- **Test Case 2: 複数件ヒットし位置が一致した場合**
+
+    - **内容:** 同じセレクタが複数要素にヒットする場合、JavaScript評価で特定した `nth-of-type` パスに置き換える。
+
+    - **入力:** `selector="div.card"`、`page.evaluate` の戻り値が `{"count": 3, "path": "html > body > div:nth-of-type(2)"}`。
+
+    - **期待値:** `"html > body > div:nth-of-type(2)"` が返されること。
+
+- **Test Case 3: 複数件ヒットしたが位置が一致しない場合**
+
+    - **内容:** `path` が `None` の場合は元のセレクタを保持する。
+
+    - **入力:** `page.evaluate` の戻り値が `{"count": 3, "path": None}`。
+
+    - **期待値:** `"div.card"` が返されること。
+
+- **Test Case 4: `page.evaluate` が例外を送出する場合**
+
+    - **内容:** JavaScriptの評価に失敗しても例外を送出せず、元のセレクタを返す。
+
+    - **入力:** `page.evaluate` が例外を送出するようにモックされた `Page`。
+
+    - **期待値:** `"div.card"` が返されること。
+
+- **Test Case 5: `page.evaluate` が予期しない型を返す場合**
+
+    - **内容:** 戻り値が辞書でない場合は元のセレクタを返す。
+
+    - **入力:** `page.evaluate` の戻り値が `"unexpected"`。
+
+    - **期待値:** `"div.card"` が返されること。
+
+- **Test Case 6: 空のセレクタが渡された場合**
+
+    - **内容:** 空文字列の場合は `page.evaluate` を実行せずそのまま返す。
+
+    - **入力:** `selector=""`。
+
+    - **期待値:** `""` が返され、`page.evaluate` が呼ばれないこと。
+
 #### `adjust_page_view(page)`
 
 - **目的:** ページのコンテンツに基づいてビューポートのサイズが正しく計算され、設定されること、およびページが最下部までスクロールされることを確認する。
@@ -427,6 +522,42 @@ related_documents:
     - **入力:** コメントと空行を含む`robots.txt`。
 
     - **期待値:** 正しい許可/不許可の判断がなされること。
+
+#### `is_url_allowed(url)`
+
+- **目的:** `robots.txt` に基づいて対象URLへのアクセス可否を判定し、オリジン単位で取得結果（取得失敗を含む）をキャッシュすることを確認する。
+
+- **Test Case 1: `robots.txt` による許可・禁止判定**
+
+    - **内容:** `Disallow: /private` を含む `robots.txt` に対して、禁止パスは `False`、許可パスは `True` を返すことを確認する。
+
+    - **入力:** `fetch_robots_txt` が `"User-agent: *\nDisallow: /private"` を返すようにモックし、`"http://example.com/private/data"` と `"http://example.com/public/page"` を渡す。
+
+    - **期待値:** それぞれ `False` と `True` が返されること。
+
+- **Test Case 2: オリジンごとのキャッシュ共有**
+
+    - **内容:** 同一オリジンの複数URLを判定する際、`fetch_robots_txt` がオリジンごとに1回だけ呼ばれることを確認する。
+
+    - **入力:** `"http://example.com/a"`, `"http://example.com/b"`, `"http://other.example.org/a"`。
+
+    - **期待値:** `fetch_robots_txt` の呼び出し回数が2回（オリジン数分）であること。
+
+- **Test Case 3: `robots.txt` 取得失敗時の許可とキャッシュ**
+
+    - **内容:** `fetch_robots_txt` が `None` を返した場合は許可（`True`）とし、取得失敗もキャッシュして同一オリジンへ再取得しないことを確認する。
+
+    - **入力:** `fetch_robots_txt` が `None` を返す状態で `"http://example.com/a"` と `"http://example.com/b"` を連続判定。
+
+    - **期待値:** いずれも `True` が返され、`fetch_robots_txt` の呼び出し回数が1回であること。
+
+- **Test Case 4: 解析できないURL**
+
+    - **内容:** スキームやホストを含まない無効なURLは `fetch_robots_txt` を呼ばずに `True`（許可）を返すことを確認する。
+
+    - **入力:** `"invalid-url"`。
+
+    - **期待値:** `True` が返され、`fetch_robots_txt` が呼ばれないこと。
 
 
 
@@ -1080,9 +1211,42 @@ related_documents:
 
         - `final_content.css_selector_list`が、`final_content.css_selector`のみを含むリストであること（葉ノードであるため、他の子孫セレクタは生成されない）。
 
+---
 
+### 3.10. `test_integration_extract.py` (実ブラウザ結合テスト)
 
+**目的:** 実ブラウザ（Playwright Chromium）とローカルHTTPサーバー（`ThreadingHTTPServer`）を用いて、固定HTMLページに対する `extract_main_content`（Full スキャン）および `quick_extract_content`（Quick スキャン）を `make_tree` からスコアリングまで通しで検証する。
 
+**前提条件・実行マーカー:**
+- ファイル全体に `@pytest.mark.integration` を付与している。
+- Chromium が未導入の環境では `pytest.skip` により自動スキップされる（CI では `playwright install --with-deps chromium` で導入）。
+- テスト分離のため `content_extractor.core.save_json` をモックし、テスト前後で `playwright_helpers._ROBOTS_CACHE` をクリアする。
+- 結合テストのみを実行する場合は `pytest -m integration`、除外する場合は `pytest -m "not integration"` を使用する。
+
+- **Test Case 1: Full スキャンによる本文リンクのみの抽出 (`test_full_scan_extracts_article_links_only`)**
+    - **内容:** ナビゲーション・本文（記事8件）・フッターを含む固定HTMLページに対して `extract_main_content` を実行し、本文の記事リンクのみが抽出されることを確認する。
+    - **入力:** `/nav/...`, `/article/0.html`〜`7.html`, `/footer/...` を含むHTMLを配信するローカルHTTPサーバーのURLと実ブラウザ。
+    - **期待値:** 戻り値が `None` でなく、`links` が空でなくすべて `"/article/"` を含み、`css_selector` が生成されていること。
+
+- **Test Case 2: Full スキャンのセレクタを用いた Quick スキャンの再現 (`test_quick_scan_reuses_selector_from_full_scan`)**
+    - **内容:** `extract_main_content` で取得した `css_selector_list` と `web_type` を使って `quick_extract_content` を実行し、同一ページから同じリンクが取得できることを確認する。
+    - **入力:** 同一URLと、Full スキャンで得られた `css_selector_list`・`web_type`。
+    - **期待値:** `quick_extract_content` の戻り値が `None` でなく、`quick.links == full.links` であること。
+
+- **Test Case 3: 本文リンク更新時の Quick スキャン検知 (`test_quick_scan_detects_changed_links`)**
+    - **内容:** Full スキャン後にページ本文のリンクを書き換えた場合、Quick スキャンが変更後のリンクを抽出することを確認する。
+    - **入力:** リンクプレフィックスを `"/article/"` から `"/article-v2/"` に変更したHTMLページと、初回 Full スキャンのセレクタ。
+    - **期待値:** `quick.links != full.links` であり、抽出されたリンクがすべて `"/article-v2/"` を含むこと。
+
+- **Test Case 4: 重複クラス存在時のプライマリセレクタ一意性 (`test_saved_primary_selector_matches_exactly_one_element`)**
+    - **内容:** 同一クラス名（`card`）を持つ兄弟要素が複数存在するページでも、保存される `css_selector` がページ内でちょうど1件にのみヒットすることを確認する。
+    - **入力:** `class="card"` を持つ3つの `div` 要素を含むHTMLページ。
+    - **期待値:** `page.locator(result.css_selector).count() == 1` であること。
+
+- **Test Case 5: `robots.txt` 禁止パスでの Full / Quick スキャン抑止 (`test_robots_txt_disallow_blocks_full_and_quick_scan`)**
+    - **内容:** `robots.txt` で禁止されたパスに対しては、Full スキャン・Quick スキャンともにアクセスを行わず `None` を返すことを確認する。
+    - **入力:** `User-agent: *\nDisallow: /private/` を含む `robots.txt` と `/private/index.html` のURL。
+    - **期待値:** `extract_main_content` と `quick_extract_content` のいずれも `None` を返すこと。
 
 ## 4. 新規テストの追加手順
 
@@ -1106,7 +1270,7 @@ related_documents:
 
 3.  **テストの実行と確認:**
 
-    プロジェクトルートで `$env:PYTHONPATH = '.'; pytest` を実行し、追加したテストを含め、すべてのテストが成功することを確認します。
+    `pyproject.toml` の `[tool.pytest.ini_options]` で `pythonpath = ["."]` が設定されているため、`PYTHONPATH` の手動設定は不要です。プロジェクトルートで `pytest`（または `uv run --no-sync pytest`）を実行し、追加したテストを含め、すべてのテストが成功することを確認します。
 
 
 
@@ -1116,7 +1280,7 @@ related_documents:
 
 -   **テストデータ:** `DOMTreeSt`と`BoundingBox`を`dataclass`からインポートし、テストケースごとにオブジェクトを生成して利用する。
 
--   **実行方法:** プロジェクトのルートディレクトリで `$env:PYTHONPATH = '.'; pytest` を実行する。
+-   **実行方法:** `pyproject.toml` で `pythonpath = ["."]` が設定されているため、`PYTHONPATH` を指定せずにプロジェクトのルートディレクトリで `pytest`（または `uv run --no-sync pytest`）を実行する。結合テストのみを実行する場合は `pytest -m integration`、除外する場合は `pytest -m "not integration"` を使用する。
 
 
 
