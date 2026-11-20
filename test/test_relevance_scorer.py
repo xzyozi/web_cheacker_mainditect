@@ -1,7 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
 import numpy as np
-import math
 
 from content_extractor.relevance_scorer import RelevanceScorer
 from content_extractor.dom_treeSt import DOMTreeSt

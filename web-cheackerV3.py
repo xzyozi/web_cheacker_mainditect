@@ -8,7 +8,6 @@ import asyncio
 import shutil
 import traceback
 import re
-import json
 import html
 import requests
 from playwright.async_api import async_playwright
@@ -20,7 +19,7 @@ from content_extractor import run_full_scan_standalone, run_quick_scan_standalon
 from mail import send_email
 from text_struct import text_struct
 import util_str
-from content_extractor import DOMTreeSt, BoundingBox
+from content_extractor import DOMTreeSt
 from setup_logger import setup_logger
 from content_extractor import save_screenshot
 # +----------------------------------------------------------------
@@ -280,8 +279,6 @@ def remove_encoded_chars(url):
 # +----------------------------------------------------------------
 # csv function 
 # +----------------------------------------------------------------
-from urllib.parse import unquote
-import unicodedata
 
 CSV_COLUMN = { "url" : 0, # scraping url
                "run_code" : 1, # datetime for code of the run for

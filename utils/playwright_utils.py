@@ -1,4 +1,3 @@
-import os
 from PIL import Image, ImageDraw
 
 from setup_logger import setup_logger

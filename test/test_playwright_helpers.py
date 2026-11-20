@@ -1,10 +1,8 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, call
-from playwright.async_api import TimeoutError as PlaywrightTimeoutError, Page, Browser, ElementHandle, BrowserContext
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError, Page, Browser, BrowserContext
 import aiohttp
 import os
-from PIL import Image
-import asyncio # For patching asyncio.sleep
 
 from content_extractor.playwright_helpers import (
     setup_page,

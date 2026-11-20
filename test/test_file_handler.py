@@ -1,4 +1,3 @@
-import pytest
 from unittest.mock import patch, mock_open
 from utils.file_handler import save_json
 import json

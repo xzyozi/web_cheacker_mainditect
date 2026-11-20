@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 from content_extractor.quality_evaluator import (
     is_no_results_page,
     _find_result_container,

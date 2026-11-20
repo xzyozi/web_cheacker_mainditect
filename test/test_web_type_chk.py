@@ -1,5 +1,5 @@
 import pytest
-from content_extractor.web_type_chk import PageMonitor, WebTypeCHK, WebType
+from content_extractor.web_type_chk import PageMonitor, WebTypeCHK
 from content_extractor.dom_treeSt import DOMTreeSt
 
 # =================================================================

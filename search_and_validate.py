@@ -1,6 +1,6 @@
 import asyncio
 from playwright.async_api import async_playwright, Browser
-from typing import List, Dict, Optional
+from typing import List
 from content_extractor import run_search_quality_evaluation_standalone
 from setup_logger import setup_logger
 
@@ -71,7 +71,7 @@ async def main(search_keyword: str):
                 logger.info(f"  -> Quality: {content_node.quality_category} (SQS: {content_node.sqs_score:.2f})")
                 
                 if content_node.quality_category == "Valid" and search_keyword.lower() in content_node.text.lower():
-                    logger.info(f"  -> VALID: High quality and keyword found.")
+                    logger.info("  -> VALID: High quality and keyword found.")
                     valid_pages.append({
                         "url": url, 
                         "title": content_node.tag, 
@@ -81,9 +81,9 @@ async def main(search_keyword: str):
                     # ここでショートカット生成などのアクションを呼び出す
                     # create_shortcut(url, content_node.tag)
                 elif content_node.quality_category == "Low Quality":
-                     logger.warning(f"  -> LOW QUALITY: Page might contain dummy results.")
+                     logger.warning("  -> LOW QUALITY: Page might contain dummy results.")
                 else:
-                    logger.warning(f"  -> INVALID: Low quality or keyword not found.")
+                    logger.warning("  -> INVALID: Low quality or keyword not found.")
             else:
                 logger.warning(f"  -> Could not extract content from {url}")
         except Exception as e:

@@ -1,14 +1,11 @@
-from typing import Dict, List, Any, Union , Optional
+from typing import Any
 import re
-import os
-from collections import Counter
 import asyncio
-from playwright.async_api import async_playwright, Page, Browser, Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import async_playwright, Browser, Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError
 from aiohttp import ClientError
 
 import traceback
 import sys
-import hashlib
 from datetime import datetime
 import numpy as np
 
@@ -28,7 +25,7 @@ def _escape_css_selector_colons(selector: str) -> str:
 from .scorer import MainContentScorer
 from .make_tree import make_tree
 from .web_type_chk import WebTypeCHK, WebType
-from .dom_treeSt import DOMTreeSt, BoundingBox
+from .dom_treeSt import DOMTreeSt
 from .dom_utils import rescore_main_content_with_children
 from .playwright_helpers import setup_page, adjust_page_view, fetch_robots_txt, is_scraping_allowed
 from .quality_evaluator import is_no_results_page, quantify_search_results
