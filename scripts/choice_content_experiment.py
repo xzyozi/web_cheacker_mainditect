@@ -1,3 +1,10 @@
+"""DOM ツリー取得の実験コード（旧 test/test_choice_content.py）。
+
+自動テストではない。pytest に収集されないよう、test/ から scripts/ に移した。
+`python scripts/choice_content_experiment.py` で手動実行する。実在のサイトへアクセスするため、
+実行前に対象 URL を確認すること。
+"""
+
 import asyncio
 import json
 import logging
