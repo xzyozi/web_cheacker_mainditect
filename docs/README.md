@@ -7,8 +7,8 @@ status: "approved"
 version: "1.0"
 created_at: "2026-10-02"
 updated_at: "2026-11-05"
-author: "[作成者 / チーム名]"
-owner: "[ドキュメント責任者 / チーム名]"
+author: "xzyozi"
+owner: "xzyozi"
 purpose: "プロジェクト全体の文書分類、SSOT、メタデータ、ライフサイクル、参照規約を定義するため"
 related_documents:
   - "用語集（相対パス: ../CONTEXT.md）"
@@ -160,19 +160,20 @@ related_documents:
 
 `document_type` は全文書で必須とし、`TYPE_CODE`と`document_number`は形式文書で使用する。軽量文書は、Issue番号・タイトル・`source_issue`で識別できるため、形式文書用の連番を必須にしない。
 
-| 区分       | TYPE_CODE           | document_type                  | document_number | 用途               |
-| :--------- | :------------------ | :----------------------------- | :-------------: | :----------------- |
-| 公式設計   | `BD`                | `basic_design`                 |      必須       | 基本設計           |
-| 公式設計   | `DD`                | `detailed_design`              |      必須       | 詳細設計           |
-| 公式設計   | `DS`                | `data_structure_specification` |      必須       | データ構造         |
-| 公式設計   | `IF`                | `interface_specification`      |      必須       | IF/API（外部契約） |
-| 手順       | `OP`                | `operation_procedure`          |      任意       | 運用手順           |
-| 検証       | `TEST`              | `test_plan_report`             |      任意       | テスト計画・結果   |
-| 判断理由   | `ADR`               | `architecture_decision_record` |    原則必須     | ADR                |
-| Issue記録  | `ISSUE`             | `issue_record`                 |      不要       | Issueの写し        |
-| 環境仕様   | `ENV`               | `environment_specification`    |      必須       | 環境・開発基盤仕様 |
-| 環境手順   | `SETUP`             | `environment_setup_procedure`  |      任意       | 環境構築手順       |
-| その他候補 | `REQ` / `AN` / `RV` | 対応する種別を追加             |  必要に応じる   | 必要時に登録       |
+| 区分       | TYPE_CODE    | document_type                  | document_number | 用途               |
+| :--------- | :----------- | :----------------------------- | :-------------: | :----------------- |
+| 公式設計   | `BD`         | `basic_design`                 |      必須       | 基本設計           |
+| 公式設計   | `DD`         | `detailed_design`              |      必須       | 詳細設計           |
+| 公式設計   | `DS`         | `data_structure_specification` |      必須       | データ構造         |
+| 公式設計   | `IF`         | `interface_specification`      |      必須       | IF/API（外部契約） |
+| 手順       | `OP`         | `operation_procedure`          |      任意       | 運用手順           |
+| 検証       | `TEST`       | `test_plan_report`             |      任意       | テスト計画・結果   |
+| 判断理由   | `ADR`        | `architecture_decision_record` |    原則必須     | ADR                |
+| Issue記録  | `ISSUE`      | `issue_record`                 |      不要       | Issueの写し        |
+| 環境仕様   | `ENV`        | `environment_specification`    |      必須       | 環境・開発基盤仕様 |
+| 環境手順   | `SETUP`      | `environment_setup_procedure`  |      任意       | 環境構築手順       |
+| 分析       | `AN`         | `analysis_note`                |      任意       | 調査・分析メモ     |
+| その他候補 | `REQ` / `RV` | 対応する種別を追加             |  必要に応じる   | 必要時に登録       |
 
 #### 形式文書の命名
 

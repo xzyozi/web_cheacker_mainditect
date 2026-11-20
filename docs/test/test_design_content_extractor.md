@@ -1,3 +1,20 @@
+---
+title: "content_extractor モジュール 詳細テスト設計書"
+document_type: "test_plan_report"
+document_role: "evidence"
+ssot_scope: "test_evidence"
+status: "approved"
+version: "1.0"
+created_at: "2026-11-20"
+updated_at: "2026-11-20"
+author: "xzyozi"
+owner: "xzyozi"
+purpose: "content_extractor モジュールのテスト方針とテストケースを定義するため"
+related_documents:
+  - "ドキュメントガバナンス（相対パス: ../README.md）"
+  - "用語集（相対パス: ../../CONTEXT.md）"
+---
+
 # `content_extractor` モジュール 詳細テスト設計書
 
 ## 1. 目的
@@ -1077,7 +1094,7 @@
 
 1.  **設計書の更新:**
 
-    本ドキュメント（`doc/test/test_design_content_extractor.md`）に、テスト対象の関数と具体的なテストケース（目的、入力、期待値）を追記します。
+    本ドキュメント（`docs/test/test_design_content_extractor.md`）に、テスト対象の関数と具体的なテストケース（目的、入力、期待値）を追記します。
 
 
 

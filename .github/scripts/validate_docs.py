@@ -62,6 +62,7 @@ KNOWN_TYPES = NUMBER_REQUIRED_TYPES | {
     "issue_record",
     "environment_setup_procedure",
     "document_governance",
+    "analysis_note",
 }
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")

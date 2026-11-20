@@ -1,4 +1,21 @@
-### ページネーション対応の改善案
+---
+title: "ページネーション対応の改善案"
+document_type: "analysis_note"
+document_role: "rationale"
+ssot_scope: "decision_rationale"
+status: "draft"
+version: "1.0"
+created_at: "2026-11-20"
+updated_at: "2026-11-20"
+author: "xzyozi"
+owner: "xzyozi"
+purpose: "ページネーションされたコンテンツの更新を追跡する改善案と導入ステップを整理するため"
+related_documents:
+  - "ドキュメントガバナンス（相対パス: ../README.md）"
+  - "用語集（相対パス: ../../CONTEXT.md）"
+---
+
+# ページネーション対応の改善案
 
 現在のシステムは、`cheacker_url.jsonl`に登録された各URLを独立した監視対象として扱っており、ページネーション（複数ページにわたるコンテンツ）を自動的に検出・追跡する機能は持っていません。そのため、ユーザーが手動で`page=1`, `page=2`といったURLを登録している場合、それぞれのページが個別に監視され、更新の検出が意図しない挙動を示す可能性があります。
 
