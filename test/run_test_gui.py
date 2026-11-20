@@ -23,7 +23,6 @@ class TestRunnerApp:
         # 読み込むテストケースファイルへの絶対パス
         self.test_cases_path = os.path.join(self.script_dir, "test_cases..json")
 
-
         # これにより、playwright_mainditect_v3が依存する他のモジュールを正しく見つけられるようになります。
         if self.project_root not in sys.path:
             sys.path.insert(0, self.project_root)
@@ -63,7 +62,6 @@ class TestRunnerApp:
 
     def load_test_cases(self):
         try:
-
             with open(self.test_cases_path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except FileNotFoundError:
@@ -80,7 +78,7 @@ class TestRunnerApp:
         self.output_text.config(state=tk.NORMAL)
         self.output_text.delete(1.0, tk.END)
         self.output_text.insert(tk.END, f"Running test: {selected_case['name']}\n")
-        self.output_text.insert(tk.END, "-"*50 + "\n")
+        self.output_text.insert(tk.END, "-" * 50 + "\n")
         self.output_text.config(state=tk.DISABLED)
         self.run_button.config(state=tk.DISABLED)
 
@@ -94,7 +92,7 @@ class TestRunnerApp:
             self.target_script_path,
             case["url"],
             "--mode",
-            case["mode"]
+            case["mode"],
         ]
         if case["mode"] == "quick" and case["selector"]:
             command.extend(["--selector", case["selector"]])
@@ -104,13 +102,13 @@ class TestRunnerApp:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            encoding='utf-8',
-            errors='replace',
+            encoding="utf-8",
+            errors="replace",
             cwd=self.project_root,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
 
-        for line in iter(process.stdout.readline, ''):
+        for line in iter(process.stdout.readline, ""):
             self.root.after(0, self.update_output, line)
 
         process.wait()
@@ -123,8 +121,9 @@ class TestRunnerApp:
         self.output_text.config(state=tk.DISABLED)
 
     def on_test_complete(self):
-        self.update_output("\n" + "-"*50 + "\nTest finished.\n")
+        self.update_output("\n" + "-" * 50 + "\nTest finished.\n")
         self.run_button.config(state=tk.NORMAL)
+
 
 if __name__ == "__main__":
     root = tk.Tk()

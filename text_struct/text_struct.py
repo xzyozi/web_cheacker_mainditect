@@ -3,7 +3,7 @@ from itertools import zip_longest
 import jinja2
 
 
-def generate_notification(urls : list):
+def generate_notification(urls: list):
     notification = """
  _________________________________________________
 /                                                  \\
@@ -58,9 +58,9 @@ def generate_html(url_list, image_list):
     cids = {path: f"image_{i}" for i, path in enumerate(image_list) if path}
 
     for url, image_path in zip_longest(url_list, image_list):
-        item = {'url': url, 'cid': None}
+        item = {"url": url, "cid": None}
         if image_path and image_path in cids:
-            item['cid'] = cids[image_path]
+            item["cid"] = cids[image_path]
         items.append(item)
 
     # 画像をBase64エンコード
@@ -101,19 +101,18 @@ def generate_html(url_list, image_list):
     html_content = template.render(items=items)
 
     # URLとBase64画像のペアをテンプレートに渡す
-    #html_content = template.render(items=zip(url_list, images_base64))
+    # html_content = template.render(items=zip(url_list, images_base64))
     # html_content = template.render(items=zip(url_list, [f"image_{i}" for i in range(len(image_list))]))
 
     return html_content
 
 
 if __name__ == "__main__":
-# テスト用のURLリスト
+    # テスト用のURLリスト
     urls = ["https://example.com/page1", "https://example.com/page2", "https://example.com/page3"]
 
     # 通知を生成して表示
     print(generate_notification(urls))
-
 
     output = """
 

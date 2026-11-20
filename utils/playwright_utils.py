@@ -4,6 +4,7 @@ from setup_logger import setup_logger
 
 logger = setup_logger(__name__)
 
+
 # スクリーンショットを撮り、対象要素に色味をつける
 def highlight_main_content(driver, main_content, filename):
     """
@@ -28,5 +29,9 @@ def highlight_main_content(driver, main_content, filename):
     rect["x"] -= x
     rect["y"] -= y
 
-    draw.rectangle(((rect["x"], rect["y"]), (rect["x"] + rect["width"], rect["y"] + rect["height"])), outline=(126, 185, 255), width=5)
+    draw.rectangle(
+        ((rect["x"], rect["y"]), (rect["x"] + rect["width"], rect["y"] + rect["height"])),
+        outline=(126, 185, 255),
+        width=5,
+    )
     img.save(filename)

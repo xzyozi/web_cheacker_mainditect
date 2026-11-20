@@ -9,6 +9,7 @@ def get_domain(url):
     domain = parsed_url.netloc
     return domain
 
+
 # +----------------------------------------------------------------
 # file edit faction
 # +----------------------------------------------------------------
@@ -41,6 +42,7 @@ def util_handle_path(path, custom_filename=None):
     # パスに拡張子がなくカスタムファイル名も指定されていない場合 -> ディレクトリの処理
     return _create_directory(path)
 
+
 def _create_file(file_path):
     """指定されたパスにファイルを作成します (存在しない場合)。"""
     if os.path.isfile(file_path):
@@ -48,14 +50,15 @@ def _create_file(file_path):
 
     try:
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        with open(file_path, 'w') as file:
-            file.write('')
+        with open(file_path, "w") as file:
+            file.write("")
         os.chmod(file_path, 0o755)
         print(f"ファイル '{file_path}' を作成しました。")
         return file_path
     except IOError as e:
         print(f"ファイル '{file_path}' を作成できませんでした: {e.strerror}")
         return None
+
 
 def _create_directory(dir_path):
     """指定されたパスにディレクトリを作成します (存在しない場合)。"""

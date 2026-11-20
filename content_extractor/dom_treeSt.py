@@ -11,12 +11,7 @@ class BoundingBox:
 
     def to_dict(self) -> Dict:
         """辞書形式に変換"""
-        return {
-            "x": self.x,
-            "y": self.y,
-            "width": self.width,
-            "height": self.height
-        }
+        return {"x": self.x, "y": self.y, "width": self.width, "height": self.height}
 
 
 @dataclass
@@ -46,7 +41,7 @@ class DOMTreeSt:
     max_relevance: float = 0.0
     sqs_score: float = 0.0
     quality_category: str = ""
-    is_empty_result: bool = False # 新しく追加するフィールド
+    is_empty_result: bool = False  # 新しく追加するフィールド
 
     def add_child(self, child: "DOMTreeSt") -> None:
         """子ノードを追加する"""
@@ -66,7 +61,7 @@ class DOMTreeSt:
             "css_selector": self.css_selector,
             "css_selector_list": self.css_selector_list,
             "links": self.links,
-            "chk_url":self.chk_url,
+            "chk_url": self.chk_url,
             "web_type": self.web_type,
             "result_count": self.result_count,
             "result_items": [item.to_dict() for item in self.result_items],
@@ -107,6 +102,6 @@ class DOMTreeSt:
             f"Depth: {self.depth}",
             f"CSS Selector: {self.css_selector}",
             f"CSS Selector List: {self.css_selector_list}",
-            f"Links: {', '.join(self.links)}" if self.links else "No links found"
+            f"Links: {', '.join(self.links)}" if self.links else "No links found",
         ]
         return "\n".join(info) + "\n" + "-" * 60

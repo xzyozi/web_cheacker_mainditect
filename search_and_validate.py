@@ -8,6 +8,7 @@ from setup_logger import setup_logger
 
 logger = setup_logger("search_validator")
 
+
 async def search_on_google(browser: Browser, keyword: str) -> List[str]:
     """
     Googleでキーワードを検索し、検索結果のURLリストを返します。
@@ -43,6 +44,7 @@ async def search_on_google(browser: Browser, keyword: str) -> List[str]:
     finally:
         await page.close()
 
+
 async def main(search_keyword: str):
     """
     メイン処理: 検索、コンテンツ抽出、妥当性検証を行います。
@@ -74,16 +76,18 @@ async def main(search_keyword: str):
 
                 if content_node.quality_category == "Valid" and search_keyword.lower() in content_node.text.lower():
                     logger.info("  -> VALID: High quality and keyword found.")
-                    valid_pages.append({
-                        "url": url,
-                        "title": content_node.tag,
-                        "text_snippet": content_node.text[:100],
-                        "sqs": content_node.sqs_score
-                    })
+                    valid_pages.append(
+                        {
+                            "url": url,
+                            "title": content_node.tag,
+                            "text_snippet": content_node.text[:100],
+                            "sqs": content_node.sqs_score,
+                        }
+                    )
                     # ここでショートカット生成などのアクションを呼び出す
                     # create_shortcut(url, content_node.tag)
                 elif content_node.quality_category == "Low Quality":
-                     logger.warning("  -> LOW QUALITY: Page might contain dummy results.")
+                    logger.warning("  -> LOW QUALITY: Page might contain dummy results.")
                 else:
                     logger.warning("  -> INVALID: Low quality or keyword not found.")
             else:
@@ -99,6 +103,7 @@ async def main(search_keyword: str):
             logger.info(f"  - URL: {page_info['url']} (SQS: {page_info['sqs']:.2f})")
     else:
         logger.info("No valid pages were found.")
+
 
 if __name__ == "__main__":
     # ここに検索したい一意性の高い文字列（ユーザー名など）を指定します

@@ -18,22 +18,22 @@ if sys.platform == "win32":
 # +----------------------------------------------------------------
 
 # 特徴量の分布を定義します
-X_DIST = stats.norm(0.5, 0.35)   # X軸の特徴量の分布
+X_DIST = stats.norm(0.5, 0.35)  # X軸の特徴量の分布
 Y_DIST = stats.norm(0.5, 0.35)  # Y軸の特徴量の分布
 WIDTH_DIST = stats.gamma(6.7, scale=0.11)  # 幅の特徴量の分布
 
 # スコアリングの重みを定義します
 WEIGHTS = {
-    "x": 1,        # X軸の重み
-    "y": 1,        # Y軸の重み
+    "x": 1,  # X軸の重み
+    "y": 1,  # Y軸の重み
     "width": 1,  # 幅の重み
-    "height": 1.5    # 高さの重み
+    "height": 1.5,  # 高さの重み
 }
 
 # テキスト量のスコアリングに関する定数
 TEXT_LENGTH_WEIGHT = 1.5  # テキスト量の重みの係数
-TEXT_LENGTH_MEAN = 50    # 文字数の平均値
-TEXT_LENGTH_STD_LOW = 40     # 文字数の標準偏差（平均未満の場合）
+TEXT_LENGTH_MEAN = 50  # 文字数の平均値
+TEXT_LENGTH_STD_LOW = 40  # 文字数の標準偏差（平均未満の場合）
 TEXT_LENGTH_STD_HIGH = 1000  # 文字数の標準偏差（平均以上の場合）
 
 
@@ -50,7 +50,8 @@ def score_text_length(node: Dict) -> float:
     text_length = len(node.get("text", ""))  # 要素内のテキストの文字数を取得
     # print(f'id: {node.get("id")} text: {text_length}')
 
-    if text_length == 0: score = 0
+    if text_length == 0:
+        score = 0
     elif text_length <= TEXT_LENGTH_MEAN:
         # 平均未満の場合、低い標準偏差を使用してスコアを計算
         score = math.exp(-0.5 * ((text_length - TEXT_LENGTH_MEAN) / TEXT_LENGTH_STD_LOW) ** 2)
@@ -59,9 +60,10 @@ def score_text_length(node: Dict) -> float:
         score = math.exp(-0.5 * ((text_length - TEXT_LENGTH_MEAN) / TEXT_LENGTH_STD_HIGH) ** 2)
 
     # スコアに重みを掛ける
-    weighted_score = score ** TEXT_LENGTH_WEIGHT
+    weighted_score = score**TEXT_LENGTH_WEIGHT
 
     return weighted_score
+
 
 # + ----------------------------------------------------------------
 # + save json file
@@ -69,16 +71,17 @@ def score_text_length(node: Dict) -> float:
 import json
 
 
-def save_json(data, file_path="./data/json.json") :
-    with open(file_path, 'w', encoding='utf-8') as f:
+def save_json(data, file_path="./data/json.json"):
+    with open(file_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
+
 
 # + ----------------------------------------------------------------
 # + link count socering
 # + ----------------------------------------------------------------
 LINK_LENGTH_WEIGHT = 1.0  # リンクの重みの係数
-LINK_LENGTH_MEAN = 6    # 文字数の平均値
-LINK_LENGTH_STD_LOW = 5     # 文字数の標準偏差
+LINK_LENGTH_MEAN = 6  # 文字数の平均値
+LINK_LENGTH_STD_LOW = 5  # 文字数の標準偏差
 LINK_LENGTH_STD_HIGH = 30
 
 
@@ -95,7 +98,8 @@ def score_link_length(node: Dict) -> float:
     link_length = len(node.get("links", []))  # 要素内のlink数を取得
     # リンクがない場合、スコアを0にするのではなく0.1にするようにする
     # if text_length == 0:score = 0
-    if link_length == 0:score = 0.1
+    if link_length == 0:
+        score = 0.1
     elif link_length <= LINK_LENGTH_MEAN:
         # 平均未満の場合、低い標準偏差を使用してスコアを計算
         score = math.exp(-0.5 * ((link_length - LINK_LENGTH_MEAN) / LINK_LENGTH_STD_LOW) ** 2)
@@ -104,7 +108,7 @@ def score_link_length(node: Dict) -> float:
         score = math.exp(-0.5 * ((link_length - LINK_LENGTH_MEAN) / LINK_LENGTH_STD_HIGH) ** 2)
 
     # スコアに重みを掛ける
-    weighted_score = score ** LINK_LENGTH_WEIGHT
+    weighted_score = score**LINK_LENGTH_WEIGHT
 
     return weighted_score
 
@@ -117,6 +121,7 @@ def is_main_element(node: Dict) -> bool:
     if "id" in node["attributes"] and "main" in node["attributes"]["id"].lower():
         return True
     return False
+
 
 def is_skippable(node: Dict) -> bool:
     if len(node["children"]) != 1:
@@ -131,6 +136,7 @@ def is_skippable(node: Dict) -> bool:
     ):
         return True
     return False
+
 
 def is_valid_element(node: Dict) -> bool:
     tag = node["tag"].upper()
@@ -173,13 +179,15 @@ def is_valid_element(node: Dict) -> bool:
 async def is_html_element(el):
     try:
         # Check if the element has a tagName property
-        tag_name = await el.evaluate('el => el.tagName')
+        tag_name = await el.evaluate("el => el.tagName")
         return True
     except:
         return False
 
 
-async def get_tree(page: Page, tag: Optional[str] = None, element_id: Optional[str] = None, attributes: Optional[Dict[str, str]] = None) -> Dict:
+async def get_tree(
+    page: Page, tag: Optional[str] = None, element_id: Optional[str] = None, attributes: Optional[Dict[str, str]] = None
+) -> Dict:
     """
     Retrieves the DOM tree of a webpage starting from the <body> element.
     Optionally filters elements based on tag name, id, or specific attributes.
@@ -193,7 +201,7 @@ async def get_tree(page: Page, tag: Optional[str] = None, element_id: Optional[s
     Returns:
         Dict: The hierarchical structure of the DOM.
     """
-    root = await page.query_selector('body')
+    root = await page.query_selector("body")
     if not root:
         return {}
 
@@ -217,20 +225,20 @@ async def get_tree(page: Page, tag: Optional[str] = None, element_id: Optional[s
                 return {}
 
             attributes_dict = await el.evaluate(
-                'el => Object.fromEntries(Array.from(el.attributes).map(attr => [attr.name, attr.value]))'
+                "el => Object.fromEntries(Array.from(el.attributes).map(attr => [attr.name, attr.value]))"
             )
 
             # Extract element details
             node = {
-                "tag": await el.evaluate('el => el.tagName.toLowerCase()'),
-                "id": await el.get_attribute('id'),
+                "tag": await el.evaluate("el => el.tagName.toLowerCase()"),
+                "id": await el.get_attribute("id"),
                 "attributes": attributes_dict,
                 "children": [],
                 "rect": {
-                    "x": bounding_box['x'],
-                    "y": bounding_box['y'],
-                    "width": bounding_box['width'],
-                    "height": bounding_box['height'],
+                    "x": bounding_box["x"],
+                    "y": bounding_box["y"],
+                    "width": bounding_box["width"],
+                    "height": bounding_box["height"],
                 },
                 "depth": current_depth,
                 "score": 0,
@@ -241,13 +249,15 @@ async def get_tree(page: Page, tag: Optional[str] = None, element_id: Optional[s
                 # Include text and links if it's an HTML element
                 if await is_html_element(el):
                     node["text"] = await el.inner_text()
-                    node["links"] = await el.eval_on_selector_all('a', 'as => as.map(a => a.href).filter(Boolean).sort()')
+                    node["links"] = await el.eval_on_selector_all(
+                        "a", "as => as.map(a => a.href).filter(Boolean).sort()"
+                    )
                 else:
                     node["text"] = ""
                     node["links"] = []
 
                 # Recursively process child elements
-                children = await el.query_selector_all(':scope > *')
+                children = await el.query_selector_all(":scope > *")
                 for child in children:
                     child_node = await parse_element(child, current_depth + 1)
                     if child_node:
@@ -258,7 +268,9 @@ async def get_tree(page: Page, tag: Optional[str] = None, element_id: Optional[s
             print(f"Error parsing element: {str(e)}")
             return {}
 
-    def matches_criteria(node: Dict, tag: Optional[str], element_id: Optional[str], attributes: Optional[Dict[str, str]]) -> bool:
+    def matches_criteria(
+        node: Dict, tag: Optional[str], element_id: Optional[str], attributes: Optional[Dict[str, str]]
+    ) -> bool:
         """
         Checks if an element matches the filtering criteria.
 
@@ -282,6 +294,8 @@ async def get_tree(page: Page, tag: Optional[str] = None, element_id: Optional[s
         return True
 
     return await parse_element(root)
+
+
 '''
 def get_subtree(node):
     """
@@ -298,10 +312,9 @@ def get_subtree(node):
         subtree.extend(get_subtree(child_node))
     return subtree
 '''
-def calculate_depth_weight(max_depth : int,
-                           current_depth : int ,
-                           base_weight :float =1.0 ,
-                           weight_factor :float =4.0):
+
+
+def calculate_depth_weight(max_depth: int, current_depth: int, base_weight: float = 1.0, weight_factor: float = 4.0):
     """
     現在の階層レベルに基づいて depth の重みを計算する関数
 
@@ -318,9 +331,10 @@ def calculate_depth_weight(max_depth : int,
     depth_ratio = current_depth / max_depth
 
     # 比率に応じて重みを調整
-    weight = base_weight * (weight_factor ** depth_ratio)
+    weight = base_weight * (weight_factor**depth_ratio)
 
     return weight
+
 
 # メインコンテンツスコアリングクラス
 class MainContentScorer:
@@ -330,14 +344,14 @@ class MainContentScorer:
         else:
             raise TypeError("tree must be a list of dicts")
 
-
         self.width = width
         self.height = height
 
         self.init_depth_flag = True
 
-
-    def _calculate_screen_occupancy_multiplier(self, occupancy_rate: float, peak: float = 0.6, sigma: float = 0.3) -> float:
+    def _calculate_screen_occupancy_multiplier(
+        self, occupancy_rate: float, peak: float = 0.6, sigma: float = 0.3
+    ) -> float:
         """
         Calculate the score multiplier based on the screen occupancy rate using a Gaussian function.
         :param occupancy_rate: The rate of screen occupancy (0 to 1).
@@ -348,14 +362,14 @@ class MainContentScorer:
         exponent = -0.5 * ((occupancy_rate - peak) / sigma) ** 2
         return math.exp(exponent)
 
-
-
-    def _score_node(self, node: Dict,
-                     pre_mode : bool = False ,
-                     depth_flag : bool = True,
-                     maintag_addscore : bool = False,
-                     ):
-        if self.init_depth_flag :
+    def _score_node(
+        self,
+        node: Dict,
+        pre_mode: bool = False,
+        depth_flag: bool = True,
+        maintag_addscore: bool = False,
+    ):
+        if self.init_depth_flag:
             # 一番上のtreeを0にするために差分をとる
             self.parent_depth_diff = node["depth"]
             self.init_depth_flag = False
@@ -376,10 +390,9 @@ class MainContentScorer:
 
             score *= link_score
 
-        except :
+        except:
             # print("not link")
             pass
-
 
             # Calculate the screen occupancy rate
         element_area = node["rect"]["width"] * node["rect"]["height"]
@@ -387,9 +400,7 @@ class MainContentScorer:
         occupancy_rate = element_area / page_area
         multiplier = self._calculate_screen_occupancy_multiplier(occupancy_rate)
 
-
         score *= multiplier
-
 
         x = (node["rect"]["x"] + node["rect"]["width"] / 2) / self.width  # X座標を正規化
         if self.height != 0:
@@ -418,12 +429,11 @@ class MainContentScorer:
         except:
             pass
         """
-        link_count =  score_link_length(node)
+        link_count = score_link_length(node)
 
         # text_score = score_text_length(node)  # テキスト量に基づくスコアを計算
 
-
-        if depth_flag :
+        if depth_flag:
             # ネストが深いほどスコアを高く設定する
             depth_weight = calculate_depth_weight(7, node["depth"] - self.parent_depth_diff)  # 深さに基づく重みを計算
             score *= depth_weight  # スコアを計算
@@ -431,18 +441,14 @@ class MainContentScorer:
 
         node["score"] = score * link_score  # * text_score  # 総合スコアを計算
 
-
-        if maintag_addscore :
+        if maintag_addscore:
             if is_main_element(node):
                 node["score"] += 0.5
-
-
 
         """
         for child in node.get("children", []):  # 子要素を再帰的にスコアリング
             self._score_node(child)
         """
-
 
     def find_candidates(self) -> List[Dict]:
         # self.tree = [self.tree] # ルートノードを List[Dict] に変換
@@ -452,7 +458,7 @@ class MainContentScorer:
 
         nodes = self.tree
         candidates = []
-        while nodes :
+        while nodes:
             node = nodes.pop(0)
 
             if is_valid_element(node):
@@ -498,7 +504,7 @@ async def is_visible_element(element, page: Page) -> bool:
     if not element:
         return False
 
-    tag_name = await element.evaluate('el => el.tagName.toUpperCase()')
+    tag_name = await element.evaluate("el => el.tagName.toUpperCase()")
     if tag_name in ["META", "SCRIPT", "LINK", "STYLE", "IFRAME"]:
         return False
 
@@ -506,12 +512,12 @@ async def is_visible_element(element, page: Page) -> bool:
     if not is_visible:
         return False
 
-    opacity = await element.evaluate('el => window.getComputedStyle(el).opacity')
+    opacity = await element.evaluate("el => window.getComputedStyle(el).opacity")
     if float(opacity) == 0:
         return False
 
-    z_index = await element.evaluate('el => window.getComputedStyle(el).zIndex')
-    if z_index != 'auto' and int(z_index) < 0:
+    z_index = await element.evaluate("el => window.getComputedStyle(el).zIndex")
+    if z_index != "auto" and int(z_index) < 0:
         return False
 
     bounding_box = await element.bounding_box()
@@ -520,20 +526,20 @@ async def is_visible_element(element, page: Page) -> bool:
 
     viewport_size = await page.viewport_size()
     if (
-        bounding_box['x'] + bounding_box['width'] < 0
-        or bounding_box['x'] > viewport_size['width']
-        or bounding_box['y'] + bounding_box['height'] < 0
-        or bounding_box['y'] > viewport_size['height']
+        bounding_box["x"] + bounding_box["width"] < 0
+        or bounding_box["x"] > viewport_size["width"]
+        or bounding_box["y"] + bounding_box["height"] < 0
+        or bounding_box["y"] > viewport_size["height"]
     ):
         return False
 
     return True
 
 
-
 # + ----------------------------------------------------------------
 #  screen shot function
 # + ----------------------------------------------------------------
+
 
 # スクリーンショットを撮り、対象要素に色味をつける
 def highlight_main_content(driver, main_content, filename):
@@ -550,14 +556,16 @@ def highlight_main_content(driver, main_content, filename):
     rect["x"] -= x
     rect["y"] -= y
 
-    draw.rectangle(((rect["x"], rect["y"]), (rect["x"] + rect["width"], rect["y"] + rect["height"])), outline=(126, 185, 255), width=5)
+    draw.rectangle(
+        ((rect["x"], rect["y"]), (rect["x"] + rect["width"], rect["y"] + rect["height"])),
+        outline=(126, 185, 255),
+        width=5,
+    )
     img.save(filename)
 
 
-
-
-def print_content(content : Dict):
-    if content['score'] > 0:
+def print_content(content: Dict):
+    if content["score"] > 0:
         print(f"Tag: {content['tag']}, Score: {content['score']}, id: {content['id']}")
         # print(f"children: {content['children']}")
         print(f"attributes: {content['attributes']}")
@@ -565,18 +573,20 @@ def print_content(content : Dict):
         print(f"depth: {content['depth']}")
         # if len(content['children']) < 50 :
         #     print(f"text attributes: {content['text']}")
-        if content['links'] :
+        if content["links"]:
             print(f"Links: {', '.join(content.get('links', []))}")
-        else : print("no links found")
+        else:
+            print("no links found")
         print("----------------------------------------------------------")
+
 
 def remove_duplicate_ports(port_list):
     """
     リストから重複したポートを削除する関数
-    
+
     Args:
         port_list (list): ポート番号のリスト
-        
+
     Returns:
         list: 重複を削除したポート番号のリスト
     """
@@ -591,16 +601,16 @@ def remove_duplicate_ports(port_list):
 #  remove encoded chars
 # + ----------------------------------------------------------------
 
+
 def remove_encoded_chars(url):
     import re
 
-    encoded_pattern = r'%[0-9A-F]{2}'
-    cleaned_url = re.sub(encoded_pattern, '', url)
+    encoded_pattern = r"%[0-9A-F]{2}"
+    cleaned_url = re.sub(encoded_pattern, "", url)
     return cleaned_url
 
 
-
-def rescore_main_content(main_content : dict, driver= None):
+def rescore_main_content(main_content: dict, driver=None):
     if not isinstance(main_content, dict):
         raise TypeError("main_content must be a dictionary")
 
@@ -608,7 +618,6 @@ def rescore_main_content(main_content : dict, driver= None):
     main_rect = main_content.get("rect", {"x": 0, "y": 0, "width": 0, "height": 0})
     main_width = main_rect.get("width", 0)
     main_height = main_rect.get("height", 0)
-
 
     # メインコンテンツの子ノードを取得
     child_nodes = main_content.get("children", [])
@@ -633,6 +642,7 @@ def rescore_main_content(main_content : dict, driver= None):
     child_node_dicts.sort(key=lambda x: x["score"], reverse=True)
 
     return child_node_dicts
+
 
 def create_child_node_dicts(child_nodes) -> list[Dict]:
     """
@@ -661,10 +671,10 @@ def create_child_node_dicts(child_nodes) -> list[Dict]:
             "attributes": attributes,
             "children": create_child_node_dicts(child.get("children", [])),  # 再帰的に子ノードを処理
             "rect": rect,
-            "depth" : child.get("depth", 1),  # 深さを設定
+            "depth": child.get("depth", 1),  # 深さを設定
             "score": 0,  # スコアを初期化
-            "text" : child.get("text", []),  # テキスト情報を設定
-            "links" : child.get("links", []),  # リンク情報を設定
+            "text": child.get("text", []),  # テキスト情報を設定
+            "links": child.get("links", []),  # リンク情報を設定
         }
 
         # 新しい辞書をリストに追加
@@ -673,7 +683,7 @@ def create_child_node_dicts(child_nodes) -> list[Dict]:
     return child_node_dicts
 
 
-def get_subtree(node : Dict) -> list[Dict]:
+def get_subtree(node: Dict) -> list[Dict]:
     """
     指定されたノードとその子ノードの情報を再帰的に取得する関数。
 
@@ -689,18 +699,19 @@ def get_subtree(node : Dict) -> list[Dict]:
     def recurse(n: Dict):
         current_node = n.copy()
         # Remove children from the current node to avoid infinite loops
-        current_node.pop('children', None)
+        current_node.pop("children", None)
 
         # Add the current node to the subtree list
         subtree.append(current_node)
 
         # Check if the node has children
-        if 'children' in n:
-            for child in n['children']:
+        if "children" in n:
+            for child in n["children"]:
                 recurse(child)
 
     recurse(node)
     return subtree
+
 
 # + ----------------------------------------------------------------
 # + ----------------------------------------------------------------
@@ -717,7 +728,7 @@ def get_all_children(node: Dict[str, Any]) -> List[Dict[str, Any]]:
     if not isinstance(node, dict):
         return []
 
-    children = node.get('children', [])
+    children = node.get("children", [])
     all_children = []
 
     for child in children:
@@ -725,6 +736,7 @@ def get_all_children(node: Dict[str, Any]) -> List[Dict[str, Any]]:
         all_children.extend(get_all_children(child))
 
     return all_children
+
 
 def update_nodes_with_children(data: Union[Dict[str, Any], List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
     """
@@ -745,36 +757,35 @@ def update_nodes_with_children(data: Union[Dict[str, Any], List[Dict[str, Any]]]
         # all_children = get_all_children(data)
         # data['all_children'] = all_children
         updated_nodes.append(data)
-        if 'children' in data:
-            updated_nodes.extend(update_nodes_with_children(data['children']))
+        if "children" in data:
+            updated_nodes.extend(update_nodes_with_children(data["children"]))
 
     return updated_nodes
 
 
-
 async def detect_main_content(url: str, page: Page) -> List[Dict]:
     try:
-        await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
 
-        await page.wait_for_selector('body', state='attached', timeout=30000)
+        await page.wait_for_selector("body", state="attached", timeout=30000)
 
         try:
-            await page.wait_for_load_state('networkidle', timeout=30000)
+            await page.wait_for_load_state("networkidle", timeout=30000)
         except PlaywrightTimeoutError:
             print("Network did not become idle within 30 seconds, continuing anyway.")
 
         await page.set_viewport_size({"width": 1920, "height": 1080})
 
-        dimensions = await page.evaluate('''() => {
+        dimensions = await page.evaluate("""() => {
             return {
                 width: Math.max(document.body.scrollWidth, document.body.offsetWidth, document.documentElement.clientWidth, document.documentElement.scrollWidth, document.documentElement.offsetWidth),
                 height: Math.max(document.body.scrollHeight, document.body.offsetHeight, document.documentElement.clientHeight, document.documentElement.scrollHeight, document.documentElement.offsetHeight)
             }
-        }''')
+        }""")
 
-        await page.set_viewport_size({"width": dimensions['width'], "height": dimensions['height']})
+        await page.set_viewport_size({"width": dimensions["width"], "height": dimensions["height"]})
 
-        await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+        await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
         await page.wait_for_timeout(2000)
 
         tree = await get_tree(page)
@@ -785,7 +796,7 @@ async def detect_main_content(url: str, page: Page) -> List[Dict]:
 
         tree = [tree]  # Convert tree to list[Dict]
 
-        scorer = MainContentScorer(tree, dimensions['width'], dimensions['height'])
+        scorer = MainContentScorer(tree, dimensions["width"], dimensions["height"])
         candidates = scorer.find_candidates()
 
         # save_json(candidates, f"{__file__}.json")
@@ -802,7 +813,7 @@ async def detect_main_content(url: str, page: Page) -> List[Dict]:
         return []
 
 
-def rescore_main_content_with_children(main_content : Dict, driver=None) -> list[Dict]:
+def rescore_main_content_with_children(main_content: Dict, driver=None) -> list[Dict]:
     if not isinstance(main_content, dict):
         raise TypeError("main_content must be a dictionary")
 
@@ -810,7 +821,6 @@ def rescore_main_content_with_children(main_content : Dict, driver=None) -> list
     main_rect = main_content.get("rect", {"x": 0, "y": 0, "width": 0, "height": 0})
     main_width = main_rect.get("width", 0)
     main_height = main_rect.get("height", 0)
-
 
     # 親ノードとその子ノードのlistを作成
     scorer_list = update_nodes_with_children(main_content)
@@ -830,6 +840,7 @@ def rescore_main_content_with_children(main_content : Dict, driver=None) -> list
 
     return scored_nodes
 
+
 # error chackintg
 def print_error_details(e):
     print(f"Error type: {type(e).__name__}")
@@ -841,13 +852,14 @@ def print_error_details(e):
 async def fetch_robots_txt(url):
     """Fetch robots.txt content from the target website"""
     parsed_url = urlparse(url)
-    robots_url = urljoin(f"{parsed_url.scheme}://{parsed_url.netloc}", '/robots.txt')
+    robots_url = urljoin(f"{parsed_url.scheme}://{parsed_url.netloc}", "/robots.txt")
 
     async with aiohttp.ClientSession() as session:
         async with session.get(robots_url) as response:
             if response.status == 200:
                 return await response.text()
             return None
+
 
 def is_scraping_allowed(robots_txt, target_path):
     """Check if scraping is allowed for the given path based on robots.txt"""
@@ -875,10 +887,9 @@ async def test_main(url):
                 print(f"Scraping is not allowed on this URL: {url}")
                 return
 
-
-        #browser = await p.chromium.launch(headless=False, args=['--start-maximized'])
+        # browser = await p.chromium.launch(headless=False, args=['--start-maximized'])
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
+        context = await browser.new_context(viewport={"width": 1920, "height": 1080})
         page = await context.new_page()
         # page = await context.new_page()
         # page = await browser.new_page()
@@ -912,7 +923,9 @@ async def test_main(url):
                         break
 
                     print(f" tmp_main tag : {tmp_main_content['tag']} main tag : {main_contents[0]['tag']}")
-                    print(f'tmp_candidates score : {tmp_main_content["score"]}  & main_contents {main_contents[0]["score"]}')
+                    print(
+                        f"tmp_candidates score : {tmp_main_content['score']}  & main_contents {main_contents[0]['score']}"
+                    )
                     if tmp_main_content["score"] >= main_contents[0]["score"]:
                         break
 
@@ -941,6 +954,7 @@ async def test_main(url):
         finally:
             await browser.close()
 
+
 async def choice_content(url: str, **kwargs):
     """
     Scrapes a webpage and extracts a tree structure based on provided filters.
@@ -954,23 +968,23 @@ async def choice_content(url: str, **kwargs):
     """
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
+        context = await browser.new_context(viewport={"width": 1920, "height": 1080})
         page = await context.new_page()
 
         try:
             # Navigate to the page with longer timeout
-            await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
 
             # Wait for initial page load
-            await page.wait_for_selector('body', state='attached', timeout=30000)
+            await page.wait_for_selector("body", state="attached", timeout=30000)
 
             try:
-                await page.wait_for_load_state('networkidle', timeout=30000)
+                await page.wait_for_load_state("networkidle", timeout=30000)
             except PlaywrightTimeoutError:
                 print("Network did not become idle within 30 seconds, continuing anyway.")
 
             # Get page dimensions
-            dimensions = await page.evaluate('''() => {
+            dimensions = await page.evaluate("""() => {
                 return {
                     width: Math.max(document.body.scrollWidth, document.body.offsetWidth, 
                                   document.documentElement.clientWidth, document.documentElement.scrollWidth, 
@@ -979,13 +993,13 @@ async def choice_content(url: str, **kwargs):
                                    document.documentElement.clientHeight, document.documentElement.scrollHeight, 
                                    document.documentElement.offsetHeight)
                 }
-            }''')
+            }""")
 
             # Set viewport to full page size
-            await page.set_viewport_size({"width": dimensions['width'], "height": dimensions['height']})
+            await page.set_viewport_size({"width": dimensions["width"], "height": dimensions["height"]})
 
             # Scroll through the page to ensure all content is loaded
-            await page.evaluate('''
+            await page.evaluate("""
                 async () => {
                     await new Promise((resolve) => {
                         let totalHeight = 0;
@@ -1002,7 +1016,7 @@ async def choice_content(url: str, **kwargs):
                         }, 100);
                     });
                 }
-            ''')
+            """)
 
             # Extract parameters from kwargs
             tag = kwargs.get("tag")
@@ -1054,24 +1068,24 @@ async def choice_content(url: str, **kwargs):
             await browser.close()
 
 
-
 if __name__ == "__main__":
     # 使用例
     url = "https://loopholes.site/"
-    #url = " https://mangakoma01.net/manga/zhou-shu-hui-zhana004"
+    # url = " https://mangakoma01.net/manga/zhou-shu-hui-zhana004"
     # url = "http://animesoku.com/archives/38156477.html"
 
     asyncio.run(test_main(url))
     choice_dict = {
         "id": "ld_blog_article_comment_entries",
         "tag": "ol",
-        "attributes": {"id": "ld_blog_article_comment_entries"}
+        "attributes": {"id": "ld_blog_article_comment_entries"},
     }
 
-    ch_tree=  asyncio.run(choice_content(url,**choice_dict))
+    ch_tree = asyncio.run(choice_content(url, **choice_dict))
     print(ch_tree)
 
     import datetime
+
     print(datetime.datetime.now())
 
     # import requests

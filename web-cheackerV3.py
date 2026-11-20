@@ -28,7 +28,7 @@ import util_str
 # +----------------------------------------------------------------
 SCRIPT_PATH = os.path.dirname(os.path.abspath(__file__))
 SAVE_CSV_DIR_PATH = os.path.join(SCRIPT_PATH, "./data/cheacker_url.csv")
-SAVE_JSON_DIR_PATH  = os.path.join(SCRIPT_PATH, "./data/json/")
+SAVE_JSON_DIR_PATH = os.path.join(SCRIPT_PATH, "./data/json/")
 USER_DIR_PATH = os.path.join(SCRIPT_PATH, "./user")
 
 # カレントディレクトリをpythonパスに追加する
@@ -38,9 +38,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # pandas option
 # +----------------------------------------------------------------
 # 表示オプションを変更して、すべての行と列を表示する
-pd.set_option('display.max_rows', None)
-pd.set_option('display.max_columns', None)
-
+pd.set_option("display.max_rows", None)
+pd.set_option("display.max_columns", None)
 
 
 # +----------------------------------------------------------------
@@ -50,7 +49,7 @@ LOGGER_DATEFORMAT = "%Y%m%d_%H%M%S"
 nowtime = datetime.now()
 formatted_now = nowtime.strftime(LOGGER_DATEFORMAT)
 
-logger = setup_logger("web-cheacker",log_file=f"./log/web-chk_{formatted_now}.log")
+logger = setup_logger("web-cheacker", log_file=f"./log/web-chk_{formatted_now}.log")
 
 logger.debug(SCRIPT_PATH)
 
@@ -65,8 +64,7 @@ class User:
     def __init__(self, directory):
         util_str.util_handle_path("./users/")
 
-        self.directory = os.path.join("users",directory)
-
+        self.directory = os.path.join("users", directory)
 
         self.data_file_path = os.path.join(self.directory, "cheacker_url.json")
         self.data_file_path = os.path.abspath(self.data_file_path)
@@ -84,22 +82,22 @@ class User:
 
     # mail settings
     def load_mail_settings(self):
-        config_pass = os.path.join(self.directory,"mail.yaml")
+        config_pass = os.path.join(self.directory, "mail.yaml")
         logger.debug(config_pass)
 
-        with open(config_pass)as f :
+        with open(config_pass) as f:
             self.yaml_file = yaml.safe_load(f)
 
     def load_app_config(self):
         """アプリケーション全体の設定を読み込む"""
         config_path = os.path.join(self.directory, "config.yaml")
         try:
-            with open(config_path, 'r', encoding='utf-8') as f:
+            with open(config_path, "r", encoding="utf-8") as f:
                 self.config = yaml.safe_load(f)
                 logger.info(f"Loaded app config from {config_path}")
         except FileNotFoundError:
             logger.warning(f"App config file not found at {config_path}. Using default behaviors.")
-            self.config = {} # 設定ファイルがなくてもエラーにならないように空の辞書をセット
+            self.config = {}  # 設定ファイルがなくてもエラーにならないように空の辞書をセット
         except Exception as e:
             logger.error(f"Error loading app config: {e}")
             self.config = {}
@@ -111,10 +109,11 @@ class User:
                 self.yaml_file["gmail"]["receiver_mail"],
                 body=body,
                 body_type=body_type,
-                image_list=image_list
+                image_list=image_list,
             )
 
-        else : logger.warning("not send mail")
+        else:
+            logger.warning("not send mail")
 
 
 # +----------------------------------------------------------------
@@ -131,8 +130,8 @@ class NotificationManager:
 
         logger.info(f"Processing update notifications for {len(diff_urls)} URLs...")
 
-        notification_type = self.config.get('notification', {}).get('type', 'none')
-        if notification_type != 'email':
+        notification_type = self.config.get("notification", {}).get("type", "none")
+        if notification_type != "email":
             logger.info("Email notification is disabled in config. Skipping.")
             return
 
@@ -148,8 +147,8 @@ class NotificationManager:
 
         logger.info(f"Processing error notifications for {len(error_list)} errors...")
 
-        notification_config = self.config.get('notification', {})
-        if notification_config.get('type', 'none') != 'email' or not notification_config.get('notify_on_error', False):
+        notification_config = self.config.get("notification", {})
+        if notification_config.get("type", "none") != "email" or not notification_config.get("notify_on_error", False):
             logger.info("Error notification via email is disabled in config. Skipping.")
             return
 
@@ -161,27 +160,26 @@ class NotificationManager:
         logger.info("Sending error report email...")
         self.user.send_resultmail("\n".join(error_body_lines), body_type="html")
 
+
 # +----------------------------------------------------------------
 # + json function
 # +----------------------------------------------------------------
-def save_json(data : dict,
-              url : str,
-              directory=SAVE_JSON_DIR_PATH):
+def save_json(data: dict, url: str, directory=SAVE_JSON_DIR_PATH):
     """
     辞書型のデータをJSONファイルとして保存する
-    
+
     Args:
         data (dict): 保存するデータ
         url (str): データに対応するURL
         directory (str): JSONファイルを保存するディレクトリのパス
-    Retrun: 
+    Retrun:
         None
     """
     domain = util_str.get_domain(url)
     file_path = os.path.join(directory, f"{domain}.json")
     util_str.util_handle_path(file_path)  # ファイルを作成または取得する
 
-    with open(file_path, 'w', encoding='utf-8') as f:
+    with open(file_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
 
@@ -204,9 +202,11 @@ LEGACY_DATE_FORMATS = [
     (re.compile(r"^\d{2}:\d{2}$"), "%H:%M"),
 ]
 
+
 def get_Strdatetime() -> str:
     """Returns the current time as a UTC ISO 8601 string."""
-    return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
 
 def safe_parse_datetime(date_str: str) -> datetime:
     """
@@ -218,8 +218,8 @@ def safe_parse_datetime(date_str: str) -> datetime:
 
     # Try ISO 8601 format (handles 'Z' and timezone offsets)
     try:
-        if date_str.endswith('Z'):
-            return datetime.fromisoformat(date_str[:-1] + '+00:00')
+        if date_str.endswith("Z"):
+            return datetime.fromisoformat(date_str[:-1] + "+00:00")
         return datetime.fromisoformat(date_str)
     except ValueError:
         pass  # Not ISO format, fall through to legacy
@@ -252,9 +252,9 @@ def get_last_modified(url: str) -> str | None:
     try:
         # タイムアウトを設定して、応答がない場合に長時間待たないようにする
         response = requests.head(url, timeout=10)
-        response.raise_for_status() # 200番台以外のステータスコードで例外を発生
+        response.raise_for_status()  # 200番台以外のステータスコードで例外を発生
 
-        last_modified_header = response.headers.get('Last-Modified')
+        last_modified_header = response.headers.get("Last-Modified")
         if last_modified_header:
             # 例: "Wed, 21 Oct 2015 07:28:00 GMT" -> datetimeオブジェクトに変換
             dt_object = parsedate_to_datetime(last_modified_header)
@@ -268,6 +268,7 @@ def get_last_modified(url: str) -> str | None:
 
     return None
 
+
 # + ----------------------------------------------------------------
 #  remove encoded chars
 # + ----------------------------------------------------------------
@@ -275,8 +276,8 @@ import re
 
 
 def remove_encoded_chars(url):
-    encoded_pattern = r'%[0-9A-F]{2}'
-    cleaned_url = re.sub(encoded_pattern, '', url)
+    encoded_pattern = r"%[0-9A-F]{2}"
+    cleaned_url = re.sub(encoded_pattern, "", url)
     return cleaned_url
 
 
@@ -284,13 +285,14 @@ def remove_encoded_chars(url):
 # csv function
 # +----------------------------------------------------------------
 
-CSV_COLUMN = { "url" : 0, # scraping url
-               "run_code" : 1, # datetime for code of the run for
-               "result_vl" : 2 ,
-               "updated_datetime" : 3,
-               "full_scan_datetime"  : 4,
-               "css_selector_list" : 5,
-               "web_page_type" : 6,
+CSV_COLUMN = {
+    "url": 0,  # scraping url
+    "run_code": 1,  # datetime for code of the run for
+    "result_vl": 2,
+    "updated_datetime": 3,
+    "full_scan_datetime": 4,
+    "css_selector_list": 5,
+    "web_page_type": 6,
 }
 
 
@@ -300,25 +302,28 @@ class DataManager:
         self.lock = threading.Lock()
         try:
             with self.lock:
-                self.df = pd.read_json(self.file_path, orient='records', encoding='utf-8')
+                self.df = pd.read_json(self.file_path, orient="records", encoding="utf-8")
         except (FileNotFoundError, ValueError):
-            self.df = pd.DataFrame(columns=[
-                "url", "run_code", "result_vl", "updated_datetime",
-                "full_scan_datetime", "css_selector_list", "web_page_type", "image_filename"
-            ])
+            self.df = pd.DataFrame(
+                columns=[
+                    "url",
+                    "run_code",
+                    "result_vl",
+                    "updated_datetime",
+                    "full_scan_datetime",
+                    "css_selector_list",
+                    "web_page_type",
+                    "image_filename",
+                ]
+            )
 
-        if 'css_selector_list' not in self.df.columns:
-            self.df['css_selector_list'] = [[] for _ in range(len(self.df))]
-        if 'image_filename' not in self.df.columns:
-            self.df['image_filename'] = ""
+        if "css_selector_list" not in self.df.columns:
+            self.df["css_selector_list"] = [[] for _ in range(len(self.df))]
+        if "image_filename" not in self.df.columns:
+            self.df["image_filename"] = ""
 
-        self.df = self.df.fillna({
-            'web_page_type': '',
-            'result_vl': '',
-            'full_scan_datetime': '',
-            'image_filename': ''
-        })
-        self.df['css_selector_list'] = self.df['css_selector_list'].apply(lambda x: x if isinstance(x, list) else [])
+        self.df = self.df.fillna({"web_page_type": "", "result_vl": "", "full_scan_datetime": "", "image_filename": ""})
+        self.df["css_selector_list"] = self.df["css_selector_list"].apply(lambda x: x if isinstance(x, list) else [])
 
         self.before_df = self.df.copy()
         logger.info(f"Loaded data:\n{self.df}")
@@ -332,7 +337,7 @@ class DataManager:
             "updated_datetime": get_Strdatetime(),
             "css_selector_list": dom_tree.css_selector_list,
             "web_page_type": dom_tree.web_type,
-            "url": dom_tree.url
+            "url": dom_tree.url,
         }
         for key, value in record.items():
             self.df.at[index, key] = value
@@ -368,34 +373,32 @@ class DataManager:
 
     def update_image_filename(self, url: str, filename: str):
         """Updates the image_filename for a given URL."""
-        index = self.df[self.df['url'] == url].index
+        index = self.df[self.df["url"] == url].index
         if not index.empty:
             # Get just the filename, not the full path
             base_filename = os.path.basename(filename)
-            self.df.loc[index, 'image_filename'] = base_filename
+            self.df.loc[index, "image_filename"] = base_filename
             logger.info(f"Updated image_filename for {url} to {base_filename}")
 
     def save_data(self):
         with self.lock:
-            self.df['run_code'] = get_Strdatetime()
-            self.df.to_json(self.file_path, orient='records', force_ascii=False, indent=4)
+            self.df["run_code"] = get_Strdatetime()
+            self.df.to_json(self.file_path, orient="records", force_ascii=False, indent=4)
 
     def chk_diff(self) -> list:
         # result_vl列を比較して差分を検出
-        diff_mask = self.df['result_vl'] != self.before_df['result_vl']
-        diff_urls = self.df.loc[diff_mask, 'url'].tolist()
+        diff_mask = self.df["result_vl"] != self.before_df["result_vl"]
+        diff_urls = self.df.loc[diff_mask, "url"].tolist()
         logger.info(f"Found {len(diff_urls)} updated URLs: {diff_urls}")
         return diff_urls
+
 
 # csv function end ----------------------------------------------------------------
 
 
-async def process_url_async(url: str,
-                            index_num: int,
-                            data_manager: DataManager,
-                            error_list: list,
-                            config: dict,
-                            semaphore: asyncio.Semaphore):
+async def process_url_async(
+    url: str, index_num: int, data_manager: DataManager, error_list: list, config: dict, semaphore: asyncio.Semaphore
+):
     """
     非同期で単一のURLを処理するワーカー関数。
     セマフォを使用して同時実行数を制御します。
@@ -405,9 +408,9 @@ async def process_url_async(url: str,
             start_time = datetime.now()
             record = data_manager.get_record_as_dict(index_num)
 
-            css_selector_list = record.get('css_selector_list', [])
-            full_scan_datetime_str = record.get('full_scan_datetime', '')
-            web_page_type = record.get('web_page_type', '')
+            css_selector_list = record.get("css_selector_list", [])
+            full_scan_datetime_str = record.get("full_scan_datetime", "")
+            web_page_type = record.get("web_page_type", "")
 
             diff_days = 99
             if full_scan_datetime_str:
@@ -421,9 +424,7 @@ async def process_url_async(url: str,
             if css_selector_list and diff_days < 4 and web_page_type:
                 logger.info(f"QUICK SCAN URL: {url}, index: {index_num}")
                 rescored_candidate = await run_quick_scan_standalone(
-                    url=url,
-                    css_selector_list=css_selector_list,
-                    webtype_str=web_page_type
+                    url=url, css_selector_list=css_selector_list, webtype_str=web_page_type
                 )
 
             # Fullスキャン (Quickスキャンしなかった、または失敗した場合)
@@ -431,13 +432,10 @@ async def process_url_async(url: str,
                 if css_selector_list:
                     # logger.info(f"Quick scan failed. Falling back to FULL SCAN for URL: {url}")
                     pass
-                #else:
+                # else:
                 logger.info(f"FULL SCAN URL: {url}, index: {index_num}")
 
-                rescored_candidate = await run_full_scan_standalone(
-                    url=record['url'],
-                    arg_webtype=web_page_type
-                )
+                rescored_candidate = await run_full_scan_standalone(url=record["url"], arg_webtype=web_page_type)
 
                 if rescored_candidate:
                     if rescored_candidate.is_empty_result:
@@ -460,7 +458,7 @@ async def process_url_async(url: str,
                     error_list.append([url, "Empty result page detected"])
                     data_manager.clear_scan_data(index_num)
                     return
-                if not web_page_type or record['result_vl'] != new_hash:
+                if not web_page_type or record["result_vl"] != new_hash:
                     data_manager.update_scan_result(index_num, rescored_candidate)
             else:
                 logger.error(f"Scan process resulted in None for URL: {url}")
@@ -469,7 +467,7 @@ async def process_url_async(url: str,
 
             # タイムアウトチェック
             duration = (datetime.now() - start_time).total_seconds()
-            timeout_sec = config.get('scan', {}).get('timeout_per_url', 60)
+            timeout_sec = config.get("scan", {}).get("timeout_per_url", 60)
             if duration > timeout_sec:
                 timeout_msg = f"Processing time exceeded {timeout_sec} sec -> {duration:.2f} sec"
                 logger.warning(f"TIMEOUT for {url}: {timeout_msg}")
@@ -489,7 +487,7 @@ async def main():
     notification_manager = NotificationManager(user)
 
     # 一時フォルダのクリーンアップ
-    temp_dir = config.get('screenshot', {}).get('temporary_dir', 'temp_image')
+    temp_dir = config.get("screenshot", {}).get("temporary_dir", "temp_image")
     if os.path.isdir(temp_dir):
         shutil.rmtree(temp_dir)
 
@@ -499,15 +497,15 @@ async def main():
     error_list = []
 
     # 同時実行数を設定から取得
-    worker_count = config.get('scan', {}).get('worker_threads', 2)
+    worker_count = config.get("scan", {}).get("worker_threads", 2)
     semaphore = asyncio.Semaphore(worker_count)
     logger.info(f"Starting {worker_count} async workers...")
 
     tasks = []
     for index, row in data_manager.df.iterrows():
-        if 'url' in row and row['url']:
+        if "url" in row and row["url"]:
             task = asyncio.create_task(
-                process_url_async(row['url'], index, data_manager, error_list, config, semaphore)
+                process_url_async(row["url"], index, data_manager, error_list, config, semaphore)
             )
             tasks.append(task)
 
@@ -522,23 +520,26 @@ async def main():
     email_image_list = []
     if diff_urls:
         # --- Screenshot Generation ---
-        ss_config = config.get('screenshot', {})
-        if ss_config.get('enabled', False):
-            temp_dir = ss_config.get('temporary_dir', 'temp_image')
-            perm_dir = user.image_dir_path # Use the correct path
-            email_width = ss_config.get('email_width', 500)
-            perm_width = ss_config.get('permanent_width', 1920)
+        ss_config = config.get("screenshot", {})
+        if ss_config.get("enabled", False):
+            temp_dir = ss_config.get("temporary_dir", "temp_image")
+            perm_dir = user.image_dir_path  # Use the correct path
+            email_width = ss_config.get("email_width", 500)
+            perm_width = ss_config.get("permanent_width", 1920)
 
             permanent_image_list = []
             async with async_playwright() as p:
                 browser = await p.chromium.launch()
                 logger.info(f"Generating screenshots for email to {temp_dir}...")
-                email_image_list = await save_screenshot(browser, url_list=diff_urls, save_dir=temp_dir, width=email_width)
+                email_image_list = await save_screenshot(
+                    browser, url_list=diff_urls, save_dir=temp_dir, width=email_width
+                )
 
                 logger.info(f"Generating screenshots for permanent storage to {perm_dir}...")
-                permanent_image_list = await save_screenshot(browser, url_list=diff_urls, save_dir=perm_dir, width=perm_width)
+                permanent_image_list = await save_screenshot(
+                    browser, url_list=diff_urls, save_dir=perm_dir, width=perm_width
+                )
                 await browser.close()
-
 
             # --- Update DataFrame with permanent image filenames ---
             if permanent_image_list:
@@ -565,6 +566,7 @@ async def main():
         shutil.rmtree(temp_dir)
 
     logger.info(f"{data_manager.df}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

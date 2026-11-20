@@ -11,6 +11,7 @@ from .dom_utils import flatten_dom_tree
 
 logger = setup_logger("quality_evaluator")
 
+
 async def is_no_results_page(page: Page, dom_tree: DOMTreeSt) -> bool:
     """
     ページが「結果なし」ページであるかを高速で判定します。
@@ -64,6 +65,7 @@ async def is_no_results_page(page: Page, dom_tree: DOMTreeSt) -> bool:
     # If no expected container is found after all other checks, it's likely a no-results page.
     return True
 
+
 def _is_valid_result_item(item_node: DOMTreeSt) -> bool:
     """
     個々のノードが有効な検索結果アイテムであるかを検証します。
@@ -73,6 +75,7 @@ def _is_valid_result_item(item_node: DOMTreeSt) -> bool:
     has_link = len(item_node.links) > 0
     has_enough_text = len(item_node.text.split()) >= 10
     return has_link and has_enough_text
+
 
 def _find_result_container(main_content_node: DOMTreeSt) -> Optional[DOMTreeSt]:
     """
@@ -88,7 +91,7 @@ def _find_result_container(main_content_node: DOMTreeSt) -> Optional[DOMTreeSt]:
             continue
 
         class_counts = Counter(
-            child.attributes.get('class') for child in node.children if child.attributes.get('class')
+            child.attributes.get("class") for child in node.children if child.attributes.get("class")
         )
 
         if not class_counts:
@@ -111,6 +114,7 @@ def _find_result_container(main_content_node: DOMTreeSt) -> Optional[DOMTreeSt]:
             best_container = node
 
     return best_container
+
 
 def quantify_search_results(main_content_node: DOMTreeSt) -> DOMTreeSt:
     """フェーズ2：検索結果アイテムの定量化を実行します。"""

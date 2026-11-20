@@ -13,11 +13,13 @@ from .dom_treeSt import DOMTreeSt
 
 logger = setup_logger("relevance_scorer")
 
+
 class RelevanceScorer:
     """
     検索クエリと結果アイテムリストの関連性をスコアリングするクラス。
     """
-    def __init__(self, model_name='all-MiniLM-L6-v2'):
+
+    def __init__(self, model_name="all-MiniLM-L6-v2"):
         """
         Args:
             model_name (str): sentence-transformersで使用する事前学習済みモデル名。
@@ -28,7 +30,9 @@ class RelevanceScorer:
         except Exception as e:
             logger.error(f"SentenceTransformerモデルの読み込みに失敗しました: {e}")
             # アプリケーションを停止させるか、明確なエラーを投げる
-            raise ImportError("SentenceTransformerの初期化に失敗しました。`pip install sentence-transformers` を確認してください。") from e
+            raise ImportError(
+                "SentenceTransformerの初期化に失敗しました。`pip install sentence-transformers` を確認してください。"
+            ) from e
         self.tfidf_vectorizer = TfidfVectorizer()
 
     def _calculate_jaccard(self, text1: str, text2: str) -> float:
@@ -63,40 +67,38 @@ class RelevanceScorer:
 
             # 4. ハイブリッドスコアの計算 (重みは設定ファイルで管理することを推奨)
             relevance_score = (
-                (0.2 * jaccard_score) +
-                (0.3 * tfidf_scores[i]) +
-                (0.5 * float(semantic_scores[i]))  # numpy.float32をfloatにキャスト
+                (0.2 * jaccard_score)
+                + (0.3 * tfidf_scores[i])
+                + (0.5 * float(semantic_scores[i]))  # numpy.float32をfloatにキャスト
             )
             item.relevance_score = relevance_score
 
         return items
 
-    def calculate_sqs(self,
-                      result_count: int,
-                      avg_relevance: float,
-                      relevance_variance: float,
-                      max_relevance: float) -> tuple[float, str]:
+    def calculate_sqs(
+        self, result_count: int, avg_relevance: float, relevance_variance: float, max_relevance: float
+    ) -> tuple[float, str]:
         """SQSスコアと品質カテゴリを計算して返す。"""
         if result_count == 0:
             return 0, "Invalid/Empty"
 
-        weights = QUALITY_SCORING_CONFIG['sqs_weights']
-        thresholds = QUALITY_SCORING_CONFIG['sqs_thresholds']
+        weights = QUALITY_SCORING_CONFIG["sqs_weights"]
+        thresholds = QUALITY_SCORING_CONFIG["sqs_thresholds"]
 
         # SQS計算式の各項を計算
-        count_score = math.log(result_count + 1) * weights['result_count']
-        avg_rel_score = avg_relevance * weights['avg_relevance']
-        variance_penalty = relevance_variance * weights['relevance_variance']
-        max_rel_score = max_relevance * weights['max_relevance']
+        count_score = math.log(result_count + 1) * weights["result_count"]
+        avg_rel_score = avg_relevance * weights["avg_relevance"]
+        variance_penalty = relevance_variance * weights["relevance_variance"]
+        max_rel_score = max_relevance * weights["max_relevance"]
 
         # SQSを計算 (スケールを100点満点に調整)
         sqs = (count_score + avg_rel_score - variance_penalty + max_rel_score) * 100
         sqs_score = max(0, sqs)  # 負の値にならないようにする
 
         # 最終分類
-        if sqs_score >= thresholds['valid']:
+        if sqs_score >= thresholds["valid"]:
             quality_category = "Valid"
-        elif sqs_score >= thresholds['low_quality']:
+        elif sqs_score >= thresholds["low_quality"]:
             quality_category = "Low Quality"
         else:
             quality_category = "Invalid/Empty"
