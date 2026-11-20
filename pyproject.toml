@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "web-cheacker-mainditect"
 version = "0.1.0"
 description = "A web checker and content extraction tool."
-readme = "readme.md"
+readme = "README.md"
 requires-python = ">=3.8"
 license = "MIT"
 authors = [
@@ -26,6 +26,9 @@ dependencies = [
   "requests",
 ]
 
+[tool.hatch.build.targets.wheel]
+# Flat-layout scripts (no package named after the project): skip file selection
+bypass-selection = true
 [project.urls]
 Homepage = "https://github.com/user/repo" # Change to your repo URL
 
@@ -37,6 +40,13 @@ dev = [
   "pytest-mock",
   "pytest-asyncio",
   "pytest-cov",
+  "ruff",
+  "mypy",
+]
+
+# Mutation testing (Linux / WSL2 / CI only): uv sync --extra dev --extra mutation
+mutation = [
+  "mutmut>=3.0.0",
 ]
 
 [tool.hatch.scripts]

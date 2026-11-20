@@ -1,0 +1,169 @@
+name: Mutation Test (PR Diff)
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'src/**/*.py'
+      - 'app/**/*.py'
+      - 'tests/**/*.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-pr-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mutmut-diff:
+    runs-on: ubuntu-latest # mutmut v3 は os.fork 依存のため Linux 必須
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # テンプレート初期状態や非対象プロジェクトで失敗しないための opt-in ガード
+      - name: Detect mutation testing opt-in
+        id: optin
+        shell: bash
+        run: |
+          if [ -f "pyproject.toml" ] && [ -f "uv.lock" ] && grep -Eq '^[[:space:]]*\[tool\.mutmut\][[:space:]]*$' pyproject.toml; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up uv
+        if: steps.optin.outputs.enabled == 'true'
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync dependencies
+        if: steps.optin.outputs.enabled == 'true'
+        shell: bash
+        run: uv sync --frozen --extra dev --extra mutation
+
+      # PR 内の再 push でも最新キャッシュを保存できるよう github.sha をキーに含める
+      - name: Restore and save mutmut cache
+        if: steps.optin.outputs.enabled == 'true'
+        uses: actions/cache@v4
+        with:
+          path: mutants/
+          key: mutmut-pr-${{ github.ref_name }}-${{ hashFiles('uv.lock') }}-${{ github.sha }}
+          restore-keys: |
+            mutmut-pr-${{ github.ref_name }}-${{ hashFiles('uv.lock') }}-
+            mutmut-main-${{ hashFiles('uv.lock') }}-
+            mutmut-main-
+
+      - name: Determine mutation scope
+        id: scope
+        if: steps.optin.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "mode=incremental" >> "$GITHUB_OUTPUT"
+            echo "patterns=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          CHANGED_SRC=$(git diff --name-only --diff-filter=ACMR "${BASE_SHA}...HEAD" -- 'src/**/*.py' 'app/**/*.py')
+          CHANGED_TESTS=$(git diff --name-only --diff-filter=ACMR "${BASE_SHA}...HEAD" -- 'tests/**/*.py' 'pyproject.toml' 'uv.lock')
+
+          if [ -n "$CHANGED_SRC" ]; then
+            PATTERNS=$(printf '%s\n' "$CHANGED_SRC" \
+              | sed -E 's|^src/||; s|\.py$||; s|/|.|g; s|(^|\.)__init__$||' \
+              | awk 'NF {print $1".*"}' \
+              | sort -u \
+              | tr '\n' ' ')
+            PATTERNS="${PATTERNS% }"
+            if [ -n "$PATTERNS" ]; then
+              echo "mode=diff" >> "$GITHUB_OUTPUT"
+              echo "patterns=${PATTERNS}" >> "$GITHUB_OUTPUT"
+            else
+              echo "mode=skip" >> "$GITHUB_OUTPUT"
+              echo "patterns=" >> "$GITHUB_OUTPUT"
+            fi
+          elif [ -n "$CHANGED_TESTS" ]; then
+            # テスト追加・修正のみの PR でも Survived 解消を検証する（キャッシュ前提のインクリメンタル実行）
+            echo "mode=incremental" >> "$GITHUB_OUTPUT"
+            echo "patterns=" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=skip" >> "$GITHUB_OUTPUT"
+            echo "patterns=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run mutmut
+        if: steps.optin.outputs.enabled == 'true' && steps.scope.outputs.mode != 'skip'
+        continue-on-error: true # 初期はハードゲートにせず可視化・キャッシュ更新を優先
+        shell: bash
+        env:
+          MUTMUT_MODE: ${{ steps.scope.outputs.mode }}
+          MUTMUT_PATTERNS: ${{ steps.scope.outputs.patterns }}
+        run: |
+          if [ "$MUTMUT_MODE" = "diff" ] && [ -n "$MUTMUT_PATTERNS" ]; then
+            set -f # ワイルドカード (*) のシェル glob 展開を抑止
+            read -r -a PATTERNS <<< "$MUTMUT_PATTERNS"
+            uv run mutmut run "${PATTERNS[@]}"
+          else
+            uv run mutmut run
+          fi
+
+      - name: Export summary and survived diffs
+        if: steps.optin.outputs.enabled == 'true' && steps.scope.outputs.mode != 'skip' && !cancelled()
+        shell: bash
+        env:
+          MUTMUT_MODE: ${{ steps.scope.outputs.mode }}
+          MUTMUT_PATTERNS: ${{ steps.scope.outputs.patterns }}
+        run: |
+          set +e
+          uv run mutmut results > mutation-results.txt 2>&1
+
+          {
+            echo "## Mutation Test Summary (PR)"
+            echo ""
+            echo "- Mode: \`${MUTMUT_MODE}\`"
+            if [ -n "$MUTMUT_PATTERNS" ]; then
+              echo "- Target patterns: \`${MUTMUT_PATTERNS}\`"
+            fi
+            echo ""
+            echo '```text'
+            cat mutation-results.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Windows 環境や AI エージェントへそのまま渡せるよう Survived 差分を最大 20 件出力
+          SURVIVED=$(awk -F':' '/:[[:space:]]*survived[[:space:]]*$/ {print $1}' mutation-results.txt | head -n 20)
+          if [ -n "$SURVIVED" ]; then
+            : > mutation-survived-diffs.txt
+            while IFS= read -r mutant; do
+              [ -z "$mutant" ] && continue
+              {
+                echo "=== ${mutant} ==="
+                uv run mutmut show "$mutant"
+                echo ""
+              } >> mutation-survived-diffs.txt 2>&1
+            done <<< "$SURVIVED"
+          fi
+
+      - name: Upload mutation report artifacts
+        if: steps.optin.outputs.enabled == 'true' && steps.scope.outputs.mode != 'skip' && !cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-pr-report
+          path: |
+            mutation-results.txt
+            mutation-survived-diffs.txt
+          if-no-files-found: ignore
+
+      - name: Skip mutation testing
+        if: steps.optin.outputs.enabled != 'true'
+        shell: bash
+        run: |
+          echo "Mutation testing is not enabled (requires active [tool.mutmut] in pyproject.toml and uv.lock)."
+          echo "See docs/setup/mutation_testing_setup.md to opt in."
