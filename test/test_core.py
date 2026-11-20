@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from content_extractor import playwright_helpers
 from content_extractor.core import _escape_css_selector_colons, extract_main_content, quick_extract_content
 from content_extractor.dom_treeSt import DOMTreeSt
 
@@ -61,7 +62,7 @@ async def test_extract_main_content_refinement_loop(mocker, mock_browser, dom_tr
     # ----- モックの設定 -----
 
     # 外部依存や副作用のある関数をモック化
-    mocker.patch("content_extractor.core.fetch_robots_txt", new_callable=AsyncMock, return_value=None)
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
     mock_page = AsyncMock()
     mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock, return_value=mock_page)
     mocker.patch(
@@ -122,10 +123,7 @@ async def test_extract_main_content_refinement_loop(mocker, mock_browser, dom_tr
 @pytest.mark.asyncio
 async def test_extract_main_content_robots_disallowed(mocker, mock_browser):
     """Test that extract_main_content returns None if robots.txt disallows scraping."""
-    mocker.patch(
-        "content_extractor.core.fetch_robots_txt", new_callable=AsyncMock, return_value="User-agent: *\nDisallow: /"
-    )
-    mocker.patch("content_extractor.core.is_scraping_allowed", return_value=False)
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=False)
 
     result = await extract_main_content(url="http://mock.url/some/path", browser=mock_browser)
 
@@ -144,9 +142,30 @@ async def test_quick_extract_content_robots_disallowed(mocker, mock_browser):
 
 
 @pytest.mark.asyncio
+async def test_quick_and_full_scan_share_robots_cache(mocker, mock_browser):
+    """Quick スキャンと Full スキャンで同一オリジンの robots.txt キャッシュを共有し、取得が1回で済む。"""
+    playwright_helpers._ROBOTS_CACHE.clear()
+    try:
+        mock_fetch = mocker.patch(
+            "content_extractor.playwright_helpers.fetch_robots_txt",
+            new_callable=AsyncMock,
+            return_value="User-agent: *\nAllow: /",
+        )
+        mocker.patch("content_extractor.core.make_tree", new_callable=AsyncMock, return_value=None)
+        mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock, return_value=None)
+
+        await quick_extract_content("http://mock.url/page1", mock_browser, ["div.main"], "plane")
+        await extract_main_content("http://mock.url/page2", mock_browser)
+
+        assert mock_fetch.await_count == 1
+    finally:
+        playwright_helpers._ROBOTS_CACHE.clear()
+
+
+@pytest.mark.asyncio
 async def test_extract_main_content_setup_page_fails(mocker, mock_browser):
     """Test that extract_main_content returns None if setup_page fails."""
-    mocker.patch("content_extractor.core.fetch_robots_txt", new_callable=AsyncMock, return_value=None)
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
     mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock, return_value=None)
 
     result = await extract_main_content(url="http://mock.url", browser=mock_browser)
@@ -157,7 +176,7 @@ async def test_extract_main_content_setup_page_fails(mocker, mock_browser):
 @pytest.mark.asyncio
 async def test_extract_main_content_make_tree_fails(mocker, mock_browser):
     """Test that extract_main_content returns None if make_tree fails."""
-    mocker.patch("content_extractor.core.fetch_robots_txt", new_callable=AsyncMock, return_value=None)
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
     mock_page = AsyncMock()
     mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock, return_value=mock_page)
     mocker.patch(
@@ -173,7 +192,7 @@ async def test_extract_main_content_make_tree_fails(mocker, mock_browser):
 @pytest.mark.asyncio
 async def test_extract_main_content_no_candidates(mocker, mock_browser, dom_tree_fixture):
     """Test that extract_main_content returns None if no candidates are found."""
-    mocker.patch("content_extractor.core.fetch_robots_txt", new_callable=AsyncMock, return_value=None)
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
     mock_page = AsyncMock()
     mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock, return_value=mock_page)
     mocker.patch(
@@ -198,7 +217,7 @@ async def test_extract_main_content_recursive_call(mocker, mock_browser, dom_tre
     # with the new URL during the recursive call.
 
     # Mock dependencies
-    mocker.patch("content_extractor.core.fetch_robots_txt", new_callable=AsyncMock, return_value=None)
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
 
     # Mock setup_page to track its calls
     mock_setup_page = mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock)
@@ -241,7 +260,7 @@ async def test_extract_main_content_recursive_call(mocker, mock_browser, dom_tre
 @pytest.mark.asyncio
 async def test_extract_main_content_rescore_no_improvement(mocker, mock_browser, dom_tree_fixture):
     """Test that the rescoring loop terminates if the score does not improve."""
-    mocker.patch("content_extractor.core.fetch_robots_txt", new_callable=AsyncMock, return_value=None)
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
     mock_page = AsyncMock()
     mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock, return_value=mock_page)
     mocker.patch(
@@ -276,7 +295,7 @@ async def test_extract_main_content_selector_generation(mocker, mock_browser):
     `css_selector_list`を正しく生成することをテストする。
     """
     # ----- モックの設定 -----
-    mocker.patch("content_extractor.core.fetch_robots_txt", new_callable=AsyncMock, return_value=None)
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
     mock_page = AsyncMock()
     mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock, return_value=mock_page)
     mocker.patch(
