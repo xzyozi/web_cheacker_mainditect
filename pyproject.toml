@@ -44,6 +44,13 @@ dev = [
   "mypy",
 ]
 
+# Search quality evaluation (SQS): relevance scoring of search result pages.
+# Heavy (pulls in torch), so it is not part of the default install: uv sync --extra quality
+quality = [
+  "scikit-learn",
+  "sentence-transformers",
+]
+
 # Mutation testing (Linux / WSL2 / CI only): uv sync --extra dev --extra mutation
 mutation = [
   "mutmut>=3.0.0",
@@ -93,7 +100,6 @@ select = ["E", "F", "W", "I"]
 [tool.ruff.lint.per-file-ignores]
 # 長い定数文字列（User-Agent、LLM向けプロンプト）は分割すると意味が変わるため E501 を除外
 "content_processor.py" = ["E501"]
-"high_precision_search_system.py" = ["E501"]
 # 旧版実装。削除予定（Issue #24）のため整理の対象外とする
 "playwright_mainditect_v2.py" = ["E402", "E501", "W291", "W293"]
 
