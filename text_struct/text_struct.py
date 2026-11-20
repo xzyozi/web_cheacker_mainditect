@@ -76,7 +76,7 @@ def generate_html(url_list, image_list):
     #         images_base64.append(f"data:{mime_type};base64,{encoded_image}")
 
     # Jinja2テンプレート
-    template = jinja2.Template("""
+    template = jinja2.Environment(autoescape=True).from_string("""
     <html>
         <body>
             <h2>更新ページ一覧</h2>
