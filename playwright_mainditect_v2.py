@@ -179,9 +179,9 @@ def is_valid_element(node: Dict) -> bool:
 async def is_html_element(el):
     try:
         # Check if the element has a tagName property
-        tag_name = await el.evaluate("el => el.tagName")
+        await el.evaluate("el => el.tagName")
         return True
-    except:
+    except Exception:
         return False
 
 
@@ -390,7 +390,7 @@ class MainContentScorer:
 
             score *= link_score
 
-        except:
+        except Exception:
             # print("not link")
             pass
 

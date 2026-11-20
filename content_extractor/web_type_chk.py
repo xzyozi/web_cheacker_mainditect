@@ -1,6 +1,10 @@
 from enum import Enum
 import re
+from typing import TYPE_CHECKING
 from urllib.parse import urljoin, urlparse
+
+if TYPE_CHECKING:
+    from .dom_treeSt import DOMTreeSt
 
 # --- Regex Constants ---
 # Matches 'page' followed by an optional separator (-, =, /) and digits.

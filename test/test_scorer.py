@@ -30,8 +30,7 @@ def test_calculate_depth_weight_at_max():
 
 def test_calculate_depth_weight_at_mid():
     """中間的な深さの場合をテストする。"""
-    # 計算式: base * (factor ** (current / max))
-    expected = 1.0 * (4.0 ** (2.5 / 5.0))  # 4.0 ** 0.5 = 2.0
+    # 計算式: base * (factor ** (current / max)) = 4.0 ** 0.5 = 2.0
     assert calculate_depth_weight(current_depth=2.5, max_depth=5, base_weight=1.0, weight_factor=4.0) == pytest.approx(
         2.0
     )

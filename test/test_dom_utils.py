@@ -122,15 +122,6 @@ def test_rescore_main_content_with_children_basic_rescoring(mocker):
     ]
     mocker.patch("content_extractor.dom_utils.MainContentScorer", return_value=mock_scorer_instance)
 
-    # Expected sorted order after rescoring
-    # These also need to be new instances as they are compared with the ones returned by the mock.
-    # Alternatively, we could assert on tags and scores separately.
-    expected_sorted_nodes = [
-        DOMTreeSt(tag=child2.tag, score=25, rect=child2.rect),
-        DOMTreeSt(tag=main_content.tag, score=15, rect=main_content.rect),
-        DOMTreeSt(tag=child1.tag, score=5, rect=child1.rect),
-    ]
-
     # Capture the mock object created by patch for assertions on its calls
     mock_main_content_scorer_class = mocker.patch(
         "content_extractor.dom_utils.MainContentScorer", return_value=mock_scorer_instance

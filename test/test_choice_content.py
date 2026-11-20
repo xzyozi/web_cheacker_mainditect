@@ -90,7 +90,6 @@ async def get_tree(
 
                 # Additional debug information
                 if debug:
-                    page_content = await page.content()
                     logging.debug(f"Current page title: {await page.title()}")
                     logging.debug(f"Current URL: {page.url}")
 
