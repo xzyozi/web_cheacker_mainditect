@@ -26,6 +26,9 @@ dependencies = [
   "requests",
 ]
 
+[tool.hatch.build.targets.wheel]
+# Flat-layout scripts (no package named after the project): skip file selection
+bypass-selection = true
 [project.urls]
 Homepage = "https://github.com/user/repo" # Change to your repo URL
 
