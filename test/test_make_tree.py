@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from content_extractor.make_tree import make_css_selector, make_tree
+from content_extractor.make_tree import escape_css_identifier, make_css_selector, make_tree
 
 
 # Fixtures for Playwright mocks
@@ -250,3 +250,37 @@ def test_make_css_selector_class_with_multiple_spaces():
 def test_make_css_selector_no_class_attribute():
     props = {"tag": "div", "id": "my-id", "attributes": {"style": "color: red;"}}
     assert make_css_selector(props) == "div#my-id"
+
+
+# --- Tests for escape_css_identifier（CSS.escape と同じ規則） ---
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ("main", "main"),  # 英数字・ハイフン・アンダースコアは、そのまま
+        ("_x", "_x"),
+        ("md:px-4", r"md\:px-4"),  # Tailwind のバリアント（コロン）
+        ("w-1/2", r"w-1\/2"),  # スラッシュ
+        ("a.b", r"a\.b"),  # ドット
+        ("a b", r"a\ b"),  # 空白
+        ("1abc", r"\31 abc"),  # 先頭の数字は、16進エスケープ（後ろに空白）
+        ("-1abc", r"-\31 abc"),  # 先頭が "-" のとき、2文字目の数字
+        ("-", r"\-"),  # "-" 単独
+        ("日本語", "日本語"),  # 非ASCIIは、そのまま使える
+    ],
+)
+def test_escape_css_identifier(value, expected):
+    assert escape_css_identifier(value) == expected
+
+
+def test_make_css_selector_escapes_id_starting_with_digit():
+    """数字で始まる ID は、エスケープしないと無効なセレクタ（`#1abc`）になる。"""
+    props = {"tag": "div", "id": "1abc", "attributes": {}}
+    assert make_css_selector(props) == r"div#\31 abc"
+
+
+def test_make_css_selector_escapes_tailwind_classes():
+    """Tailwind のクラス名（コロン・スラッシュ）が、そのままセレクタに入っても有効になる。"""
+    props = {"tag": "div", "id": "", "attributes": {"class": "w-1/2 md:px-4"}}
+    assert make_css_selector(props) == r"div.w-1\/2.md\:px-4"

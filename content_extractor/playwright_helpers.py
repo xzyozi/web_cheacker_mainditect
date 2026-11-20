@@ -54,6 +54,80 @@ async def setup_page(url: str, browser: Browser):
         return None
 
 
+# セレクタが一意でないときに、目的の要素（位置が一致するもの）から、
+# 親をたどる `nth-of-type` 付きの絶対パスを作る JavaScript。
+# 引数: { selector, rect: {x, y, width, height} }
+# 戻り値: { count: ヒット件数, path: 位置が一致した要素の絶対パス（見つからなければ null） }
+_UNIQUE_SELECTOR_JS = """
+({ selector, rect }) => {
+    let nodes;
+    try {
+        nodes = Array.from(document.querySelectorAll(selector));
+    } catch (e) {
+        return { count: -1, path: null };
+    }
+    const sx = window.scrollX, sy = window.scrollY;
+    const near = (a, b) => Math.abs(a - b) < 1;
+    const target = nodes.find((el) => {
+        const r = el.getBoundingClientRect();
+        return near(r.x + sx, rect.x) && near(r.y + sy, rect.y)
+            && near(r.width, rect.width) && near(r.height, rect.height);
+    });
+    if (!target) {
+        return { count: nodes.length, path: null };
+    }
+    const parts = [];
+    for (let el = target; el && el.nodeType === 1; el = el.parentElement) {
+        const tag = el.tagName.toLowerCase();
+        if (tag === 'html') { parts.unshift('html'); break; }
+        let index = 1;
+        for (let s = el.previousElementSibling; s; s = s.previousElementSibling) {
+            if (s.tagName === el.tagName) index += 1;
+        }
+        parts.unshift(`${tag}:nth-of-type(${index})`);
+    }
+    return { count: nodes.length, path: parts.join(' > ') };
+}
+"""
+
+
+async def ensure_unique_selector(page: Page, selector: str, rect: dict) -> str:
+    """セレクタがページ内で1件だけにヒットすることを確認し、複数ヒットなら一意なセレクタに置き換える。
+
+    同じクラスの要素が複数あると、保存したセレクタが次回に別の要素を指して、誤検知の原因になる。
+    複数ヒットしたときは、位置（`rect`）が一致する要素から `nth-of-type` 付きの絶対パスを作る。
+    確認できなかった場合（無効なセレクタ・位置が一致する要素が無い）は、元のセレクタを返す。
+
+    Args:
+        page: 対象ページ。
+        selector: 確認するセレクタ。
+        rect: 目的の要素の位置とサイズ（ページ座標）。`x`, `y`, `width`, `height`。
+    """
+    if not selector:
+        return selector
+    try:
+        result = await page.evaluate(_UNIQUE_SELECTOR_JS, {"selector": selector, "rect": rect})
+    except Exception as e:
+        logger.warning(f"セレクタの一意性を確認できませんでした: {selector} - {e}")
+        return selector
+
+    if not isinstance(result, dict):
+        logger.warning(f"セレクタの一意性の確認結果が不正です: {selector}")
+        return selector
+
+    count = result.get("count", 0)
+    path = result.get("path")
+    if not isinstance(count, int):
+        return selector
+    if count == 1:
+        return selector
+    if count > 1 and path:
+        logger.info(f"セレクタが{count}件にヒットするため、一意なパスに置き換えます: {selector} -> {path}")
+        return str(path)
+    logger.warning(f"セレクタを一意にできませんでした（ヒット{count}件）: {selector}")
+    return selector
+
+
 async def close_page(page: Page) -> None:
     """`setup_page` が作成したページと、そのブラウザコンテキストを閉じる。
 
