@@ -62,7 +62,7 @@ class SearchCache:
                 # Clean up expired entry
                 del self._cache[key]
                 del self._ttl[key]
-        
+
         logger.info(f"CACHE MISS for query: '{query}'")
         return None
 
@@ -184,9 +184,9 @@ class ReRanker:
         """
         if not documents:
             return []
-        
+
         logger.info(f"Performing BM25 re-ranking on {len(documents)} documents.")
-        
+
         # We need the text content for BM25. 'body' is the most descriptive field.
         corpus = [doc.get('body', '') for doc in documents]
         tokenized_corpus = [doc.split(" ") for doc in corpus]
@@ -201,7 +201,7 @@ class ReRanker:
 
         # Sort by BM25 score in descending order
         reranked_docs = sorted(documents, key=lambda x: x.get('bm25_score', 0), reverse=True)
-        
+
         logger.info("BM25 re-ranking complete.")
         return reranked_docs[:top_n]
 
@@ -215,10 +215,10 @@ class ReRanker:
             return documents
 
         logger.info(f"Performing semantic re-ranking on {len(documents)} documents.")
-        
+
         # The Cross-Encoder expects pairs of [query, document_text]
         sentence_pairs = [[query, doc.get('body', '')] for doc in documents]
-        
+
         # Predict scores
         scores = self.cross_encoder.predict(sentence_pairs)
 
@@ -228,7 +228,7 @@ class ReRanker:
 
         # Sort by semantic score in descending order
         reranked_docs = sorted(documents, key=lambda x: x.get('semantic_score', 0), reverse=True)
-        
+
         logger.info("Semantic re-ranking complete.")
         return reranked_docs[:top_n]
 
@@ -275,7 +275,7 @@ class HighPrecisionSearchSystem:
                 self.executor, self.content_processor.process_url, doc['href']
             )
             tasks.append(task)
-        
+
         processed_contents = await asyncio.gather(*tasks)
 
         updated_docs = []
@@ -292,7 +292,7 @@ class HighPrecisionSearchSystem:
             else:
                 original_doc['credibility_score'] = 0.0
             updated_docs.append(original_doc)
-        
+
         return updated_docs
 
     def generate_llm_prompt(self, query: str, ranked_documents: List[Dict]) -> str:
@@ -330,7 +330,7 @@ class HighPrecisionSearchSystem:
         Executes the full search and re-ranking pipeline.
         """
         start_time = time.time()
-        
+
         # 1. Input & 2. Query Enhancement
         if use_enhancement:
             queries = enhance_query(query)
@@ -348,7 +348,7 @@ class HighPrecisionSearchSystem:
                     for res in cached_results:
                         all_results[res['href']] = res # Use href as a unique key to avoid duplicates
                     continue # Skip network call if cached
-            
+
             task = self.client.search(
                 query=q,
                 region=region,
@@ -361,7 +361,7 @@ class HighPrecisionSearchSystem:
         # Execute non-cached searches in parallel
         if search_tasks:
             results_from_api = await asyncio.gather(*[task for _, task in search_tasks])
-            
+
             # 4. Aggregate & Cache
             for (q, _), results in zip(search_tasks, results_from_api):
                 if results:
@@ -396,12 +396,12 @@ class HighPrecisionSearchSystem:
 
         for doc in docs_with_content:
             doc['final_score'] = rrf_scores.get(doc.get('href'), 0.0)
-        
+
         final_results = sorted(docs_with_content, key=lambda x: x.get('final_score', 0.0), reverse=True)
 
         end_time = time.time()
         logger.info(f"Total search pipeline finished in {end_time - start_time:.2f} seconds.")
-        
+
         return final_results[:semantic_top_n]
 
 # ==============================================================================
@@ -412,11 +412,11 @@ async def main():
     """Main function to demonstrate the search system."""
     print("--- Initializing High-Precision Search System ---")
     search_system = HighPrecisionSearchSystem()
-    
+
     print("\n--- Performing Search ---")
     # query_to_search = "python web scraping libraries"
     query_to_search = "best python framework for web development"
-    
+
     results = await search_system.search(
         query=query_to_search,
         region='us-en',

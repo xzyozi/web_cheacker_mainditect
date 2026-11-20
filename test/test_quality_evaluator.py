@@ -34,7 +34,7 @@ def search_results_dom_tree():
     item3 = DOMTreeSt(tag='div', attributes={'class': 'result-item'}, links=['http://item3.com'], text="Short.")
     # Container with some other noise
     noise = DOMTreeSt(tag='div', attributes={'class': 'ad-container'})
-    
+
     container = DOMTreeSt(tag='div', attributes={'class': 'results-list'}, children=[item1, item2, item3, noise])
     main_content = DOMTreeSt(tag='main', children=[container])
     return main_content
@@ -94,7 +94,7 @@ def test_find_result_container_no_clear_container():
     child2 = DOMTreeSt(tag='p', attributes={'class': 'item-b'})
     child3 = DOMTreeSt(tag='span', attributes={'class': 'item-c'})
     main_content = DOMTreeSt(tag='main', children=[child1, child2, child3])
-    
+
     container = _find_result_container(main_content)
     assert container is None
 
@@ -112,7 +112,7 @@ def test_quantify_search_results_no_container():
     """Test Case 3: No container found."""
     child1 = DOMTreeSt(tag='div', attributes={'class': 'item-a'})
     main_content = DOMTreeSt(tag='main', children=[child1])
-    
+
     result_node = quantify_search_results(main_content)
     assert result_node.result_count == 0
     assert result_node.result_items == []

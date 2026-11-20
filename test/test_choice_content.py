@@ -37,7 +37,7 @@ async def get_tree(
     try:
         if debug:
             logging.info(f"Searching for element with selector: {selector}")
-            
+
             # 現在のページ内容の確認
             all_elements = await page.evaluate('''() => {
                 const elements = document.querySelectorAll('*[id]');
@@ -48,7 +48,7 @@ async def get_tree(
                     rect: el.getBoundingClientRect().toJSON()
                 }));
             }''')
-            
+
             logging.info("Found elements with IDs on page:")
             for el in all_elements:
                 logging.info(f"- {el['tag']}#{el['id']} (visible: {el['visible']})")
@@ -76,7 +76,7 @@ async def get_tree(
                 }}
                 return {{ exists: false }};
             }}''')
-            
+
             if debug:
                 if exists_js.get('exists'):
                     logging.info(f"Element found in DOM: {json.dumps(exists_js, indent=2)}")
@@ -94,19 +94,19 @@ async def get_tree(
                     return {}
             except Exception as e:
                 logging.error(f"Error finding element {selector}: {str(e)}")
-                
+
                 # Additional debug information
                 if debug:
                     page_content = await page.content()
                     logging.debug(f"Current page title: {await page.title()}")
                     logging.debug(f"Current URL: {page.url}")
-                    
+
                     # Check if element exists but is not visible
                     element_handle = await page.query_selector(selector)
                     if element_handle:
                         is_visible = await element_handle.is_visible()
                         logging.debug(f"Element exists but visible: {is_visible}")
-                        
+
                         # Get element properties
                         properties = await element_handle.evaluate('''el => ({
                             offsetParent: el.offsetParent !== null,
@@ -115,7 +115,7 @@ async def get_tree(
                             opacity: window.getComputedStyle(el).opacity
                         })''')
                         logging.debug(f"Element properties: {json.dumps(properties, indent=2)}")
-                
+
                 return {}
         else:
             root = await page.query_selector('body')
@@ -185,7 +185,7 @@ async def get_tree(
     except Exception as e:
         logging.error(f"Error in get_tree: {str(e)}")
         return {}
-    
+
 
 async def choice_content(url: str, **kwargs):
     """
@@ -202,14 +202,14 @@ async def choice_content(url: str, **kwargs):
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
         page = await context.new_page()
-        
+
         try:
             # Navigate to the page with longer timeout
             await page.goto(url, wait_until='domcontentloaded', timeout=30000)
-            
+
             # Wait for initial page load
             await page.wait_for_selector('body', state='attached', timeout=30000)
-            
+
             try:
                 await page.wait_for_load_state('networkidle', timeout=30000)
             except PlaywrightTimeoutError:
@@ -264,7 +264,7 @@ async def choice_content(url: str, **kwargs):
             if attributes:
                 for key, value in attributes.items():
                     selectors.append(f"[{key}='{value}']")
-            
+
             selector = "".join(selectors) if selectors else "body"
 
             # Wait for element with longer timeout
@@ -276,7 +276,7 @@ async def choice_content(url: str, **kwargs):
 
             # Get tree structure
             tree = await get_tree(page, tag=tag, element_id=element_id, attributes=attributes)
-            
+
             if not tree:
                 print(f"No matching elements found for selector: {selector}")
                 # Fall back to JavaScript evaluation for debugging
@@ -287,7 +287,7 @@ async def choice_content(url: str, **kwargs):
                     }}
                 ''')
                 print(f"Element exists according to JavaScript: {element_exists}")
-            
+
             return tree
 
         except Exception as e:
@@ -304,10 +304,10 @@ async def ch_main(url : str):
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         page = await browser.new_page()
-        
+
         # ページに移動
         await page.goto(url)
-        
+
         # コメントエントリーの取得
         selector = 'ol#ld_blog_article_comment_entries'
         # コメントエントリーの取得（より柔軟な設定で）
@@ -318,7 +318,7 @@ async def ch_main(url : str):
             timeout=30000,
             debug=True  # デバッグ情報を有効化
         )
-        
+
         # 結果の処理
         if tree:
             print("Found comment entries:")
@@ -327,7 +327,7 @@ async def ch_main(url : str):
             print(f"Number of children: {len(tree['children'])}")
         else:
             print("Comment entries not found")
-        
+
         await browser.close()
 
 

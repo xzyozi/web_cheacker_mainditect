@@ -107,14 +107,14 @@ def make_css_selector(properties: Dict[str, any]) -> str:
     """
     tag = properties.get("tag", "")
     element_id = properties.get("id", "")
-    
+
     # ID is the most reliable selector.
     if element_id:
         # CSS identifiers can contain characters that need escaping, but '#' is generally safe for IDs.
         return f'{tag}#{element_id}'
 
     selector = tag
-    
+
     attributes = properties.get("attributes", {})
     class_name = attributes.get("class", "")
     if class_name and isinstance(class_name, str):
@@ -123,7 +123,7 @@ def make_css_selector(properties: Dict[str, any]) -> str:
         class_selector = ".".join(classes)
         if class_selector:
             selector += f".{class_selector}"
-            
+
     return selector
 
 
@@ -152,10 +152,10 @@ async def test_makeTree():
 if __name__ == "__main__":
     # Basic logger setup for standalone execution
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    
+
     # On Windows, ProactorEventLoop is required for Playwright's async operations
     # in some environments.
     if sys.platform == 'win32':
          asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-         
+
     asyncio.run(test_makeTree())

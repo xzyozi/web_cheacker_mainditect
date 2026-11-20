@@ -90,12 +90,12 @@ def _find_result_container(main_content_node: DOMTreeSt) -> Optional[DOMTreeSt]:
         class_counts = Counter(
             child.attributes.get('class') for child in node.children if child.attributes.get('class')
         )
-        
+
         if not class_counts:
             continue
 
         most_common_class, count = class_counts.most_common(1)[0]
-        
+
         # A basic threshold to avoid identifying containers with no real repetition.
         if count <= 1:
             continue
@@ -109,7 +109,7 @@ def _find_result_container(main_content_node: DOMTreeSt) -> Optional[DOMTreeSt]:
         if repetition_score > max_repetition_score:
             max_repetition_score = repetition_score
             best_container = node
-            
+
     return best_container
 
 def quantify_search_results(main_content_node: DOMTreeSt) -> DOMTreeSt:

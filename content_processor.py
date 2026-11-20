@@ -35,7 +35,7 @@ class ContentProcessor:
             # Use a session for potential connection reuse
             session = requests.Session()
             session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'})
-            
+
             # Fetch HTML content
             response = session.get(url, timeout=10, allow_redirects=True)
             response.raise_for_status()
@@ -57,7 +57,7 @@ class ContentProcessor:
                     date_tag = soup.find('meta', property='article:published_time')
                     if date_tag and date_tag.get('content'):
                         content['date'] = date_tag['content']
-            
+
             # 3. Multi-factor credibility scoring
             content['credibility_score'] = self._calculate_credibility(final_url, content)
             return content

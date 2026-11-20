@@ -77,7 +77,7 @@ async def fetch_robots_txt(url):
     """対象ウェブサイトからrobots.txtの内容を取得します。"""
     parsed_url = urlparse(url)
     robots_url = urljoin(f"{parsed_url.scheme}://{parsed_url.netloc}", '/robots.txt')
-    
+
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(robots_url) as response:
@@ -100,7 +100,7 @@ def is_scraping_allowed(robots_txt : str,
 
     robot_parser = RobotFileParser()
     robot_parser.parse(StringIO(robots_txt).readlines())
-    
+
     return robot_parser.can_fetch("*", target_path)
 
 
@@ -126,7 +126,7 @@ async def save_screenshot(browser: Browser,
 
         filename = generate_filename(url)
         filepath = os.path.join(save_dir, filename)
-        
+
         success = False
         for attempt in range(MAX_RETRIES):
             context = None
@@ -135,7 +135,7 @@ async def save_screenshot(browser: Browser,
                 # 毎回新しいコンテキストとページを作成して分離を強化
                 context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
                 page = await context.new_page()
-                
+
                 await page.goto(url, wait_until='load', timeout=30000)
                 await page.screenshot(path=filepath, full_page=True)
 
@@ -165,7 +165,7 @@ async def save_screenshot(browser: Browser,
                     await page.close()
                 if context:
                     await context.close()
-        
+
         if not success:
             screenshot_paths.append(None)
 

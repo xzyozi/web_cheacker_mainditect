@@ -60,7 +60,7 @@ class RelevanceScorer:
         for i, item in enumerate(items):
             # 3. Jaccard Similarity
             jaccard_score = self._calculate_jaccard(query, item.text)
-            
+
             # 4. ハイブリッドスコアの計算 (重みは設定ファイルで管理することを推奨)
             relevance_score = (
                 (0.2 * jaccard_score) +
@@ -68,7 +68,7 @@ class RelevanceScorer:
                 (0.5 * float(semantic_scores[i]))  # numpy.float32をfloatにキャスト
             )
             item.relevance_score = relevance_score
-        
+
         return items
 
     def calculate_sqs(self,
@@ -100,7 +100,7 @@ class RelevanceScorer:
             quality_category = "Low Quality"
         else:
             quality_category = "Invalid/Empty"
-        
+
         logger.info(f"SQS: {sqs_score:.2f}, Category: {quality_category}")
-        
+
         return sqs_score, quality_category

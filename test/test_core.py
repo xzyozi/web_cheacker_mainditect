@@ -56,7 +56,7 @@ async def test_extract_main_content_refinement_loop(mocker, mock_browser, dom_tr
     `extract_main_content`が、スコアの低い親からスコアの高い子孫へと
     正しくコンテンツを絞り込んでいくプロセスをテストする。
     """
-    # ----- モックの設定 ----- 
+    # ----- モックの設定 -----
 
     # 外部依存や副作用のある関数をモック化
     mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value=None)
@@ -72,13 +72,13 @@ async def test_extract_main_content_refinement_loop(mocker, mock_browser, dom_tr
     article_node = wrapper_node.children[0].children[0]
     initial_candidates = [wrapper_node, article_node]
     mock_scorer_instance.find_candidates.return_value = initial_candidates
-    
+
     mock_scorer_class = mocker.patch('content_extractor.core.MainContentScorer')
     mock_scorer_class.return_value = mock_scorer_instance
 
     # `rescore_main_content_with_children` のモック
     p_node = article_node.children[0]
-    
+
     # スコアを再設定して、テストの意図を明確にする
     article_node.score = 85 # wrapper(80)を上回る
     p_node.score = 95       # article(85)を上回る
@@ -92,15 +92,15 @@ async def test_extract_main_content_refinement_loop(mocker, mock_browser, dom_tr
         ]
     )
 
-    # ----- テスト対象関数の実行 ----- 
+    # ----- テスト対象関数の実行 -----
     final_content = await extract_main_content(url="http://mock.url", browser=mock_browser)
 
-    # ----- アサーション ----- 
+    # ----- アサーション -----
 
     assert final_content is not None
     assert final_content.tag == 'p'
     assert final_content.text == 'This is the real content.'
-    
+
     # ループ後の最終スコアは `rescore` の結果に依存する
     assert final_content.score == 95
 
@@ -108,7 +108,7 @@ async def test_extract_main_content_refinement_loop(mocker, mock_browser, dom_tr
     assert mock_rescore.call_count == 3
     mock_rescore.assert_any_call(wrapper_node)
     mock_rescore.assert_any_call(article_node)
-    
+
     # 3回目の呼び出しは、2回目の勝者であるp_nodeに対して行われる
     mock_rescore.assert_any_call(p_node)
 
@@ -118,9 +118,9 @@ async def test_extract_main_content_robots_disallowed(mocker, mock_browser):
     """Test that extract_main_content returns None if robots.txt disallows scraping."""
     mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value="User-agent: *\nDisallow: /")
     mocker.patch('content_extractor.core.is_scraping_allowed', return_value=False)
-    
+
     result = await extract_main_content(url="http://mock.url/some/path", browser=mock_browser)
-    
+
     assert result is None
 
 @pytest.mark.asyncio
@@ -128,9 +128,9 @@ async def test_extract_main_content_setup_page_fails(mocker, mock_browser):
     """Test that extract_main_content returns None if setup_page fails."""
     mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value=None)
     mocker.patch('content_extractor.core.setup_page', new_callable=AsyncMock, return_value=None)
-    
+
     result = await extract_main_content(url="http://mock.url", browser=mock_browser)
-    
+
     assert result is None
 
 @pytest.mark.asyncio
@@ -141,9 +141,9 @@ async def test_extract_main_content_make_tree_fails(mocker, mock_browser):
     mocker.patch('content_extractor.core.setup_page', new_callable=AsyncMock, return_value=mock_page)
     mocker.patch('content_extractor.core.adjust_page_view', new_callable=AsyncMock, return_value={'width': 1920, 'height': 1080})
     mocker.patch('content_extractor.core.make_tree', new_callable=AsyncMock, return_value=None)
-    
+
     result = await extract_main_content(url="http://mock.url", browser=mock_browser)
-    
+
     assert result is None
 
 @pytest.mark.asyncio
@@ -154,14 +154,14 @@ async def test_extract_main_content_no_candidates(mocker, mock_browser, dom_tree
     mocker.patch('content_extractor.core.setup_page', new_callable=AsyncMock, return_value=mock_page)
     mocker.patch('content_extractor.core.adjust_page_view', new_callable=AsyncMock, return_value={'width': 1920, 'height': 1080})
     mocker.patch('content_extractor.core.make_tree', new_callable=AsyncMock, return_value=dom_tree_fixture[0])
-    
+
     mock_scorer_instance = MagicMock()
     mock_scorer_instance.find_candidates.return_value = [] # No candidates
     mock_scorer_class = mocker.patch('content_extractor.core.MainContentScorer')
     mock_scorer_class.return_value = mock_scorer_instance
-    
+
     result = await extract_main_content(url="http://mock.url", browser=mock_browser)
-    
+
     assert result is None
 
 
@@ -173,7 +173,7 @@ async def test_extract_main_content_recursive_call(mocker, mock_browser, dom_tre
 
     # Mock dependencies
     mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value=None)
-    
+
     # Mock setup_page to track its calls
     mock_setup_page = mocker.patch('content_extractor.core.setup_page', new_callable=AsyncMock)
     mock_setup_page.return_value = AsyncMock() # Return a mock page object
@@ -185,12 +185,12 @@ async def test_extract_main_content_recursive_call(mocker, mock_browser, dom_tre
     mock_webtype_instance1 = MagicMock()
     mock_webtype_instance1.webtype_chk.return_value = "page_changer"
     mock_webtype_instance1.next_url = "http://mock.url/page/2"
-    
+
     mock_webtype_instance2 = MagicMock()
     mock_webtype_instance2.webtype_chk.return_value = "page_changer"
     mock_webtype_instance2.next_url = None
     mocker.patch('content_extractor.core.WebTypeCHK', side_effect=[mock_webtype_instance1, mock_webtype_instance2])
-    
+
     # Mock scorer for the recursive call to prevent further complex logic
     mock_scorer_instance = MagicMock()
     mock_scorer_instance.find_candidates.return_value = []
@@ -201,11 +201,11 @@ async def test_extract_main_content_recursive_call(mocker, mock_browser, dom_tre
 
     # --- Assertions ---
     assert mock_setup_page.call_count == 2
-    
+
     # Check that setup_page was called with the initial URL, then the new one.
     first_call_args = mock_setup_page.call_args_list[0].args
     second_call_args = mock_setup_page.call_args_list[1].args
-    
+
     assert first_call_args[0] == "http://mock.url/page/1"
     assert second_call_args[0] == "http://mock.url/page/2"
 
@@ -227,12 +227,12 @@ async def test_extract_main_content_rescore_no_improvement(mocker, mock_browser,
     mock_scorer_instance = MagicMock()
     mock_scorer_instance.find_candidates.return_value = [parent_node]
     mocker.patch('content_extractor.core.MainContentScorer', return_value=mock_scorer_instance)
-    
+
     # rescore returns child with lower score, then empty list
     mocker.patch('content_extractor.core.rescore_main_content_with_children', side_effect=[[child_node], []])
 
     result = await extract_main_content(url="http://mock.url", browser=mock_browser)
-    
+
     # The loop should find child's score (80) is not > parent's (90), so it breaks.
     # The returned content should be the parent from before the break.
     assert result is parent_node
@@ -243,7 +243,7 @@ async def test_extract_main_content_selector_generation(mocker, mock_browser):
     `extract_main_content`が最終的なメインコンテンツの`css_selector`と
     `css_selector_list`を正しく生成することをテストする。
     """
-    # ----- モックの設定 ----- 
+    # ----- モックの設定 -----
     mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value=None)
     mock_page = AsyncMock()
     mocker.patch('content_extractor.core.setup_page', new_callable=AsyncMock, return_value=mock_page)
@@ -278,10 +278,10 @@ async def test_extract_main_content_selector_generation(mocker, mock_browser):
         ]
     )
 
-    # ----- テスト対象関数の実行 ----- 
+    # ----- テスト対象関数の実行 -----
     final_content = await extract_main_content(url="http://mock.url", browser=mock_browser)
 
-    # ----- アサーション ----- 
+    # ----- アサーション -----
     assert final_content is not None
     assert final_content.tag == 'p'
     assert final_content.text == 'Real content.'
@@ -304,7 +304,7 @@ class TestEscapeCssSelectorColons:
     def test_standard_tailwind_class(self):
         """標準的なTailwindCSSクラスが正しくエスケープされることを確認"""
         selector = 'div.px-6.py-12.md:px-12.md:py-16'
-        expected = 'div.px-6.py-12.md\:px-12.md\:py-16'
+        expected = r'div.px-6.py-12.md\:px-12.md\:py-16'
         assert _escape_css_selector_colons(selector) == expected
 
     def test_multiple_colons_in_class_name(self):
@@ -313,7 +313,7 @@ class TestEscapeCssSelectorColons:
                                            # but if it were to be interpreted as two separate class-colon parts
                                            # then it should be escaped as such. The regex handles this by escaping
                                            # any colon that follows a class-like pattern.
-        expected = 'span.sm\:text-lg:hover'
+        expected = r'span.sm\:text-lg:hover'
         assert _escape_css_selector_colons(selector) == expected
 
     def test_no_colons_in_selector(self):
@@ -334,12 +334,12 @@ class TestEscapeCssSelectorColons:
 
     def test_already_escaped_colon(self):
         """既にエスケープされているコロンが二重にエスケープされないことを確認"""
-        selector = 'div.md\:px-12'
-        expected = 'div.md\:px-12'
+        selector = r'div.md\:px-12'
+        expected = r'div.md\:px-12'
         assert _escape_css_selector_colons(selector) == expected
 
     def test_complex_selector_combination(self):
         """ID、クラス、擬似クラスなどが混在する複雑なセレクタで正しくエスケープされることを確認"""
         selector = '#header > div.md:flex-col:first-child a:hover'
-        expected = '#header > div.md\:flex-col:first-child a:hover'
+        expected = r'#header > div.md\:flex-col:first-child a:hover'
         assert _escape_css_selector_colons(selector) == expected
