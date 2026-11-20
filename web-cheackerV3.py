@@ -88,18 +88,35 @@ class User:
             self.yaml_file = yaml.safe_load(f)
 
     def load_app_config(self):
-        """アプリケーション全体の設定を読み込む"""
-        config_path = os.path.join(self.directory, "config.yaml")
-        try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                self.config = yaml.safe_load(f)
-                logger.info(f"Loaded app config from {config_path}")
-        except FileNotFoundError:
-            logger.warning(f"App config file not found at {config_path}. Using default behaviors.")
-            self.config = {}  # 設定ファイルがなくてもエラーにならないように空の辞書をセット
-        except Exception as e:
-            logger.error(f"Error loading app config: {e}")
-            self.config = {}
+        """アプリケーション全体の設定を読み込む。
+
+        ユーザー専用設定（`users/<名前>/config.yaml`）を優先し、
+        無い場合は共通設定（`users/config.yaml`）を読み込む。
+        """
+        user_config_path = os.path.join(self.directory, "config.yaml")
+        common_config_path = os.path.join(os.path.dirname(os.path.normpath(self.directory)), "config.yaml")
+        candidate_paths = [user_config_path]
+        if common_config_path != user_config_path:
+            candidate_paths.append(common_config_path)
+
+        for config_path in candidate_paths:
+            try:
+                with open(config_path, "r", encoding="utf-8") as f:
+                    loaded = yaml.safe_load(f)
+                    self.config = loaded if isinstance(loaded, dict) else {}
+                    logger.info(f"Loaded app config from {config_path}")
+                    return
+            except FileNotFoundError:
+                continue
+            except Exception as e:
+                logger.error(f"Error loading app config from {config_path}: {e}")
+                self.config = {}
+                return
+
+        logger.warning(
+            f"App config file not found at {user_config_path} or {common_config_path}. Using default behaviors."
+        )
+        self.config = {}  # 設定ファイルがなくてもエラーにならないように空の辞書をセット
 
     def send_resultmail(self, body, body_type, image_list=[]):
         if self.yaml_file is not None:
