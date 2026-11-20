@@ -79,6 +79,17 @@ jobs:
             echo "No Python files found outside hidden/excluded directories; skipping Mypy check."
           fi
 
+      # 結合テスト（pytest -m integration）が実ブラウザを使うため、pytest の直前に導入する。
+      # playwright が依存に無いプロジェクトでは、このステップは何もしない。
+      - name: Install Playwright Chromium
+        if: steps.check_pyproject.outputs.has_pyproject == 'true'
+        run: |
+          if uv run --no-sync python -c "import playwright" 2>/dev/null; then
+            uv run --no-sync playwright install --with-deps chromium
+          else
+            echo "playwright is not installed; skipping browser installation."
+          fi
+
       - name: Run Pytest
         if: steps.check_pyproject.outputs.has_pyproject == 'true'
         run: |
