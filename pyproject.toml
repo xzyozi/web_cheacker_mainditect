@@ -90,6 +90,8 @@ exclude = [
     "venv",
     ".venv",
     "mutants",
+    # レビュー文書内のコード片は整形対象外（移行前の review/ と同じ扱い）
+    "docs/review",
 ]
 
 [tool.ruff.lint]
