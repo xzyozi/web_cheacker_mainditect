@@ -90,7 +90,6 @@ exclude = [
     "venv",
     ".venv",
     "mutants",
-    "review",
 ]
 
 [tool.ruff.lint]
@@ -120,7 +119,6 @@ exclude = [
     "venv/",
     "\\.venv/",
     "mutants/",
-    "review/",
     # 旧版実装。削除予定（Issue #24）のため型検査の対象外とする
     "playwright_mainditect_v2\\.py",
 ]
