@@ -1,1 +1,1 @@
-from .test_send_mail import send_email 
+from .test_send_mail import send_email

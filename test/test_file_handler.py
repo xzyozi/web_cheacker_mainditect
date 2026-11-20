@@ -1,7 +1,8 @@
-from unittest.mock import patch, mock_open
-from utils.file_handler import save_json
 import json
 import os
+from unittest.mock import mock_open, patch
+
+from utils.file_handler import save_json
 
 # =================================================================
 # file_handler.py のテスト

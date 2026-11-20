@@ -1,5 +1,7 @@
-import jinja2
 from itertools import zip_longest
+
+import jinja2
+
 
 def generate_notification(urls : list):
     notification = """

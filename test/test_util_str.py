@@ -1,7 +1,9 @@
-import pytest
-from unittest.mock import patch, mock_open
-from util_str import get_domain, util_handle_path
 import os
+from unittest.mock import mock_open, patch
+
+import pytest
+
+from util_str import get_domain, util_handle_path
 
 # =================================================================
 # util_str.py のテスト

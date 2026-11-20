@@ -1,13 +1,16 @@
-from typing import Any
-import re
 import asyncio
-from playwright.async_api import async_playwright, Browser, Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError
-from aiohttp import ClientError
-
-import traceback
-import sys
 from datetime import datetime
+import re
+import sys
+import traceback
+from typing import Any
+
+from aiohttp import ClientError
 import numpy as np
+from playwright.async_api import Browser, async_playwright
+from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+
 
 def _escape_css_selector_colons(selector: str) -> str:
     """
@@ -22,15 +25,16 @@ def _escape_css_selector_colons(selector: str) -> str:
     return escaped_selector
 
 # my module 
-from .scorer import MainContentScorer
-from .make_tree import make_tree
-from .web_type_chk import WebTypeCHK, WebType
-from .dom_treeSt import DOMTreeSt
-from .dom_utils import rescore_main_content_with_children
-from .playwright_helpers import setup_page, adjust_page_view, fetch_robots_txt, is_scraping_allowed
-from .quality_evaluator import is_no_results_page, quantify_search_results
 from setup_logger import setup_logger
 from utils.file_handler import save_json
+
+from .dom_treeSt import DOMTreeSt
+from .dom_utils import rescore_main_content_with_children
+from .make_tree import make_tree
+from .playwright_helpers import adjust_page_view, fetch_robots_txt, is_scraping_allowed, setup_page
+from .quality_evaluator import is_no_results_page, quantify_search_results
+from .scorer import MainContentScorer
+from .web_type_chk import WebType, WebTypeCHK
 
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())

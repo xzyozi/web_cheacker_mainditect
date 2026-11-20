@@ -3,6 +3,7 @@
 # +----------------------------------------------------------------
 from urllib.parse import urlparse
 
+
 def get_domain(url):
     parsed_url = urlparse(url)
     domain = parsed_url.netloc
@@ -12,6 +13,8 @@ def get_domain(url):
 # file edit faction
 # +----------------------------------------------------------------
 import os
+
+
 def util_handle_path(path, custom_filename=None):
     """
     指定されたパスに基づいて以下の操作を行います:

@@ -1,6 +1,9 @@
-import pytest
 from unittest.mock import AsyncMock
-from content_extractor.make_tree import make_tree, make_css_selector
+
+import pytest
+
+from content_extractor.make_tree import make_css_selector, make_tree
+
 
 # Fixtures for Playwright mocks
 @pytest.fixture

@@ -1,10 +1,11 @@
-import tkinter as tk
-from tkinter import ttk, scrolledtext
 import json
-import subprocess
-import threading
 import os
+import subprocess
 import sys
+import threading
+import tkinter as tk
+from tkinter import scrolledtext, ttk
+
 
 class TestRunnerApp:
     def __init__(self, root):

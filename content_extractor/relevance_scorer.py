@@ -1,13 +1,15 @@
 import math
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-from sentence_transformers import SentenceTransformer
-from sentence_transformers.util import cos_sim
 from typing import List
 
-from .dom_treeSt import DOMTreeSt
-from .config import QUALITY_SCORING_CONFIG
+from sentence_transformers import SentenceTransformer
+from sentence_transformers.util import cos_sim
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
 from setup_logger import setup_logger
+
+from .config import QUALITY_SCORING_CONFIG
+from .dom_treeSt import DOMTreeSt
 
 logger = setup_logger("relevance_scorer")
 

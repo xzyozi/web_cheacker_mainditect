@@ -1,6 +1,7 @@
 import pytest
-from content_extractor.web_type_chk import PageMonitor, WebTypeCHK
+
 from content_extractor.dom_treeSt import DOMTreeSt
+from content_extractor.web_type_chk import PageMonitor, WebTypeCHK
 
 # =================================================================
 # web_type_chk.py のテスト

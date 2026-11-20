@@ -1,15 +1,15 @@
-import math
-from typing import Dict, List, Any, Union , Optional
-from scipy import stats
-
 import asyncio
-from playwright.async_api import async_playwright, Page, TimeoutError as PlaywrightTimeoutError
-
-import traceback
-from PIL import Image, ImageDraw
-from urllib.parse import urlparse, urljoin
-import aiohttp
+import math
 import sys
+import traceback
+from typing import Any, Dict, List, Optional, Union
+from urllib.parse import urljoin, urlparse
+
+import aiohttp
+from PIL import Image, ImageDraw
+from playwright.async_api import Page, async_playwright
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+from scipy import stats
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -67,6 +67,8 @@ def score_text_length(node: Dict) -> float:
 # + save json file
 # + ---------------------------------------------------------------
 import json
+
+
 def save_json(data, file_path="./data/json.json") :
     with open(file_path, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
@@ -849,8 +851,8 @@ async def fetch_robots_txt(url):
 
 def is_scraping_allowed(robots_txt, target_path):
     """Check if scraping is allowed for the given path based on robots.txt"""
-    from urllib.robotparser import RobotFileParser
     from io import StringIO
+    from urllib.robotparser import RobotFileParser
 
     robot_parser = RobotFileParser()
     robot_parser.parse(StringIO(robots_txt).readlines())

@@ -1,9 +1,10 @@
-import pytest
 from unittest.mock import MagicMock, patch
-import numpy as np
 
-from content_extractor.relevance_scorer import RelevanceScorer
+import numpy as np
+import pytest
+
 from content_extractor.dom_treeSt import DOMTreeSt
+from content_extractor.relevance_scorer import RelevanceScorer
 
 # =================================================================
 # relevance_scorer.py のテスト

@@ -1,11 +1,9 @@
-import pytest
 from unittest.mock import AsyncMock
-from content_extractor.quality_evaluator import (
-    is_no_results_page,
-    _find_result_container,
-    quantify_search_results
-)
+
+import pytest
+
 from content_extractor.dom_treeSt import DOMTreeSt
+from content_extractor.quality_evaluator import _find_result_container, is_no_results_page, quantify_search_results
 
 # =================================================================
 # quality_evaluator.py のテスト
