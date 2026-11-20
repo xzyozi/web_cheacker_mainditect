@@ -5,11 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Material Manager v4.4 Refactored</title>
    
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/@babel/standalone@8.1.3/babel.min.js" integrity="sha384-wcosL0FTsgG9VdClvFesIL0VBVQZvPXyzBKp/WYD1KNTOHLGGOXma8GNuoiO5xaV" crossorigin="anonymous"></script>
    
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tailwind Play CDN (3.4.17 固定): cdn.tailwindcss.com は Access-Control-Allow-Origin ヘッダを返さないため、integrity / crossorigin="anonymous" を付与するとブラウザがCORSエラーで読み込みをブロックする -->
+    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -29,13 +30,13 @@
         }
     </script>
    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" integrity="sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e" crossorigin="anonymous"></script>
     <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exif-js@2.3.0/exif.min.js" integrity="sha384-yqKeVZUr8fkF/I96V/5ux1kEisGhis8cBjJzYx7whhOT8MmCs4CsSyDEFEswxUE2" crossorigin="anonymous"></script>
     
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous">
 
     <style>
         body { font-family: 'Segoe UI', sans-serif; transition: background-color 0.3s ease; }
