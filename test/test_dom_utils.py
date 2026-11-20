@@ -146,7 +146,8 @@ def test_rescore_main_content_with_children_no_children(mocker):
     main_content = DOMTreeSt(tag="article", children=[], rect=BoundingBox(0, 0, 100, 100), score=10)
 
     mock_scorer_instance = MagicMock()
-    # If no children, score_parent_and_children might just return the main_content node itself, possibly with an updated score
+    # If no children, score_parent_and_children might just return the main_content node itself,
+    # possibly with an updated score
     mock_scorer_instance.score_parent_and_children.return_value = [
         DOMTreeSt(tag=main_content.tag, score=12, rect=main_content.rect)
     ]

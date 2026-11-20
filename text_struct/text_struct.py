@@ -80,7 +80,7 @@ def generate_html(url_list, image_list):
     <html>
         <body>
             <h2>更新ページ一覧</h2>
-            
+
             <ul>
             {% for item in items %}
                 <li>

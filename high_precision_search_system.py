@@ -306,7 +306,10 @@ class HighPrecisionSearchSystem:
             context_str += f"--- Information Source {i + 1} ---\n"
             context_str += f"Title: {doc.get('title', 'N/A')}\n"
             context_str += f"URL: {doc.get('href', 'N/A')}\n"
-            context_str += f"Final Score: {doc.get('final_score', 'N/A'):.4f} (Credibility: {doc.get('credibility_score', 'N/A'):.2f})\n"
+            context_str += (
+                f"Final Score: {doc.get('final_score', 'N/A'):.4f} "
+                f"(Credibility: {doc.get('credibility_score', 'N/A'):.2f})\n"
+            )
             context_str += f"Extracted Content:\n{doc.get('body', 'No content extracted.')}\n\n"
 
         return f"""You are a research assistant. Based on the following multiple sources of information, please provide a comprehensive answer to the user's question.

@@ -1,7 +1,9 @@
+import os
+from urllib.parse import urlparse
+
 # +----------------------------------------------------------------
 # + get domain name
 # +----------------------------------------------------------------
-from urllib.parse import urlparse
 
 
 def get_domain(url):
@@ -13,9 +15,6 @@ def get_domain(url):
 # +----------------------------------------------------------------
 # file edit faction
 # +----------------------------------------------------------------
-import os
-
-
 def util_handle_path(path, custom_filename=None):
     """
     指定されたパスに基づいて以下の操作を行います:

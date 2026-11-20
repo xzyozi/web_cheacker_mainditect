@@ -210,11 +210,11 @@ async def choice_content(url: str, **kwargs):
             # Get page dimensions
             dimensions = await page.evaluate("""() => {
                 return {
-                    width: Math.max(document.body.scrollWidth, document.body.offsetWidth, 
-                                  document.documentElement.clientWidth, document.documentElement.scrollWidth, 
+                    width: Math.max(document.body.scrollWidth, document.body.offsetWidth,
+                                  document.documentElement.clientWidth, document.documentElement.scrollWidth,
                                   document.documentElement.offsetWidth),
-                    height: Math.max(document.body.scrollHeight, document.body.offsetHeight, 
-                                   document.documentElement.clientHeight, document.documentElement.scrollHeight, 
+                    height: Math.max(document.body.scrollHeight, document.body.offsetHeight,
+                                   document.documentElement.clientHeight, document.documentElement.scrollHeight,
                                    document.documentElement.offsetHeight)
                 }
             }""")
@@ -232,7 +232,7 @@ async def choice_content(url: str, **kwargs):
                             const scrollHeight = document.body.scrollHeight;
                             window.scrollBy(0, distance);
                             totalHeight += distance;
-                            
+
                             if(totalHeight >= scrollHeight){
                                 clearInterval(timer);
                                 resolve();
