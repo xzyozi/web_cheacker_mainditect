@@ -401,7 +401,7 @@ class HighPrecisionSearchSystem:
         rrf_scores = self._reciprocal_rank_fusion([bm25_reranked, semantic_reranked, credibility_reranked])
 
         for doc in docs_with_content:
-            doc["final_score"] = rrf_scores.get(doc.get("href"), 0.0)
+            doc["final_score"] = rrf_scores.get(doc.get("href", ""), 0.0)
 
         final_results = sorted(docs_with_content, key=lambda x: x.get("final_score", 0.0), reverse=True)
 

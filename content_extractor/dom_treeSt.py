@@ -23,7 +23,7 @@ class DOMTreeSt:
     rect: BoundingBox = field(default_factory=lambda: BoundingBox(0, 0, 0, 0))
     depth: int = 0
     text: str = ""
-    score: int = 0
+    score: float = 0
     # NOTE: css_selector is the most specific selector, while css_selector_list holds alternatives.
     # この2つのフィールドは意図的に分離されています。
     # `css_selector`は最も具体的な単一セレクタを保持します。
@@ -32,6 +32,7 @@ class DOMTreeSt:
     css_selector_list: List[str] = field(default_factory=list)
     links: List[str] = field(default_factory=list)
     chk_url: str = ""
+    url: str = ""  # 抽出元のページURL（core が設定し、web-cheackerV3 が参照する。to_dict には含めない）
     web_type: str = ""
     result_count: int = 0
     result_items: List["DOMTreeSt"] = field(default_factory=list)

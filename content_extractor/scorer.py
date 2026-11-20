@@ -52,7 +52,9 @@ class MainContentScorer:
         STD_LOW = 40
         STD_HIGH = 1000
 
-    def __init__(self, tree: list[DOMTreeSt], width: int, height: int, origin_x: float = 0.0, origin_y: float = 0.0):
+    def __init__(
+        self, tree: list[DOMTreeSt], width: float, height: float, origin_x: float = 0.0, origin_y: float = 0.0
+    ):
         # origin: 評価領域の左上のページ座標。再スコアリング時は親要素の位置を渡し、相対座標で評価する
         self.origin_x = origin_x
         self.origin_y = origin_y
@@ -112,7 +114,7 @@ class MainContentScorer:
             text_length = len(node.text)
 
         if text_length == 0:
-            score = 0
+            score = 0.0
         elif text_length <= self.TextScoring.MEAN:
             score = math.exp(-0.5 * ((text_length - self.TextScoring.MEAN) / self.TextScoring.STD_LOW) ** 2)
         else:

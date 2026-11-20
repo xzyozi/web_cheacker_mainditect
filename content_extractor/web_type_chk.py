@@ -26,7 +26,7 @@ class WebType(Enum):
     not_quickscan = ("not_quickscan", 3)
 
     def __init__(self, value: str, priority: int):
-        self._value_ = value
+        self._value_ = value  # type: ignore[assignment]  # Enum が値を (名前, 優先度) のタプルとして保持するため
         self._priority = priority
 
     @property

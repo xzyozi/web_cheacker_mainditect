@@ -23,7 +23,7 @@ class ContentProcessor:
     Extracts content and metadata from a URL and calculates a credibility score.
     """
 
-    def process_url(self, url: str) -> dict:
+    def process_url(self, url: str) -> dict | None:
         """
         Processes a single URL to extract content and calculate credibility.
         """

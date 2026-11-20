@@ -114,7 +114,7 @@ async def save_screenshot(
     URLリストを受け取り、各ページのスクリーンショットを指定されたサイズで保存します。
     成功した場合はファイルパスを、失敗した場合はNoneをリストに格納して返します。
     """
-    screenshot_paths = []
+    screenshot_paths: list[str | None] = []
     os.makedirs(save_dir, exist_ok=True)
 
     for url in url_list:

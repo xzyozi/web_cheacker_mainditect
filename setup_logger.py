@@ -50,7 +50,7 @@ def setup_logger(
     name: str,
     level: str = "INFO",
     use_colors: bool = True,
-    log_file: str = None,
+    log_file: str | None = None,
     max_bytes: int = 10 * 1024 * 1024,  # 10MB
     backup_count: int = 5,
     # custom_levels: dict = None,
@@ -79,7 +79,9 @@ def setup_logger(
     #         logging.addLevelName(level_value, level_name)
 
     # 文字列のログレベルを数値に変換
-    level = getattr(logging, level.upper(), logging.DEBUG)
+    # NOTE: level 引数は現状反映されていない（logger は常に DEBUG、ハンドラー側で絞っている）。挙動は変えない
+    level_value: int = getattr(logging, level.upper(), logging.DEBUG)
+    del level_value
     logger.setLevel(logging.DEBUG)
 
     # すでにハンドラーがある場合は再設定しない

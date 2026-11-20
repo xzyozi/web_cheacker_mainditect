@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import sys
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from playwright.async_api import ElementHandle, Page, async_playwright
 
@@ -99,7 +99,7 @@ async def make_tree(
         return None
 
 
-def make_css_selector(properties: Dict[str, any]) -> str:
+def make_css_selector(properties: Dict[str, Any]) -> str:
     """
     Generates a more stable CSS selector from element properties.
     Prioritizes ID, then classes. Avoids overly specific attribute selectors.
