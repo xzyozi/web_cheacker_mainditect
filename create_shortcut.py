@@ -11,11 +11,11 @@ cd /d "%~dp0"
 
 echo "Attempting to activate virtual environment..."
 rem Activate virtual environment if it exists within the project structure.
-if exist ".venv\Scripts\activate.bat" (
-    call .venv\Scripts\activate.bat
+if exist ".venv\\Scripts\activate.bat" (
+    call .venv\\Scripts\activate.bat
     echo "Virtual environment activated."
 ) else (
-    echo "WARNING: Virtual environment not found at .\.venv\ . Trying to run with system python."
+    echo "WARNING: Virtual environment not found at .\\.venv\\ . Trying to run with system python."
 )
 
 echo "Starting the application (web-cheackerV3.py)..."
@@ -29,6 +29,7 @@ endlocal
 
 FILE_NAME = "cheack.bat"
 
+
 def create_shortcut():
     """Writes the BAT_CONTENT to the specified FILE_NAME."""
     try:
@@ -39,6 +40,7 @@ def create_shortcut():
         print(f"You can now run '{FILE_NAME}' to start the application.")
     except IOError as e:
         print(f"Error: Unable to create file '{FILE_NAME}': {e}")
+
 
 if __name__ == "__main__":
     print("--- Shortcut Creator ---")

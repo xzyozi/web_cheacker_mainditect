@@ -1,13 +1,16 @@
-from typing import Optional
 from collections import Counter
+from typing import Optional
+
 from playwright.async_api import Page
 
-from .dom_treeSt import DOMTreeSt
-from .config import NO_RESULTS_CONFIG
-from .dom_utils import flatten_dom_tree
 from setup_logger import setup_logger
 
+from .config import NO_RESULTS_CONFIG
+from .dom_treeSt import DOMTreeSt
+from .dom_utils import flatten_dom_tree
+
 logger = setup_logger("quality_evaluator")
+
 
 async def is_no_results_page(page: Page, dom_tree: DOMTreeSt) -> bool:
     """
@@ -62,6 +65,7 @@ async def is_no_results_page(page: Page, dom_tree: DOMTreeSt) -> bool:
     # If no expected container is found after all other checks, it's likely a no-results page.
     return True
 
+
 def _is_valid_result_item(item_node: DOMTreeSt) -> bool:
     """
     個々のノードが有効な検索結果アイテムであるかを検証します。
@@ -72,12 +76,13 @@ def _is_valid_result_item(item_node: DOMTreeSt) -> bool:
     has_enough_text = len(item_node.text.split()) >= 10
     return has_link and has_enough_text
 
+
 def _find_result_container(main_content_node: DOMTreeSt) -> Optional[DOMTreeSt]:
     """
     メインコンテンツノードの子孫から、最も繰り返し構造を持つ要素を結果コンテナとして特定します。
     """
     best_container = None
-    max_repetition_score = 0
+    max_repetition_score = 0.0
 
     candidate_nodes = flatten_dom_tree(main_content_node)
 
@@ -86,14 +91,14 @@ def _find_result_container(main_content_node: DOMTreeSt) -> Optional[DOMTreeSt]:
             continue
 
         class_counts = Counter(
-            child.attributes.get('class') for child in node.children if child.attributes.get('class')
+            child.attributes.get("class") for child in node.children if child.attributes.get("class")
         )
-        
+
         if not class_counts:
             continue
 
         most_common_class, count = class_counts.most_common(1)[0]
-        
+
         # A basic threshold to avoid identifying containers with no real repetition.
         if count <= 1:
             continue
@@ -107,8 +112,9 @@ def _find_result_container(main_content_node: DOMTreeSt) -> Optional[DOMTreeSt]:
         if repetition_score > max_repetition_score:
             max_repetition_score = repetition_score
             best_container = node
-            
+
     return best_container
+
 
 def quantify_search_results(main_content_node: DOMTreeSt) -> DOMTreeSt:
     """フェーズ2：検索結果アイテムの定量化を実行します。"""

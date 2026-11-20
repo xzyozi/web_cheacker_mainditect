@@ -1,10 +1,12 @@
 from typing import List
 
-from .dom_treeSt import DOMTreeSt
-from .scorer import MainContentScorer
 from setup_logger import setup_logger
 
+from .dom_treeSt import DOMTreeSt
+from .scorer import MainContentScorer
+
 logger = setup_logger("dom_utils")
+
 
 def print_content(content: DOMTreeSt) -> None:
     """デバッグ用にコンテンツの詳細情報をログに出力します。"""
@@ -18,6 +20,7 @@ def print_content(content: DOMTreeSt) -> None:
         logger.info(links_str)
         logger.info("----------------------------------------------------------")
 
+
 def flatten_dom_tree(node: DOMTreeSt) -> List[DOMTreeSt]:
     """
     指定されたDOMTreeStノードをルートとして、すべての子孫ノードを含む平坦なリストを返します。
@@ -26,6 +29,7 @@ def flatten_dom_tree(node: DOMTreeSt) -> List[DOMTreeSt]:
     for child in node.children:
         nodes.extend(flatten_dom_tree(child))
     return nodes
+
 
 def rescore_main_content_with_children(main_content: DOMTreeSt) -> List[DOMTreeSt]:
     """
@@ -36,7 +40,7 @@ def rescore_main_content_with_children(main_content: DOMTreeSt) -> List[DOMTreeS
 
     Returns:
         List[DOMTreeSt]: 再評価され、スコアでソートされたノードのリスト。
-    
+
     Raises:
         TypeError: main_contentがDOMTreeStでない場合に発生します。
     """
@@ -50,8 +54,7 @@ def rescore_main_content_with_children(main_content: DOMTreeSt) -> List[DOMTreeS
     # ツリーをフラットなリストに変換
     scorer_list = flatten_dom_tree(main_content)
 
-    scorer = MainContentScorer(scorer_list, main_width, main_height,
-                               origin_x=main_rect.x, origin_y=main_rect.y)
+    scorer = MainContentScorer(scorer_list, main_width, main_height, origin_x=main_rect.x, origin_y=main_rect.y)
 
     scored_nodes = scorer.score_parent_and_children()
 
