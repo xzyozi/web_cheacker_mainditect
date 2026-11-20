@@ -3,7 +3,7 @@ import re
 import os
 from collections import Counter
 import asyncio
-from playwright.async_api import async_playwright, Page, Browser, TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import async_playwright, Page, Browser, Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError
 from aiohttp import ClientError
 
 import traceback
@@ -364,7 +364,8 @@ async def quick_extract_content(url: str,
                     found_tree.css_selector_list = css_selector_list
                     found_tree.css_selector = selector
                     break # 見つかったらループを抜ける
-            except PlaywrightTimeoutError:
+            except (PlaywrightTimeoutError, PlaywrightError):
+                # 無効なセレクタは TimeoutError ではなく Error になるため、同様に次のセレクタへ進む
                 logger.debug(f"Selector failed, trying next: {escaped_selector}")
                 continue # 次のセレクタへ
         
