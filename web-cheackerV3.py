@@ -12,14 +12,14 @@ import threading
 import traceback
 
 import pandas as pd
-from playwright.async_api import async_playwright
+from playwright.async_api import Browser, async_playwright
 import requests
 import yaml
 
 # +----------------------------------------------------------------
 # + my module imports
 # +----------------------------------------------------------------
-from content_extractor import DOMTreeSt, run_full_scan_standalone, run_quick_scan_standalone, save_screenshot
+from content_extractor import DOMTreeSt, extract_main_content, quick_extract_content, save_screenshot
 from mail import send_email
 from setup_logger import setup_logger
 from text_struct import text_struct
@@ -373,9 +373,12 @@ class DataManager:
             logger.info(f"Updated image_filename for {url} to {base_filename}")
 
     def save_data(self):
+        """データを保存する。一時ファイルに書き込んでから置き換え、書き込み途中の中断でファイルが壊れないようにする。"""
         with self.lock:
             self.df["run_code"] = get_Strdatetime()
-            self.df.to_json(self.file_path, orient="records", force_ascii=False, indent=4)
+            tmp_path = f"{self.file_path}.tmp"
+            self.df.to_json(tmp_path, orient="records", force_ascii=False, indent=4)
+            os.replace(tmp_path, self.file_path)
 
     def chk_diff(self) -> list:
         # result_vl列を比較して差分を検出
@@ -389,11 +392,18 @@ class DataManager:
 
 
 async def process_url_async(
-    url: str, index_num: int, data_manager: DataManager, error_list: list, config: dict, semaphore: asyncio.Semaphore
+    url: str,
+    index_num: int,
+    data_manager: DataManager,
+    error_list: list,
+    config: dict,
+    semaphore: asyncio.Semaphore,
+    browser: Browser,
 ):
     """
     非同期で単一のURLを処理するワーカー関数。
     セマフォを使用して同時実行数を制御します。
+    ブラウザは呼び出し側で1つだけ起動したものを共有し、URLごとにコンテキストを作成する。
     """
     async with semaphore:
         try:
@@ -415,8 +425,8 @@ async def process_url_async(
             # Quickスキャン試行
             if css_selector_list and diff_days < 4 and web_page_type:
                 logger.info(f"QUICK SCAN URL: {url}, index: {index_num}")
-                rescored_candidate = await run_quick_scan_standalone(
-                    url=url, css_selector_list=css_selector_list, webtype_str=web_page_type
+                rescored_candidate = await quick_extract_content(
+                    url, browser, css_selector_list=css_selector_list, webtype_str=web_page_type
                 )
 
             # Fullスキャン (Quickスキャンしなかった、または失敗した場合)
@@ -427,7 +437,7 @@ async def process_url_async(
                 # else:
                 logger.info(f"FULL SCAN URL: {url}, index: {index_num}")
 
-                rescored_candidate = await run_full_scan_standalone(url=record["url"], arg_webtype=web_page_type)
+                rescored_candidate = await extract_main_content(record["url"], browser, arg_webtype=web_page_type)
 
                 if rescored_candidate:
                     if rescored_candidate.is_empty_result:
@@ -493,35 +503,41 @@ async def main():
     semaphore = asyncio.Semaphore(worker_count)
     logger.info(f"Starting {worker_count} async workers...")
 
-    tasks = []
-    for index, row in data_manager.df.iterrows():
-        if "url" in row and row["url"]:
-            task = asyncio.create_task(
-                process_url_async(row["url"], index, data_manager, error_list, config, semaphore)
-            )
-            tasks.append(task)
+    diff_urls: list[str] = []
+    email_image_list: list[str | None] = []
+    permanent_image_list: list[str | None] = []
 
-    # 全てのタスクが完了するのを待つ
-    if tasks:
-        await asyncio.gather(*tasks)
-    logger.info("All async workers have finished.")
+    # ブラウザは1回の実行で1つだけ起動し、スキャンとスクリーンショットで共有する
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        try:
+            tasks = []
+            for index, row in data_manager.df.iterrows():
+                if "url" in row and row["url"]:
+                    task = asyncio.create_task(
+                        process_url_async(row["url"], index, data_manager, error_list, config, semaphore, browser)
+                    )
+                    tasks.append(task)
 
-    # --- 差分チェック ---
-    diff_urls = data_manager.chk_diff()
+            # 全てのタスクが完了するのを待つ
+            if tasks:
+                await asyncio.gather(*tasks)
+            logger.info("All async workers have finished.")
 
-    email_image_list = []
-    if diff_urls:
-        # --- Screenshot Generation ---
-        ss_config = config.get("screenshot", {})
-        if ss_config.get("enabled", False):
-            temp_dir = ss_config.get("temporary_dir", "temp_image")
-            perm_dir = user.image_dir_path  # Use the correct path
-            email_width = ss_config.get("email_width", 500)
-            perm_width = ss_config.get("permanent_width", 1920)
+            # スキャン結果は、後続の処理（スクリーンショット・通知）で失敗しても失われないよう、先に保存する
+            data_manager.save_data()
 
-            permanent_image_list = []
-            async with async_playwright() as p:
-                browser = await p.chromium.launch()
+            # --- 差分チェック ---
+            diff_urls = data_manager.chk_diff()
+
+            # --- Screenshot Generation ---
+            ss_config = config.get("screenshot", {})
+            if diff_urls and ss_config.get("enabled", False):
+                temp_dir = ss_config.get("temporary_dir", "temp_image")
+                perm_dir = user.image_dir_path  # Use the correct path
+                email_width = ss_config.get("email_width", 500)
+                perm_width = ss_config.get("permanent_width", 1920)
+
                 logger.info(f"Generating screenshots for email to {temp_dir}...")
                 email_image_list = await save_screenshot(
                     browser, url_list=diff_urls, save_dir=temp_dir, width=email_width
@@ -531,14 +547,15 @@ async def main():
                 permanent_image_list = await save_screenshot(
                     browser, url_list=diff_urls, save_dir=perm_dir, width=perm_width
                 )
-                await browser.close()
+        finally:
+            await browser.close()
 
-            # --- Update DataFrame with permanent image filenames ---
-            if permanent_image_list:
-                for i, url in enumerate(diff_urls):
-                    # Assuming the lists correspond by index
-                    if i < len(permanent_image_list):
-                        data_manager.update_image_filename(url, permanent_image_list[i])
+    # --- Update DataFrame with permanent image filenames ---
+    if permanent_image_list:
+        for i, url in enumerate(diff_urls):
+            # Assuming the lists correspond by index
+            if i < len(permanent_image_list) and permanent_image_list[i]:
+                data_manager.update_image_filename(url, permanent_image_list[i])
 
     # --- データ保存 (画像ファイル名を含む) ---
     data_manager.save_data()

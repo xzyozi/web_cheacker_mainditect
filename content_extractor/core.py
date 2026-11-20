@@ -18,7 +18,7 @@ from utils.file_handler import save_json
 from .dom_treeSt import DOMTreeSt
 from .dom_utils import rescore_main_content_with_children
 from .make_tree import make_tree
-from .playwright_helpers import adjust_page_view, fetch_robots_txt, is_scraping_allowed, setup_page
+from .playwright_helpers import adjust_page_view, close_page, fetch_robots_txt, is_scraping_allowed, setup_page
 from .quality_evaluator import is_no_results_page, quantify_search_results
 from .scorer import MainContentScorer
 from .web_type_chk import WebType, WebTypeCHK
@@ -239,7 +239,7 @@ async def extract_main_content(url: str, browser: Browser, count: int = 0, arg_w
 
     finally:
         if page:
-            await page.close()
+            await close_page(page)
 
 
 async def evaluate_search_quality(url: str, browser: Browser, search_query: str) -> DOMTreeSt | None:
@@ -311,7 +311,7 @@ async def evaluate_search_quality(url: str, browser: Browser, search_query: str)
 
         return content_node
     finally:
-        await page.close()
+        await close_page(page)
 
 
 async def quick_extract_content(
