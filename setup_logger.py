@@ -1,8 +1,8 @@
-import logging
 import copy
-import sys
-import os
+import logging
 from logging.handlers import RotatingFileHandler
+import os
+import sys
 
 # # カスタムログレベルを追加
 # NOTICE_LEVEL = logging.INFO + 2
@@ -23,8 +23,10 @@ from logging.handlers import RotatingFileHandler
 # logging.Logger.notice = notice
 # logging.Logger.alert = alert
 
+
 class ColoredFormatter(logging.Formatter):
     """ANSIカラー対応のフォーマッター"""
+
     COLORS = {
         "DEBUG": "\033[0;36m",  # CYAN
         # "NOTICE": "\033[1;34m",  # LIGHT BLUE
@@ -43,11 +45,12 @@ class ColoredFormatter(logging.Formatter):
         colored_record.levelname = f"{seq}{levelname}{self.COLORS['RESET']}"
         return super().format(colored_record)
 
+
 def setup_logger(
-    name: str ,
+    name: str,
     level: str = "INFO",
     use_colors: bool = True,
-    log_file: str = None,
+    log_file: str | None = None,
     max_bytes: int = 10 * 1024 * 1024,  # 10MB
     backup_count: int = 5,
     # custom_levels: dict = None,
@@ -76,7 +79,9 @@ def setup_logger(
     #         logging.addLevelName(level_value, level_name)
 
     # 文字列のログレベルを数値に変換
-    level = getattr(logging, level.upper(), logging.DEBUG)
+    # NOTE: level 引数は現状反映されていない（logger は常に DEBUG、ハンドラー側で絞っている）。挙動は変えない
+    level_value: int = getattr(logging, level.upper(), logging.DEBUG)
+    del level_value
     logger.setLevel(logging.DEBUG)
 
     # すでにハンドラーがある場合は再設定しない
@@ -89,7 +94,11 @@ def setup_logger(
 
     # 標準出力のハンドラー
     stream_handler = logging.StreamHandler(sys.stdout)
-    formatter = ColoredFormatter(log_format, datefmt=date_format) if use_colors else logging.Formatter(log_format, datefmt=date_format)
+    formatter = (
+        ColoredFormatter(log_format, datefmt=date_format)
+        if use_colors
+        else logging.Formatter(log_format, datefmt=date_format)
+    )
     stream_handler.setFormatter(formatter)
 
     stream_handler.setLevel(logging.INFO)

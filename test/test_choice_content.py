@@ -1,45 +1,38 @@
-from typing import Dict, Optional, List, Union
-
+import asyncio
+import json
 import logging
 import traceback
-import asyncio
-from playwright.async_api import async_playwright, Page, TimeoutError as PlaywrightTimeoutError
+from typing import Dict, Optional
 
-import json
+from playwright.async_api import Page, async_playwright
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 # ログ設定
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 async def get_tree(
-    page: Page,
-    selector: Optional[str] = None,
-    wait_for_load: bool = True,
-    timeout: int = 30000,
-    debug: bool = True
+    page: Page, selector: Optional[str] = None, wait_for_load: bool = True, timeout: int = 30000, debug: bool = True
 ) -> Dict:
     """
     Get DOM tree starting from a specific selector or body.
-    
+
     Args:
         page: Playwright Page object
         selector: CSS selector to start tree from (optional)
         wait_for_load: Whether to wait for network idle
         timeout: Timeout in milliseconds for waiting
         debug: Whether to print debug information
-    
+
     Returns:
         Dict representing the DOM tree
     """
     try:
         if debug:
             logging.info(f"Searching for element with selector: {selector}")
-            
+
             # 現在のページ内容の確認
-            all_elements = await page.evaluate('''() => {
+            all_elements = await page.evaluate("""() => {
                 const elements = document.querySelectorAll('*[id]');
                 return Array.from(elements).map(el => ({
                     tag: el.tagName.toLowerCase(),
@@ -47,8 +40,8 @@ async def get_tree(
                     visible: el.offsetParent !== null,
                     rect: el.getBoundingClientRect().toJSON()
                 }));
-            }''')
-            
+            }""")
+
             logging.info("Found elements with IDs on page:")
             for el in all_elements:
                 logging.info(f"- {el['tag']}#{el['id']} (visible: {el['visible']})")
@@ -56,7 +49,7 @@ async def get_tree(
         if wait_for_load:
             try:
                 logging.info("Waiting for network idle...")
-                await page.wait_for_load_state('networkidle', timeout=timeout)
+                await page.wait_for_load_state("networkidle", timeout=timeout)
                 logging.info("Network is idle")
             except Exception as e:
                 logging.warning(f"Network did not become idle within {timeout}ms: {str(e)}")
@@ -76,9 +69,9 @@ async def get_tree(
                 }}
                 return {{ exists: false }};
             }}''')
-            
+
             if debug:
-                if exists_js.get('exists'):
+                if exists_js.get("exists"):
                     logging.info(f"Element found in DOM: {json.dumps(exists_js, indent=2)}")
                 else:
                     logging.warning(f"Element not found in DOM: {selector}")
@@ -94,31 +87,30 @@ async def get_tree(
                     return {}
             except Exception as e:
                 logging.error(f"Error finding element {selector}: {str(e)}")
-                
+
                 # Additional debug information
                 if debug:
-                    page_content = await page.content()
                     logging.debug(f"Current page title: {await page.title()}")
                     logging.debug(f"Current URL: {page.url}")
-                    
+
                     # Check if element exists but is not visible
                     element_handle = await page.query_selector(selector)
                     if element_handle:
                         is_visible = await element_handle.is_visible()
                         logging.debug(f"Element exists but visible: {is_visible}")
-                        
+
                         # Get element properties
-                        properties = await element_handle.evaluate('''el => ({
+                        properties = await element_handle.evaluate("""el => ({
                             offsetParent: el.offsetParent !== null,
                             display: window.getComputedStyle(el).display,
                             visibility: window.getComputedStyle(el).visibility,
                             opacity: window.getComputedStyle(el).opacity
-                        })''')
+                        })""")
                         logging.debug(f"Element properties: {json.dumps(properties, indent=2)}")
-                
+
                 return {}
         else:
-            root = await page.query_selector('body')
+            root = await page.query_selector("body")
 
         if not root:
             return {}
@@ -129,7 +121,7 @@ async def get_tree(
 
             try:
                 # Ensure element is still attached to DOM
-                is_attached = await el.evaluate('el => document.body.contains(el)')
+                is_attached = await el.evaluate("el => document.body.contains(el)")
                 if not is_attached:
                     return {}
 
@@ -142,33 +134,33 @@ async def get_tree(
                     return {}
 
                 # Get element properties
-                properties = await el.evaluate('''el => ({
+                properties = await el.evaluate("""el => ({
                     tag: el.tagName.toLowerCase(),
                     id: el.id,
                     attributes: Object.fromEntries(Array.from(el.attributes).map(attr => [attr.name, attr.value])),
                     text: el.innerText || "",
                     links: Array.from(el.getElementsByTagName('a')).map(a => a.href).filter(Boolean).sort()
-                })''')
+                })""")
 
                 node = {
-                    "tag": properties['tag'],
-                    "id": properties['id'],
-                    "attributes": properties['attributes'],
+                    "tag": properties["tag"],
+                    "id": properties["id"],
+                    "attributes": properties["attributes"],
                     "children": [],
                     "rect": {
-                        "x": bounding_box['x'],
-                        "y": bounding_box['y'],
-                        "width": bounding_box['width'],
-                        "height": bounding_box['height'],
+                        "x": bounding_box["x"],
+                        "y": bounding_box["y"],
+                        "width": bounding_box["width"],
+                        "height": bounding_box["height"],
                     },
                     "depth": current_depth,
-                    "text": properties['text'],
-                    "links": properties['links'],
+                    "text": properties["text"],
+                    "links": properties["links"],
                     "score": 0,
                 }
 
                 # Get children
-                children = await el.query_selector_all(':scope > *')
+                children = await el.query_selector_all(":scope > *")
                 for child in children:
                     child_node = await parse_element(child, current_depth + 1)
                     if child_node:
@@ -185,7 +177,7 @@ async def get_tree(
     except Exception as e:
         logging.error(f"Error in get_tree: {str(e)}")
         return {}
-    
+
 
 async def choice_content(url: str, **kwargs):
     """
@@ -200,38 +192,38 @@ async def choice_content(url: str, **kwargs):
     """
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
+        context = await browser.new_context(viewport={"width": 1920, "height": 1080})
         page = await context.new_page()
-        
+
         try:
             # Navigate to the page with longer timeout
-            await page.goto(url, wait_until='domcontentloaded', timeout=30000)
-            
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+
             # Wait for initial page load
-            await page.wait_for_selector('body', state='attached', timeout=30000)
-            
+            await page.wait_for_selector("body", state="attached", timeout=30000)
+
             try:
-                await page.wait_for_load_state('networkidle', timeout=30000)
+                await page.wait_for_load_state("networkidle", timeout=30000)
             except PlaywrightTimeoutError:
                 print("Network did not become idle within 30 seconds, continuing anyway.")
 
             # Get page dimensions
-            dimensions = await page.evaluate('''() => {
+            dimensions = await page.evaluate("""() => {
                 return {
-                    width: Math.max(document.body.scrollWidth, document.body.offsetWidth, 
-                                  document.documentElement.clientWidth, document.documentElement.scrollWidth, 
+                    width: Math.max(document.body.scrollWidth, document.body.offsetWidth,
+                                  document.documentElement.clientWidth, document.documentElement.scrollWidth,
                                   document.documentElement.offsetWidth),
-                    height: Math.max(document.body.scrollHeight, document.body.offsetHeight, 
-                                   document.documentElement.clientHeight, document.documentElement.scrollHeight, 
+                    height: Math.max(document.body.scrollHeight, document.body.offsetHeight,
+                                   document.documentElement.clientHeight, document.documentElement.scrollHeight,
                                    document.documentElement.offsetHeight)
                 }
-            }''')
+            }""")
 
             # Set viewport to full page size
-            await page.set_viewport_size({"width": dimensions['width'], "height": dimensions['height']})
+            await page.set_viewport_size({"width": dimensions["width"], "height": dimensions["height"]})
 
             # Scroll through the page to ensure all content is loaded
-            await page.evaluate('''
+            await page.evaluate("""
                 async () => {
                     await new Promise((resolve) => {
                         let totalHeight = 0;
@@ -240,7 +232,7 @@ async def choice_content(url: str, **kwargs):
                             const scrollHeight = document.body.scrollHeight;
                             window.scrollBy(0, distance);
                             totalHeight += distance;
-                            
+
                             if(totalHeight >= scrollHeight){
                                 clearInterval(timer);
                                 resolve();
@@ -248,7 +240,7 @@ async def choice_content(url: str, **kwargs):
                         }, 100);
                     });
                 }
-            ''')
+            """)
 
             # Extract parameters from kwargs
             tag = kwargs.get("tag")
@@ -264,7 +256,7 @@ async def choice_content(url: str, **kwargs):
             if attributes:
                 for key, value in attributes.items():
                     selectors.append(f"[{key}='{value}']")
-            
+
             selector = "".join(selectors) if selectors else "body"
 
             # Wait for element with longer timeout
@@ -275,8 +267,10 @@ async def choice_content(url: str, **kwargs):
                 return {}
 
             # Get tree structure
-            tree = await get_tree(page, tag=tag, element_id=element_id, attributes=attributes)
-            
+            # NOTE: get_tree は selector 引数のみを受け取る。この呼び出しは旧版の名残で実行すると TypeError になる
+            # （choice_content はどこからも呼ばれていない。整理は #28 で行う）
+            tree = await get_tree(page, tag=tag, element_id=element_id, attributes=attributes)  # type: ignore[call-arg]
+
             if not tree:
                 print(f"No matching elements found for selector: {selector}")
                 # Fall back to JavaScript evaluation for debugging
@@ -287,7 +281,7 @@ async def choice_content(url: str, **kwargs):
                     }}
                 ''')
                 print(f"Element exists according to JavaScript: {element_exists}")
-            
+
             return tree
 
         except Exception as e:
@@ -300,25 +294,25 @@ async def choice_content(url: str, **kwargs):
             await browser.close()
 
 
-async def ch_main(url : str):
+async def ch_main(url: str):
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         page = await browser.new_page()
-        
+
         # ページに移動
         await page.goto(url)
-        
+
         # コメントエントリーの取得
-        selector = 'ol#ld_blog_article_comment_entries'
+        selector = "ol#ld_blog_article_comment_entries"
         # コメントエントリーの取得（より柔軟な設定で）
         tree = await get_tree(
             page,
             selector=selector,
             wait_for_load=True,
             timeout=30000,
-            debug=True  # デバッグ情報を有効化
+            debug=True,  # デバッグ情報を有効化
         )
-        
+
         # 結果の処理
         if tree:
             print("Found comment entries:")
@@ -327,9 +321,8 @@ async def ch_main(url : str):
             print(f"Number of children: {len(tree['children'])}")
         else:
             print("Comment entries not found")
-        
-        await browser.close()
 
+        await browser.close()
 
 
 if __name__ == "__main__":
@@ -342,11 +335,12 @@ if __name__ == "__main__":
     choice_dict = {
         "id": "ld_blog_article_comment_entries",
         "tag": "ol",
-        "attributes": {"id": "ld_blog_article_comment_entries"}
+        "attributes": {"id": "ld_blog_article_comment_entries"},
     }
 
-    ch_tree=  asyncio.run(ch_main(url))
+    ch_tree = asyncio.run(ch_main(url))
     # print(ch_tree)
 
     import datetime
+
     print(datetime.datetime.now())

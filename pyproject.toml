@@ -69,3 +69,61 @@ test = "pytest"
 
 # Create the .bat shortcut for running the application
 create-shortcut = "python create_shortcut.py"
+
+# ==========================================
+# Linter & Formatter (Ruff)
+# ==========================================
+[tool.ruff]
+line-length = 120
+exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    "venv",
+    ".venv",
+    "mutants",
+    "review",
+]
+
+[tool.ruff.lint]
+# E: pycodestyle errors, F: Pyflakes, W: pycodestyle warnings, I: isort
+select = ["E", "F", "W", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+# 長い定数文字列（User-Agent、LLM向けプロンプト）は分割すると意味が変わるため E501 を除外
+"content_processor.py" = ["E501"]
+"high_precision_search_system.py" = ["E501"]
+# 旧版実装。削除予定（Issue #24）のため整理の対象外とする
+"playwright_mainditect_v2.py" = ["E402", "E501", "W291", "W293"]
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+
+# ==========================================
+# Type Checker (Mypy)
+# ==========================================
+[tool.mypy]
+python_version = "3.10"
+warn_unused_configs = true
+show_error_codes = true
+# 型定義の無いサードパーティ製ライブラリ（playwright, scipy, yaml 等）で落とさない
+ignore_missing_imports = true
+exclude = [
+    "build/",
+    "venv/",
+    "\\.venv/",
+    "mutants/",
+    "review/",
+    # 旧版実装。削除予定（Issue #24）のため型検査の対象外とする
+    "playwright_mainditect_v2\\.py",
+]
+
+# ==========================================
+# Testing (Pytest)
+# ==========================================
+[tool.pytest.ini_options]
+testpaths = ["test"]
+python_files = ["test_*.py"]
+# CI では PYTHONPATH を設定しないため、プロジェクトルートを import パスに加える
+pythonpath = ["."]
