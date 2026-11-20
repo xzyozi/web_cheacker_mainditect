@@ -160,6 +160,56 @@ async def test_quick_scan_detects_changed_links(browser, site):
     assert all("/article-v2/" in link for link in quick.links)
 
 
+def build_duplicate_class_page() -> str:
+    """同じクラス名（`card`）を持つ兄弟要素が複数ある一覧ページ。
+
+    `div.card` のようなタグとクラスだけのセレクタは、3件すべてにヒットしてしまう。
+    """
+    cards = "\n".join(
+        f"""
+    <div class="card">
+      <h2><a href="/card/{i}.html">カード {i}</a></h2>
+      <p>これはカード {i} の本文です。メインコンテンツとして判定されるよう、ある程度の長さの文章を入れておきます。</p>
+    </div>"""
+        for i in range(3)
+    )
+    return f"""<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>重複クラスのページ</title>
+  <style>
+    body {{ margin: 0; font-family: sans-serif; }}
+    .card {{ width: 60%; margin: 20px auto; min-height: 240px; }}
+  </style>
+</head>
+<body>{cards}
+</body>
+</html>
+"""
+
+
+@pytest.mark.asyncio
+async def test_saved_primary_selector_matches_exactly_one_element(browser, site):
+    """保存するプライマリセレクタが、ページ内でちょうど1件にヒットする（別の要素を拾わない）。"""
+    base_url, root = site
+    (root / "index.html").write_text(build_duplicate_class_page(), encoding="utf-8")
+    url = f"{base_url}/index.html"
+
+    result = await extract_main_content(url, browser)
+    assert result is not None
+    assert result.css_selector
+
+    page = await browser.new_page()
+    try:
+        await page.goto(url)
+        hits = await page.locator(result.css_selector).count()
+    finally:
+        await page.close()
+
+    assert hits == 1, f"セレクタ {result.css_selector!r} が {hits} 件にヒットしている"
+
+
 @pytest.mark.asyncio
 async def test_robots_txt_disallow_blocks_full_and_quick_scan(browser, site):
     """robots.txt で禁止されたパスは、Full スキャンでも Quick スキャンでもアクセスしない。"""
