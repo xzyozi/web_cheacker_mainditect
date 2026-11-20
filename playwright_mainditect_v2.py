@@ -14,7 +14,8 @@ from urllib.parse import urlparse, urljoin
 import aiohttp
 import sys
 
-asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 # +----------------------------------------------------------------
 # + Constant definition
 # +----------------------------------------------------------------

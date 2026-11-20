@@ -482,7 +482,8 @@ async def process_url_async(url: str,
 
 
 async def main():
-    user = User("jav")
+    # 使い方: python web-cheackerV3.py [ユーザー名]（省略時は jav）
+    user = User(sys.argv[1] if len(sys.argv) > 1 else "jav")
     config = user.config
     notification_manager = NotificationManager(user)
 
@@ -555,7 +556,6 @@ async def main():
         logger.info("-------- ERROR list output -----------")
         for error_msg in error_list:
             logger.warning(error_msg)
-        traceback.print_exc()
     
     notification_manager.send_error_notification(error_list)
 
