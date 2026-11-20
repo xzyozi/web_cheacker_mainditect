@@ -1,8 +1,7 @@
 import logging
-import json
 import asyncio
 import sys
-from typing import Optional, List, Dict
+from typing import Optional, Dict
 from playwright.async_api import Page, ElementHandle, async_playwright
 
 from .dom_treeSt import DOMTreeSt, BoundingBox

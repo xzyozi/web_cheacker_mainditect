@@ -3,7 +3,7 @@ import hashlib
 from urllib.parse import urlparse, urljoin
 from typing import Optional
 import aiohttp
-from playwright.async_api import async_playwright, Page, Browser, TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import Page, Browser, TimeoutError as PlaywrightTimeoutError
 from PIL import Image
 import traceback
 import asyncio # Import asyncio for sleep

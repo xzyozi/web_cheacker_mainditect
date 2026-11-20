@@ -1,8 +1,8 @@
 import math
-from typing import Dict, List, Any, Union , Optional
+from typing import List
 from scipy import stats
 
-from .dom_treeSt import DOMTreeSt, BoundingBox
+from .dom_treeSt import DOMTreeSt
 
 # 候補とみなす最小面積（px²）。bounding_box はピクセル単位のため、1x1px の要素などを除外する
 MIN_ELEMENT_AREA_PX = 100

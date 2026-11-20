@@ -1,14 +1,11 @@
 import math
 from typing import Dict, List, Any, Union , Optional
-from concurrent.futures import ThreadPoolExecutor
 from scipy import stats
 
 import asyncio
 from playwright.async_api import async_playwright, Page, TimeoutError as PlaywrightTimeoutError
 
 import traceback
-from scipy import stats
-import numpy as np
 from PIL import Image, ImageDraw
 from urllib.parse import urlparse, urljoin
 import aiohttp

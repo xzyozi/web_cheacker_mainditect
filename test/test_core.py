@@ -1,8 +1,7 @@
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
-import sys
+from unittest.mock import MagicMock, AsyncMock
 
-from content_extractor.dom_treeSt import DOMTreeSt, BoundingBox
+from content_extractor.dom_treeSt import DOMTreeSt
 from content_extractor.core import extract_main_content, _escape_css_selector_colons
 
 # =================================================================

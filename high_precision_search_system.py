@@ -1,8 +1,6 @@
 # Imports
 import asyncio
 import datetime
-import hashlib
-import json
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor

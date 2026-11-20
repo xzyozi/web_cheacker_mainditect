@@ -1,6 +1,4 @@
-import os
 import jinja2
-import base64
 from itertools import zip_longest
 
 def generate_notification(urls : list):

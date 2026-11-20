@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
-from enum import Enum
+from typing import Dict, List
 
 @dataclass
 class BoundingBox:
@@ -84,7 +83,7 @@ class DOMTreeSt:
         infos = []
         for child in self.children:
             info = [
-                f" child : ",
+                " child : ",
                 f"    Score: {child.score}",
                 f"    Rect: {child.rect}",
                 f"    Depth: {child.depth}",
@@ -98,7 +97,7 @@ class DOMTreeSt:
     def __repr__(self) -> str:
         """ノードの情報を見やすく表示"""
         info = [
-            f"",
+            "",
             f"Tag: {self.tag}",
             f"Score: {self.score}",
             f"ID: {self.id}" if self.id else "ID: None",

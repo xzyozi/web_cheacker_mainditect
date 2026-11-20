@@ -1,7 +1,6 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 from content_extractor.make_tree import make_tree, make_css_selector
-from content_extractor.dom_treeSt import DOMTreeSt, BoundingBox
 
 # Fixtures for Playwright mocks
 @pytest.fixture
