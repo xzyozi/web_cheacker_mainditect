@@ -22,8 +22,6 @@ from .playwright_helpers import (
     adjust_page_view,
     close_page,
     ensure_unique_selector,
-    fetch_robots_txt,
-    is_scraping_allowed,
     is_url_allowed,
     setup_page,
 )
@@ -83,19 +81,9 @@ async def extract_main_content(url: str, browser: Browser, count: int = 0, arg_w
     """
     page = None
     try:
-        # robots.txtを取得
-        robots_txt = await fetch_robots_txt(url)
-
-        if robots_txt:
-            # スクレイピングが許可されているか確認
-            from urllib.parse import urlparse
-
-            parsed_url = urlparse(url)
-            target_path = parsed_url.path or "/"
-
-            if not is_scraping_allowed(robots_txt, target_path):
-                logger.info(f"robots.txtにより、このURLのスクレイピングは許可されていません: {url}")
-                return None
+        if not await is_url_allowed(url):
+            logger.info(f"robots.txtにより、このURLのスクレイピングは許可されていません: {url}")
+            return None
 
         page = await setup_page(url, browser)
         if not page:
