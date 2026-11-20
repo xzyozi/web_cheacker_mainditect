@@ -54,6 +54,19 @@ async def setup_page(url: str, browser: Browser):
         return None
 
 
+async def close_page(page: Page) -> None:
+    """`setup_page` が作成したページと、そのブラウザコンテキストを閉じる。
+
+    `page.close()` だけではコンテキストが残り続け、URL数に比例してメモリを消費するため、
+    ページを閉じた後にコンテキストも閉じる。閉じる処理の失敗は、後続のURL処理を止めないよう記録のみとする。
+    """
+    try:
+        await page.close()
+        await page.context.close()
+    except Exception as e:
+        logger.warning(f"ページ/コンテキストの解放に失敗しました: {e}")
+
+
 async def adjust_page_view(page: Page) -> dict:
     """ページのサイズを調整し、スクロールを実行"""
     dimensions = await page.evaluate("""() => {
