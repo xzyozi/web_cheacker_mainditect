@@ -1,5 +1,7 @@
 from unittest.mock import AsyncMock
 
+from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 import pytest
 
 from content_extractor.make_tree import escape_css_identifier, make_css_selector, make_tree
@@ -178,25 +180,69 @@ async def test_make_tree_root_element_not_found(mock_page):
 @pytest.mark.asyncio
 async def test_make_tree_wait_for_load_true(mock_page):
     # Ensure query_selector returns a mock handle so make_tree proceeds
-    mock_page.query_selector.return_value = AsyncMock()
-    # Make sure the evaluate and bounding_box are mocked on the returned handle
-    mock_page.query_selector.return_value.evaluate.return_value = True
-    mock_page.query_selector.return_value.bounding_box.return_value = {"x": 0, "y": 0, "width": 100, "height": 100}
+    mock_handle = AsyncMock()
+    mock_handle.evaluate.side_effect = [
+        True,
+        {"tag": "body", "id": "", "attributes": {}, "text": "", "links": []},
+    ]
+    mock_handle.bounding_box.return_value = {"x": 0, "y": 0, "width": 100, "height": 100}
+    mock_handle.query_selector_all.return_value = []
+    mock_page.query_selector.return_value = mock_handle
 
-    await make_tree(mock_page, selector="body", wait_for_load=True)
+    tree = await make_tree(mock_page, selector="body", wait_for_load=True)
+    assert tree is not None
     mock_page.wait_for_load_state.assert_called_once_with("networkidle", timeout=30000)
 
 
 @pytest.mark.asyncio
 async def test_make_tree_wait_for_load_false(mock_page):
     # Ensure query_selector returns a mock handle so make_tree proceeds
-    mock_page.query_selector.return_value = AsyncMock()
-    # Make sure the evaluate and bounding_box are mocked on the returned handle
-    mock_page.query_selector.return_value.evaluate.return_value = True
-    mock_page.query_selector.return_value.bounding_box.return_value = {"x": 0, "y": 0, "width": 100, "height": 100}
+    mock_handle = AsyncMock()
+    mock_handle.evaluate.side_effect = [
+        True,
+        {"tag": "body", "id": "", "attributes": {}, "text": "", "links": []},
+    ]
+    mock_handle.bounding_box.return_value = {"x": 0, "y": 0, "width": 100, "height": 100}
+    mock_handle.query_selector_all.return_value = []
+    mock_page.query_selector.return_value = mock_handle
 
-    await make_tree(mock_page, selector="body", wait_for_load=False)
+    tree = await make_tree(mock_page, selector="body", wait_for_load=False)
+    assert tree is not None
     mock_page.wait_for_load_state.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_make_tree_networkidle_timeout_continues(mock_page):
+    """networkidle 待機でタイムアウトしても警告のみで DOM 構築を続行する。"""
+    mock_page.wait_for_load_state.side_effect = PlaywrightTimeoutError("timeout")
+    mock_handle = AsyncMock()
+    mock_handle.evaluate.side_effect = [
+        True,
+        {"tag": "body", "id": "", "attributes": {}, "text": "Content", "links": []},
+    ]
+    mock_handle.bounding_box.return_value = {"x": 0, "y": 0, "width": 100, "height": 100}
+    mock_handle.query_selector_all.return_value = []
+    mock_page.query_selector.return_value = mock_handle
+
+    tree = await make_tree(mock_page, selector="body", wait_for_load=True)
+    assert tree is not None
+    assert tree.text == "Content"
+
+
+@pytest.mark.asyncio
+async def test_make_tree_playwright_error_returns_none(mock_page):
+    """PlaywrightError 発生時はログ出力して None を返す。"""
+    mock_page.query_selector.side_effect = PlaywrightError("invalid selector")
+    tree = await make_tree(mock_page, selector="div[", wait_for_load=False)
+    assert tree is None
+
+
+@pytest.mark.asyncio
+async def test_make_tree_reraises_unexpected_exception(mock_page):
+    """PlaywrightError 以外の予期せぬ例外は握りつぶさず再送出する。"""
+    mock_page.query_selector.side_effect = RuntimeError("unexpected bug")
+    with pytest.raises(RuntimeError, match="unexpected bug"):
+        await make_tree(mock_page, selector="body", wait_for_load=False)
 
 
 # --- Tests for make_css_selector ---

@@ -1,8 +1,10 @@
+import asyncio
 import os
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import aiohttp
 from playwright.async_api import Browser, BrowserContext, Page
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 import pytest
 
@@ -130,11 +132,11 @@ async def test_setup_page_wait_for_load_state_timeout_warns_but_returns_page(
 
 @pytest.mark.asyncio
 async def test_setup_page_other_exception(mock_browser, mock_context, mock_page, mocker):
-    """Test Case 4: その他の例外。"""
+    """Test Case 4: PlaywrightError 発生時はログに記録してリソースを解放し None を返す。"""
     url = "http://example.com"
     mock_browser.new_context.return_value = mock_context
     mock_context.new_page.return_value = mock_page
-    mock_page.goto.side_effect = Exception("Some other error")
+    mock_page.goto.side_effect = PlaywrightError("Some other error")
 
     # Mock logger to check for error
     mock_logger_error = mocker.patch("content_extractor.playwright_helpers.logger.error")
@@ -146,6 +148,22 @@ async def test_setup_page_other_exception(mock_browser, mock_context, mock_page,
     mock_logger_error.assert_called_once()
     mock_page.close.assert_awaited_once()  # Page should be closed on failure
     mock_context.close.assert_not_called()  # Context is not explicitly closed if page was created
+
+
+@pytest.mark.asyncio
+async def test_setup_page_reraises_unexpected_exception(mock_browser, mock_context, mock_page, mocker):
+    """予期せぬ例外はリソース解放とログ記録のうえ再送出する。"""
+    url = "http://example.com"
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.return_value = mock_page
+    mock_page.goto.side_effect = RuntimeError("unexpected")
+    mock_logger_exception = mocker.patch("content_extractor.playwright_helpers.logger.exception")
+
+    with pytest.raises(RuntimeError, match="unexpected"):
+        await setup_page(url, mock_browser)
+
+    mock_logger_exception.assert_called_once()
+    mock_page.close.assert_awaited_once()
 
 
 # --- Tests for close_page ---
@@ -168,7 +186,7 @@ async def test_close_page_closes_page_and_context(mock_page):
 async def test_close_page_does_not_raise_when_close_fails(mock_page, mocker):
     """解放の失敗は記録のみとし、後続のURL処理を止めない。"""
     mock_page.context = AsyncMock(spec=BrowserContext)
-    mock_page.close.side_effect = Exception("target closed")
+    mock_page.close.side_effect = PlaywrightError("target closed")
     mock_logger_warning = mocker.patch("content_extractor.playwright_helpers.logger.warning")
 
     await close_page(mock_page)  # 例外を送出しない
@@ -209,7 +227,7 @@ async def test_ensure_unique_selector_keeps_selector_when_position_not_matched(m
 @pytest.mark.asyncio
 async def test_ensure_unique_selector_keeps_selector_when_evaluate_fails(mock_page):
     """JavaScript の評価に失敗しても、例外を出さず元のセレクタを返す。"""
-    mock_page.evaluate.side_effect = Exception("boom")
+    mock_page.evaluate.side_effect = PlaywrightError("boom")
 
     assert await ensure_unique_selector(mock_page, "div.card", RECT) == "div.card"
 
@@ -329,6 +347,22 @@ async def test_fetch_robots_txt_network_error(MockClientSession):
     robots_content = await fetch_robots_txt(url)
 
     # Assert
+    assert robots_content is None
+    session.get.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch("content_extractor.playwright_helpers.aiohttp.ClientSession")
+async def test_fetch_robots_txt_timeout_error(MockClientSession):
+    """robots.txt 取得時の asyncio.TimeoutError では None を返す。"""
+    session = MagicMock()
+    session.get.side_effect = asyncio.TimeoutError("Request timeout")
+    session_context = AsyncMock()
+    session_context.__aenter__.return_value = session
+    MockClientSession.return_value = session_context
+
+    robots_content = await fetch_robots_txt("http://example.com/some/path")
+
     assert robots_content is None
     session.get.assert_called_once()
 
@@ -662,3 +696,35 @@ async def test_save_screenshot_makedirs_called(
 
     await save_screenshot(mock_browser, [url], save_dir="new_temp_dir")
     mock_makedirs.assert_called_once_with("new_temp_dir", exist_ok=True)
+
+
+@pytest.mark.asyncio
+@patch("os.makedirs")
+async def test_save_screenshot_playwright_error_retries_and_returns_none(
+    mock_makedirs, mock_browser, mock_context, mock_page, mock_asyncio_sleep
+):
+    """PlaywrightError 時はリトライし、最大回数超過で None を返す。"""
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.return_value = mock_page
+    mock_page.goto.side_effect = PlaywrightError("navigation error")
+
+    result = await save_screenshot(mock_browser, ["http://example.com/err"])
+
+    assert result == [None]
+    assert mock_page.goto.call_count == 3
+    assert mock_asyncio_sleep.call_count == 2
+
+
+@pytest.mark.asyncio
+@patch("os.makedirs")
+async def test_save_screenshot_reraises_unexpected_exception(mock_makedirs, mock_browser, mock_context, mock_page):
+    """予期せぬ例外はリトライや握りつぶしをせず、リソース解放して再送出する。"""
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.return_value = mock_page
+    mock_page.goto.side_effect = RuntimeError("unexpected bug")
+
+    with pytest.raises(RuntimeError, match="unexpected bug"):
+        await save_screenshot(mock_browser, ["http://example.com/bug"])
+
+    mock_page.close.assert_awaited_once()
+    mock_context.close.assert_awaited_once()

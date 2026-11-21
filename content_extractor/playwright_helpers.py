@@ -1,13 +1,13 @@
 import asyncio  # Import asyncio for sleep
 import hashlib
 import os
-import traceback
 from typing import Optional
 from urllib.parse import urljoin, urlparse
 
 import aiohttp
-from PIL import Image
-from playwright.async_api import Browser, Page
+from PIL import Image, UnidentifiedImageError
+from playwright.async_api import Browser, BrowserContext, Page
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from setup_logger import setup_logger
@@ -17,6 +17,14 @@ logger = setup_logger("playwright_helpers")
 # Retry settings
 MAX_RETRIES = 3
 RETRY_DELAY_SECONDS = 2
+
+
+async def _cleanup_setup_resources(page: Optional[Page], context: Optional[BrowserContext]) -> None:
+    """setup_page 途中で作成したページまたはコンテキストを解放する。"""
+    if page:
+        await page.close()
+    elif context:
+        await context.close()
 
 
 async def setup_page(url: str, browser: Browser):
@@ -37,21 +45,17 @@ async def setup_page(url: str, browser: Browser):
             logger.warning("ネットワークが15秒以内にアイドル状態になりませんでした。処理を続行します。")
         return page
     except PlaywrightTimeoutError as e:
-        logger.error(f"ページのセットアップ中にタイムアウトが発生しました: {url} - {e}")
-        traceback.print_exc()
-        if page:
-            await page.close()
-        elif context:
-            await context.close()
+        logger.exception(f"ページのセットアップ中にタイムアウトが発生しました: {url} - {e}")
+        await _cleanup_setup_resources(page, context)
         return None
-    except Exception as e:
-        logger.error(f"ページのセットアップ中に予期せぬエラーが発生: {url} - {e}")
-        traceback.print_exc()
-        if page:
-            await page.close()
-        elif context:
-            await context.close()
+    except PlaywrightError as e:
+        logger.exception(f"ページのセットアップ中にPlaywrightエラーが発生: {url} - {e}")
+        await _cleanup_setup_resources(page, context)
         return None
+    except Exception:
+        logger.exception(f"ページのセットアップ中に予期せぬエラーが発生: {url}")
+        await _cleanup_setup_resources(page, context)
+        raise
 
 
 # セレクタが一意でないときに、目的の要素（位置が一致するもの）から、
@@ -107,7 +111,7 @@ async def ensure_unique_selector(page: Page, selector: str, rect: dict) -> str:
         return selector
     try:
         result = await page.evaluate(_UNIQUE_SELECTOR_JS, {"selector": selector, "rect": rect})
-    except Exception as e:
+    except PlaywrightError as e:
         logger.warning(f"セレクタの一意性を確認できませんでした: {selector} - {e}")
         return selector
 
@@ -137,7 +141,7 @@ async def close_page(page: Page) -> None:
     try:
         await page.close()
         await page.context.close()
-    except Exception as e:
+    except PlaywrightError as e:
         logger.warning(f"ページ/コンテキストの解放に失敗しました: {e}")
 
 
@@ -172,11 +176,8 @@ async def fetch_robots_txt(url):
                 if response.status == 200:
                     return await response.text()
                 return None
-    except aiohttp.ClientError as e:
+    except (aiohttp.ClientError, asyncio.TimeoutError, UnicodeDecodeError) as e:
         logger.error(f"robots.txtの取得中にエラーが発生: {robots_url} - {e}")
-        return None
-    except Exception as e:
-        logger.error(f"robots.txtの取得中に予期せぬエラーが発生: {robots_url} - {e}")
         return None
 
 
@@ -271,17 +272,14 @@ async def save_screenshot(
                 logger.info(f"スクリーンショットを保存しました: {filepath}")
                 success = True
                 break
-            except Exception as e:
-                if isinstance(e, (PlaywrightTimeoutError, IOError)):
+            except (PlaywrightTimeoutError, OSError, PlaywrightError, UnidentifiedImageError) as e:
+                if isinstance(e, (PlaywrightTimeoutError, OSError)):
                     logger.warning(
                         f"{url} のスクリーンショット処理で既知のエラー "
                         f"(試行 {attempt + 1}/{MAX_RETRIES}): {type(e).__name__} - {e}"
                     )
                 else:
-                    logger.error(
-                        f"{url} のスクリーンショット処理中に予期せぬエラー (試行 {attempt + 1}/{MAX_RETRIES}): {e}"
-                    )
-                    traceback.print_exc()
+                    logger.exception(f"{url} のスクリーンショット処理中にエラー (試行 {attempt + 1}/{MAX_RETRIES})")
 
                 if attempt < MAX_RETRIES - 1:
                     await asyncio.sleep(RETRY_DELAY_SECONDS)
@@ -289,6 +287,9 @@ async def save_screenshot(
                     logger.error(
                         f"{url} のスクリーンショット処理が最大試行回数 ({MAX_RETRIES}) を超えても成功しませんでした。"
                     )
+            except Exception:
+                logger.exception(f"{url} のスクリーンショット処理中に予期せぬエラーが発生しました")
+                raise
             finally:
                 if page:
                     await page.close()
