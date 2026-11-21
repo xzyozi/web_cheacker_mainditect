@@ -5,7 +5,7 @@ document_number: "ADR-002"
 document_role: "rationale"
 ssot_scope: "decision_rationale"
 status: "accepted"
-version: "1.0"
+version: "1.1"
 created_at: "2026-11-21"
 updated_at: "2026-11-21"
 author: "xzyozi"
@@ -144,8 +144,8 @@ related_documents:
   - Issue #46: `[docs] 例外処理の方針を決める（ADR）`
   - 元の Issue: #27（保守性）
 - **実装・検証タスク**:
-  - [ ] Issue #47: `ruff` の `BLE`/`B` を有効化し、`content_extractor/` の例外処理を本 ADR に沿って修正する
-  - [ ] Issue #48: ルートのスクリプト・テスト・`scripts/` に `BLE`/`B` を適用し、一時的な `per-file-ignores` をすべて外す
+  - [x] Issue #47: `ruff` の `BLE`/`B` を有効化し、`content_extractor/` の例外処理を本 ADR に沿って修正する（PR #58 で完了・マージ済み）
+  - [x] Issue #48: ルートのスクリプト・テスト・`scripts/` に `BLE`/`B` を適用し、一時的な `per-file-ignores` をすべて外す（PR #59 で完了・マージ済み）
 - **後続ADR**: なし
 
 ## 7. 例外・見直し条件
@@ -167,3 +167,4 @@ related_documents:
 | 版数 | 改訂日 | 変更者 | 変更内容・変更理由 (Why) |
 | :--- | :--- | :--- | :--- |
 | Rev.1.0 | 2026-11-21 | xzyozi | 新規作成（Issue #46 例外処理方針の策定） |
+| Rev.1.1 | 2026-11-21 | xzyozi | Issue #47（PR #58）・Issue #48（PR #59）の完了に伴い実装・検証タスクを更新（Issue #72） |
