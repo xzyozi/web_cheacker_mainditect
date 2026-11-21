@@ -13,6 +13,7 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import threading
 
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import async_playwright
 import pytest
 import pytest_asyncio
@@ -94,7 +95,7 @@ async def browser():
     async with async_playwright() as p:
         try:
             browser = await p.chromium.launch(headless=True)
-        except Exception as e:  # Chromium 未導入など
+        except (PlaywrightError, OSError) as e:  # Chromium 未導入など
             pytest.skip(f"Chromium を起動できないためスキップ: {e}")
         try:
             yield browser
