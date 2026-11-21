@@ -37,13 +37,14 @@ main/
 ├─ text_struct/            # メール用のHTML生成ロジック
 │
 ├─ web-cheackerV3.py       # アプリケーションを実行するためのメインスクリプト
-├─ requirements.txt        # プロジェクトの依存関係 (この名前を想定)
-└─ readme.md               # このファイル
+├─ pyproject.toml          # プロジェクト設定および依存関係の定義
+├─ uv.lock                 # uv による依存関係ロックファイル
+└─ README.md               # このファイル
 ```
 
 ## ⚙️ 要件
 
-このプロジェクトにはPython 3.10以上が必要です。必要なライブラリは`requirements.txt`からインストールできます。
+このプロジェクトには Python 3.10 以上が必要です。依存関係は `pyproject.toml` と `uv.lock` で管理されており、[`uv`](https://docs.astral.sh/uv/) によるインストールを推奨しています（詳細手順は [docs/setup/python_setup.md](./docs/setup/python_setup.md) を参照）。
 
 **主な依存関係:**
 - `pandas`
@@ -57,22 +58,27 @@ main/
 
 ```bash
 uv sync --extra quality
-# または
+# 開発用ツールも含める場合
+uv sync --extra dev --extra quality
+# pip を利用する場合
 pip install ".[quality]"
 ```
 
 ## 🛠️ インストールとセットアップ
 
-1.  **Pythonの依存関係をインストール:**
+1.  **Pythonの依存関係をインストール（`uv` 推奨）:**
     ```bash
-    # 最初に仮想環境を作成することをお勧めします
-    pip install -r requirements.txt 
+    # アプリケーション実行用の依存関係を同期（.venv が自動作成されます）
+    uv sync
+
+    # テスト・Lint・型チェック等の開発用ツールも含める場合
+    uv sync --extra dev
     ```
-    *(注意: 完全な`requirements.txt`が存在しない場合は、生成する必要があるかもしれません。)*
+    *(従来の `pip` 環境を使う場合は、仮想環境を作成・有効化したうえで `pip install .` または `pip install -r requirements.txt` を実行してください。)*
 
 2.  **Playwrightブラウザをインストール:**
     ```bash
-    playwright install
+    uv run playwright install
     ```
 
 3.  **ユーザープロファイルの設定:**
