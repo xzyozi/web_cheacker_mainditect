@@ -1,3 +1,21 @@
+---
+title: "Git Flow 運用規約 ＆ ブランチ自動管理ガイド"
+document_type: "environment_setup_procedure"
+document_role: "procedure"
+ssot_scope: "environment"
+status: "approved"
+version: "1.0"
+created_at: "2026-11-20"
+updated_at: "2026-11-21"
+author: "xzyozi"
+owner: "xzyozi"
+purpose: "プロジェクトの Git Flow ブランチ戦略、PRマージ後の自動削除、およびローカルブランチ整理手順を定義するため"
+related_documents:
+  - "ドキュメントガバナンス（相対パス: ../README.md）"
+  - "docs/features 運用方針（相対パス: ../features/README.md）"
+  - "Python プロジェクト環境構築手順書 (uv版)（相対パス: ./python_setup.md）"
+---
+
 # Git Flow 運用規約 ＆ ブランチ自動管理ガイド
 
 本ドキュメントは、プロジェクトにおける **Git Flow 運用ルール**、および **GitHub / CI/CD / ローカル Git** を活用したブランチの自動クリーンアップ・管理仕様を定義します。
