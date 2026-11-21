@@ -359,17 +359,21 @@ related_documents:
     - **入力:** 有効なURLとモックされた`Browser`オブジェクト。
     - **期待値:** `Page`オブジェクトが正常に返され、関連するPlaywrightメソッドが正しい引数で呼び出されること。
 - **Test Case 2: `goto`または`wait_for_selector`でのタイムアウト**
-    - **内容:** `page.goto`または`page.wait_for_selector`が`PlaywrightTimeoutError`を発生させた場合に、エラーが適切にログに記録され、`None`が返されることを確認する。
+    - **内容:** `page.goto`または`page.wait_for_selector`が`PlaywrightTimeoutError`を発生させた場合に、エラーが適切にログに記録され、作成済みリソース（`Page`・`BrowserContext`）を解放して`None`が返されることを確認する。
     - **入力:** タイムアウトを発生させるようにモックされたPlaywrightメソッド。
-    - **期待値:** エラーがログに記録され、関数が`None`を返すこと。
+    - **期待値:** エラーがログに記録され、`page.close`と`context.close`が呼ばれたうえで、関数が`None`を返すこと。
 - **Test Case 3: `wait_for_load_state`でのタイムアウト**
     - **内容:** `page.wait_for_load_state`が`PlaywrightTimeoutError`を発生させた場合に、警告がログに記録されるが、処理は続行され`Page`オブジェクトが返されることを確認する。
     - **入力:** `wait_for_load_state`がタイムアウトするようモックされたPlaywrightメソッド。
     - **期待値:** 警告がログに記録され、`Page`オブジェクトが返されること。
-- **Test Case 4: その他の例外**
-    - **内容:** Playwright関連以外の予期せぬ例外が発生した場合に、エラーがログに記録され、`None`が返されることを確認する。
-    - **入力:** 任意の例外を発生させるようにモックされたメソッド。
-    - **期待値:** エラーがログに記録され、関数が`None`を返すこと。
+- **Test Case 4: `PlaywrightError` の発生**
+    - **内容:** `PlaywrightTimeoutError`以外の`PlaywrightError`（`new_page`・`goto`等の失敗）が発生した場合に、エラーがログに記録され、作成済みの`Page`および`BrowserContext`を解放したうえで`None`が返されることを確認する。また、`page.close`が`PlaywrightError`を出した場合でも`context.close`が呼ばれることを確認する（#47・#63）。
+    - **入力:** `PlaywrightError`を発生させるようにモックされたPlaywrightメソッド（`page.goto`、`context.new_page`、`page.close`）。
+    - **期待値:** エラー（`page.close`失敗時は警告）がログに記録され、作成済みの`Page`・`BrowserContext`が解放されたうえで、関数が`None`を返すこと。
+- **Test Case 5: 予期せぬ例外（`PlaywrightError`以外）の再送出**
+    - **内容:** `RuntimeError`等のPlaywright関連以外の予期せぬ例外が発生した場合に、`logger.exception`でログに記録し、作成済みの`Page`および`BrowserContext`を解放したうえで例外を握りつぶさず再送出することを確認する（#47・#63）。
+    - **入力:** `RuntimeError`等の非Playwright例外を発生させるようにモックされたメソッド。
+    - **期待値:** `logger.exception`が呼ばれ、作成済みの`Page`・`BrowserContext`が解放されたうえで、発生した例外がそのまま再送出されること。
 
 #### `close_page(page)`
 

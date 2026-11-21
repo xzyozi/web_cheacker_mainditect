@@ -1,3 +1,22 @@
+---
+title: "プロジェクトセットアップガイド (Hatch版)"
+document_type: "environment_setup_procedure"
+document_role: "procedure"
+ssot_scope: "environment"
+status: "draft"
+version: "1.0"
+created_at: "2026-11-20"
+updated_at: "2026-11-21"
+author: "xzyozi"
+owner: "xzyozi"
+purpose: "Hatch と pyproject.toml の tool.hatch.scripts を用いたプロジェクト環境構築・テスト実行手順を示すため"
+related_documents:
+  - "ドキュメントガバナンス（相対パス: ../README.md）"
+  - "Python プロジェクト環境構築手順書 (uv版)（相対パス: ./python_setup.md）"
+  - "依存関係の管理フロー（相対パス: ./dependency_management.md）"
+  - "プロジェクト設定（相対パス: ../../pyproject.toml）"
+---
+
 # プロジェクトセットアップガイド (Hatch版)
 
 このプロジェクトは、依存関係と開発環境の管理に [Hatch](https://hatch.pypa.io/latest/) を使用します。プロジェクトルートにある `pyproject.toml` ファイルが、従来の `setup.py` の役割を置き換えます。
