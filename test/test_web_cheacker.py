@@ -1,6 +1,8 @@
+import asyncio
 import importlib.util
 import json
 import logging
+import os
 from pathlib import Path
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -178,3 +180,108 @@ async def test_main_cleans_temp_dir_when_async_playwright_raises(tmp_path, monke
 
     assert cleanup_calls == [str(temp_dir), str(temp_dir)]
     assert not temp_dir.exists()
+
+
+def _write_sample_data_file(file_path: Path) -> str:
+    """DataManager テスト用の初期 JSON ファイルを作成し、元のテキストを返す。"""
+    records = [
+        {
+            "url": "https://example.com/page",
+            "run_code": "2026-01-01T00:00:00Z",
+            "result_vl": "old_hash",
+            "updated_datetime": "2026-01-01T00:00:00Z",
+            "full_scan_datetime": "",
+            "css_selector_list": ["main.content"],
+            "web_page_type": "plane",
+            "image_filename": "",
+        }
+    ]
+    raw = json.dumps(records, ensure_ascii=False, indent=4)
+    file_path.write_text(raw, encoding="utf-8")
+    return raw
+
+
+def test_data_manager_save_data_atomic_via_tmp_and_os_replace(tmp_path, monkeypatch, web_checker_module):
+    """DataManager.save_data が一時ファイル (.tmp) 経由で os.replace により原子的に保存することを確認する。"""
+    data_file = tmp_path / "cheacker_url.json"
+    _write_sample_data_file(data_file)
+    dm = web_checker_module.DataManager(str(data_file))
+    dm.df.at[0, "result_vl"] = "updated_hash"
+
+    replace_calls: list[tuple[str, str]] = []
+    original_replace = os.replace
+
+    def spy_replace(src: str, dst: str) -> None:
+        assert Path(src).exists()
+        replace_calls.append((src, dst))
+        original_replace(src, dst)
+
+    monkeypatch.setattr(web_checker_module.os, "replace", spy_replace)
+
+    dm.save_data()
+
+    expected_tmp = f"{data_file}.tmp"
+    assert replace_calls == [(expected_tmp, str(data_file))]
+    assert not Path(expected_tmp).exists()
+
+    saved = json.loads(data_file.read_text(encoding="utf-8"))
+    assert len(saved) == 1
+    assert saved[0]["result_vl"] == "updated_hash"
+    assert saved[0]["run_code"] != "2026-01-01T00:00:00Z"
+
+
+def test_data_manager_save_data_preserves_original_file_on_write_failure(tmp_path, monkeypatch, web_checker_module):
+    """書き込み途中で失敗しても os.replace が呼ばれず、元の JSON ファイルが破損しないことを確認する。"""
+    data_file = tmp_path / "cheacker_url.json"
+    original_raw = _write_sample_data_file(data_file)
+    dm = web_checker_module.DataManager(str(data_file))
+    dm.df.at[0, "result_vl"] = "unsaved_hash"
+
+    def failing_to_json(path_or_buf, *args, **kwargs):
+        Path(path_or_buf).write_text('{"broken": ', encoding="utf-8")
+        raise OSError("disk full during temp write")
+
+    replace_mock = MagicMock()
+    monkeypatch.setattr(dm.df, "to_json", failing_to_json)
+    monkeypatch.setattr(web_checker_module.os, "replace", replace_mock)
+
+    with pytest.raises(OSError, match="disk full during temp write"):
+        dm.save_data()
+
+    replace_mock.assert_not_called()
+    assert data_file.read_text(encoding="utf-8") == original_raw
+    intact = json.loads(data_file.read_text(encoding="utf-8"))
+    assert intact[0]["result_vl"] == "old_hash"
+
+
+@pytest.mark.asyncio
+async def test_process_url_async_records_error_list_and_clears_data_on_failure(
+    tmp_path, monkeypatch, web_checker_module
+):
+    """Full スキャン失敗時と例外発生時に error_list へ記録され、後続処理が落ちないことを確認する。"""
+    data_file = tmp_path / "cheacker_url.json"
+    _write_sample_data_file(data_file)
+    dm = web_checker_module.DataManager(str(data_file))
+    error_list: list = []
+    semaphore = asyncio.Semaphore(1)
+    mock_browser = AsyncMock()
+
+    monkeypatch.setattr(web_checker_module, "extract_main_content", AsyncMock(return_value=None))
+    await web_checker_module.process_url_async(
+        "https://example.com/page", 0, dm, error_list, {}, semaphore, mock_browser
+    )
+
+    assert error_list == [["https://example.com/page", "Full scan returned None"]]
+    assert dm.df.at[0, "css_selector_list"] == []
+    assert dm.df.at[0, "full_scan_datetime"] == ""
+
+    error_list.clear()
+    monkeypatch.setattr(web_checker_module, "extract_main_content", AsyncMock(side_effect=RuntimeError("boom")))
+    await web_checker_module.process_url_async(
+        "https://example.com/page", 0, dm, error_list, {}, semaphore, mock_browser
+    )
+
+    assert len(error_list) == 1
+    assert error_list[0][0] == "https://example.com/page"
+    assert isinstance(error_list[0][1], RuntimeError)
+    assert str(error_list[0][1]) == "boom"
