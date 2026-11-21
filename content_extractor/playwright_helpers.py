@@ -20,11 +20,17 @@ RETRY_DELAY_SECONDS = 2
 
 
 async def _cleanup_setup_resources(page: Optional[Page], context: Optional[BrowserContext]) -> None:
-    """setup_page 途中で作成したページまたはコンテキストを解放する。"""
-    if page:
-        await page.close()
-    elif context:
-        await context.close()
+    """setup_page 途中で作成したページとコンテキストを独立して解放する。"""
+    resources: tuple[tuple[str, Page | BrowserContext | None], ...] = (
+        ("ページ", page),
+        ("コンテキスト", context),
+    )
+    for label, resource in resources:
+        if resource is not None:
+            try:
+                await resource.close()
+            except PlaywrightError as e:
+                logger.warning(f"{label}の解放に失敗しました: {e}")
 
 
 async def setup_page(url: str, browser: Browser):
@@ -138,11 +144,7 @@ async def close_page(page: Page) -> None:
     `page.close()` だけではコンテキストが残り続け、URL数に比例してメモリを消費するため、
     ページを閉じた後にコンテキストも閉じる。閉じる処理の失敗は、後続のURL処理を止めないよう記録のみとする。
     """
-    try:
-        await page.close()
-        await page.context.close()
-    except PlaywrightError as e:
-        logger.warning(f"ページ/コンテキストの解放に失敗しました: {e}")
+    await _cleanup_setup_resources(page, page.context)
 
 
 async def adjust_page_view(page: Page) -> dict:

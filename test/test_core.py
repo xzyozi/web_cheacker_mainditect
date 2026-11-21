@@ -485,3 +485,33 @@ async def test_quick_extract_content_reraises_unexpected_exception(mocker, mock_
 
     mock_logger_exception.assert_called_once()
     mock_context.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_quick_extract_content_new_page_playwright_error_closes_context(mocker, mock_browser):
+    """Quick スキャンで context.new_page() が PlaywrightError を出しても None を返し、コンテキストを閉じる。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
+    mock_context = AsyncMock()
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.side_effect = PlaywrightError("new_page failed")
+
+    result = await quick_extract_content("http://mock.url", mock_browser, ["div.main"], "plane")
+
+    assert result is None
+    mock_context.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_quick_extract_content_new_page_unexpected_error_closes_context(mocker, mock_browser):
+    """Quick スキャンで context.new_page() が予期せぬ例外を出してもコンテキストを閉じて再送出する。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
+    mock_context = AsyncMock()
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.side_effect = RuntimeError("unexpected new_page error")
+    mock_logger_exception = mocker.patch("content_extractor.core.logger.exception")
+
+    with pytest.raises(RuntimeError, match="unexpected new_page error"):
+        await quick_extract_content("http://mock.url", mock_browser, ["div.main"], "plane")
+
+    mock_logger_exception.assert_called_once()
+    mock_context.close.assert_awaited_once()
