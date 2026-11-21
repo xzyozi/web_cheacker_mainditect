@@ -126,6 +126,7 @@ testpaths = ["test"]
 python_files = ["test_*.py"]
 # CI では PYTHONPATH を設定しないため、プロジェクトルートを import パスに加える
 pythonpath = ["."]
+asyncio_default_fixture_loop_scope = "function"
 markers = [
     "integration: 実ブラウザ（Chromium）とローカルHTTPサーバーを使う結合テスト。未導入の環境ではスキップされる",
 ]

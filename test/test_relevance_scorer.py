@@ -1,19 +1,10 @@
-import importlib.util
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
 from content_extractor.dom_treeSt import DOMTreeSt
-
-# 検索品質評価の依存（sentence-transformers / scikit-learn）は重く、監視本体には不要なため、
-# 未導入の環境ではこのファイル全体をスキップする。
-_QUALITY_DEPS = ("sentence_transformers", "sklearn")
-_MISSING_DEPS = [m for m in _QUALITY_DEPS if importlib.util.find_spec(m) is None]
-pytestmark = pytest.mark.skipif(bool(_MISSING_DEPS), reason=f"品質評価の依存が未導入: {', '.join(_MISSING_DEPS)}")
-
-if not _MISSING_DEPS:
-    from content_extractor.relevance_scorer import RelevanceScorer
+from content_extractor.relevance_scorer import RelevanceScorer
 
 # =================================================================
 # relevance_scorer.py のテスト
@@ -25,19 +16,22 @@ def mock_relevance_scorer():
     """
     A fixture that provides a RelevanceScorer instance with mocked heavy dependencies.
     """
-    with patch("content_extractor.relevance_scorer.SentenceTransformer") as MockSentenceTransformer:
+    with (
+        patch("content_extractor.relevance_scorer.SentenceTransformer") as mock_sentence_transformer,
+        patch("content_extractor.relevance_scorer.TfidfVectorizer") as mock_tfidf_vectorizer,
+    ):
         mock_model_instance = MagicMock()
         # The order of embeddings matters: query is encoded first, then items.
         mock_model_instance.encode.side_effect = [
             np.array([0.5, 0.6]),  # For query
             np.array([[0.1, 0.2], [0.3, 0.4]]),  # For items
         ]
-        MockSentenceTransformer.return_value = mock_model_instance
-
-        scorer = RelevanceScorer()
+        mock_sentence_transformer.return_value = mock_model_instance
 
         mock_tfidf_instance = MagicMock()
-        scorer.tfidf_vectorizer = mock_tfidf_instance
+        mock_tfidf_vectorizer.return_value = mock_tfidf_instance
+
+        scorer = RelevanceScorer()
 
         return scorer
 
@@ -176,3 +170,46 @@ def test_calculate_sqs_negative_score_becomes_zero(mock_relevance_scorer):
         max_relevance=0.1,
     )
     assert score == 0
+
+
+# --- Tests for missing optional quality dependencies ---
+
+
+def test_init_raises_import_error_when_sentence_transformers_missing():
+    """sentence-transformers 未導入時は RelevanceScorer.__init__ が明確な ImportError を送出する。"""
+    with (
+        patch("content_extractor.relevance_scorer.SentenceTransformer", None),
+        patch("content_extractor.relevance_scorer.TfidfVectorizer", MagicMock()),
+        pytest.raises(ImportError, match="sentence-transformers"),
+    ):
+        RelevanceScorer()
+
+
+def test_init_raises_import_error_when_sklearn_missing():
+    """scikit-learn 未導入時は RelevanceScorer.__init__ が明確な ImportError を送出する。"""
+    with (
+        patch("content_extractor.relevance_scorer.SentenceTransformer", MagicMock()),
+        patch("content_extractor.relevance_scorer.TfidfVectorizer", None),
+        pytest.raises(ImportError, match="scikit-learn"),
+    ):
+        RelevanceScorer()
+
+
+def test_score_relevance_raises_import_error_when_cosine_similarity_missing(mock_relevance_scorer, sample_items):
+    """scikit-learn (cosine_similarity) 未導入時は score_relevance が明確な ImportError を送出する。"""
+    with (
+        patch("content_extractor.relevance_scorer.cosine_similarity", None),
+        patch("content_extractor.relevance_scorer.cos_sim", MagicMock()),
+        pytest.raises(ImportError, match="scikit-learn"),
+    ):
+        mock_relevance_scorer.score_relevance("python", sample_items)
+
+
+def test_score_relevance_raises_import_error_when_cos_sim_missing(mock_relevance_scorer, sample_items):
+    """sentence-transformers (cos_sim) 未導入時は score_relevance が明確な ImportError を送出する。"""
+    with (
+        patch("content_extractor.relevance_scorer.cosine_similarity", MagicMock()),
+        patch("content_extractor.relevance_scorer.cos_sim", None),
+        pytest.raises(ImportError, match="sentence-transformers"),
+    ):
+        mock_relevance_scorer.score_relevance("python", sample_items)
