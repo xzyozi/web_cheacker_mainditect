@@ -105,3 +105,34 @@ def test_load_app_config_handles_empty_yaml_as_empty_dict(tmp_path, monkeypatch,
 
     user = web_checker_module.User("jav")
     assert user.config == {}
+
+
+def test_load_app_config_handles_invalid_yaml_as_empty_dict(tmp_path, monkeypatch, caplog, web_checker_module):
+    """不正な YAML 構文時はエラーログを出して空辞書を返す。"""
+    monkeypatch.chdir(tmp_path)
+    user_dir = _prepare_user_dir(tmp_path, "jav")
+    (user_dir / "config.yaml").write_text("scan: [invalid", encoding="utf-8")
+
+    with caplog.at_level(logging.ERROR, logger="test_web_cheacker_v3"):
+        user = web_checker_module.User("jav")
+
+    assert user.config == {}
+    assert any(
+        record.levelno == logging.ERROR and "Error loading app config" in record.message for record in caplog.records
+    )
+
+
+def test_send_resultmail_uses_fresh_empty_image_list_by_default(tmp_path, monkeypatch, web_checker_module):
+    """send_resultmail で image_list 省略時に新しい空リストが使われる（B006 対策）。"""
+    monkeypatch.chdir(tmp_path)
+    _prepare_user_dir(tmp_path, "jav")
+    user = web_checker_module.User("jav")
+
+    with patch.object(web_checker_module, "send_email") as mock_send:
+        user.send_resultmail("body", "html")
+        passed_images = mock_send.call_args.kwargs["image_list"]
+        assert passed_images == []
+        passed_images.append("mutated.png")
+
+        user.send_resultmail("body2", "html")
+        assert mock_send.call_args.kwargs["image_list"] == []
