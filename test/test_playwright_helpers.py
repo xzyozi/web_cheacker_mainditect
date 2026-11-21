@@ -11,6 +11,7 @@ import pytest
 from content_extractor import playwright_helpers
 from content_extractor.playwright_helpers import (
     _UNIQUE_SELECTOR_JS,
+    ROBOTS_FETCH_TIMEOUT_SECONDS,
     _cleanup_setup_resources,
     adjust_page_view,
     close_page,
@@ -480,6 +481,23 @@ async def test_fetch_robots_txt_timeout_error(MockClientSession):
     session.get.assert_called_once()
 
 
+@pytest.mark.asyncio
+@patch("content_extractor.playwright_helpers.aiohttp.ClientSession")
+async def test_fetch_robots_txt_sets_client_timeout(MockClientSession, mock_aiohttp_response):
+    """robots.txt 取得時に aiohttp.ClientSession へ明示的な ClientTimeout を渡す。"""
+    get_context = AsyncMock()
+    get_context.__aenter__.return_value = mock_aiohttp_response
+    session = MagicMock()
+    session.get.return_value = get_context
+    session_context = AsyncMock()
+    session_context.__aenter__.return_value = session
+    MockClientSession.return_value = session_context
+
+    await fetch_robots_txt("http://example.com/some/path")
+
+    MockClientSession.assert_called_once_with(timeout=aiohttp.ClientTimeout(total=ROBOTS_FETCH_TIMEOUT_SECONDS))
+
+
 # --- Tests for is_scraping_allowed ---
 
 
@@ -561,6 +579,42 @@ async def test_is_url_allowed_invalid_url_is_allowed(mocker):
 
     assert await is_url_allowed("invalid-url") is True
     fetch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_is_url_allowed_deduplicates_concurrent_requests_same_origin(mocker):
+    """同一オリジンへの並列判定でも、遅延中に重複取得せず fetch_robots_txt は1回だけ呼ばれる。"""
+
+    async def delayed_fetch(_url: str) -> str:
+        # autouse の mock_asyncio_sleep を避け、イベントループへ確実に制御を譲って並列競合を再現する
+        loop = asyncio.get_running_loop()
+        ready = loop.create_future()
+        loop.call_soon(ready.set_result, None)
+        await ready
+        return "User-agent: *\nDisallow: /private"
+
+    fetch = mocker.patch.object(playwright_helpers, "fetch_robots_txt", new=AsyncMock(side_effect=delayed_fetch))
+
+    results = await asyncio.gather(
+        is_url_allowed("http://example.com/a"),
+        is_url_allowed("http://example.com/b"),
+        is_url_allowed("http://example.com/private"),
+    )
+
+    assert results == [True, True, False]
+    assert fetch.await_count == 1
+
+
+def test_is_url_allowed_works_across_multiple_event_loops(mocker):
+    """異なるイベントループをまたいで呼び出してもロックが衝突せず動作する。"""
+    fetch = mocker.patch.object(
+        playwright_helpers, "fetch_robots_txt", new=AsyncMock(return_value="User-agent: *\nAllow: /")
+    )
+
+    assert asyncio.run(is_url_allowed("http://example.com/a")) is True
+    playwright_helpers._ROBOTS_CACHE.clear()
+    assert asyncio.run(is_url_allowed("http://example.com/b")) is True
+    assert fetch.await_count == 2
 
 
 @pytest.mark.asyncio
