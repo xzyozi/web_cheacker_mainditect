@@ -10,6 +10,7 @@ import pytest
 
 from content_extractor import playwright_helpers
 from content_extractor.playwright_helpers import (
+    _cleanup_setup_resources,
     adjust_page_view,
     close_page,
     ensure_unique_selector,
@@ -106,7 +107,7 @@ async def test_setup_page_goto_timeout(mock_browser, mock_context, mock_page, mo
     assert result_page is None
     mock_page.goto.assert_called_once()
     mock_page.close.assert_awaited_once()  # Page should be closed on failure
-    mock_context.close.assert_not_called()  # Context is not explicitly closed if page was created
+    mock_context.close.assert_awaited_once()  # Context should also be closed on failure
 
 
 @pytest.mark.asyncio
@@ -147,7 +148,7 @@ async def test_setup_page_other_exception(mock_browser, mock_context, mock_page,
     mock_page.goto.assert_called_once()
     mock_logger_error.assert_called_once()
     mock_page.close.assert_awaited_once()  # Page should be closed on failure
-    mock_context.close.assert_not_called()  # Context is not explicitly closed if page was created
+    mock_context.close.assert_awaited_once()  # Context should also be closed on failure
 
 
 @pytest.mark.asyncio
@@ -164,6 +165,83 @@ async def test_setup_page_reraises_unexpected_exception(mock_browser, mock_conte
 
     mock_logger_exception.assert_called_once()
     mock_page.close.assert_awaited_once()
+    mock_context.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_setup_page_closes_context_when_new_page_fails(mock_browser, mock_context):
+    """new_page() が失敗しても作成済みの context はクローズして None を返す。"""
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.side_effect = PlaywrightError("new_page failed")
+
+    result_page = await setup_page("http://example.com", mock_browser)
+
+    assert result_page is None
+    mock_context.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_setup_page_closes_context_even_when_page_close_fails(mock_browser, mock_context, mock_page, mocker):
+    """goto 失敗後の page.close() が PlaywrightError を出しても context.close() が呼ばれ例外は漏れない。"""
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.return_value = mock_page
+    mock_page.goto.side_effect = PlaywrightError("goto failed")
+    mock_page.close.side_effect = PlaywrightError("page close failed")
+    mock_logger_warning = mocker.patch("content_extractor.playwright_helpers.logger.warning")
+
+    result_page = await setup_page("http://example.com", mock_browser)
+
+    assert result_page is None
+    mock_page.close.assert_awaited_once()
+    mock_context.close.assert_awaited_once()
+    mock_logger_warning.assert_called_once()
+
+
+# --- Tests for _cleanup_setup_resources ---
+
+
+@pytest.mark.asyncio
+async def test_cleanup_setup_resources_closes_both_page_and_context(mock_page, mock_context):
+    """page と context の両方が渡された場合、両方独立してクローズする。"""
+    await _cleanup_setup_resources(mock_page, mock_context)
+
+    mock_page.close.assert_awaited_once()
+    mock_context.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cleanup_setup_resources_closes_context_when_page_is_none(mock_context):
+    """page が None の場合でも context をクローズする。"""
+    await _cleanup_setup_resources(None, mock_context)
+
+    mock_context.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cleanup_setup_resources_closes_context_when_page_close_fails(mock_page, mock_context, mocker):
+    """page.close() が PlaywrightError を送出しても context.close() を実行し例外を漏らさない。"""
+    mock_page.close.side_effect = PlaywrightError("page close error")
+    mock_logger_warning = mocker.patch("content_extractor.playwright_helpers.logger.warning")
+
+    await _cleanup_setup_resources(mock_page, mock_context)
+
+    mock_page.close.assert_awaited_once()
+    mock_context.close.assert_awaited_once()
+    mock_logger_warning.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_cleanup_setup_resources_logs_warning_when_both_closes_fail(mock_page, mock_context, mocker):
+    """page.close() と context.close() の両方が失敗しても警告ログを記録し例外を送出しない。"""
+    mock_page.close.side_effect = PlaywrightError("page close error")
+    mock_context.close.side_effect = PlaywrightError("context close error")
+    mock_logger_warning = mocker.patch("content_extractor.playwright_helpers.logger.warning")
+
+    await _cleanup_setup_resources(mock_page, mock_context)
+
+    mock_page.close.assert_awaited_once()
+    mock_context.close.assert_awaited_once()
+    assert mock_logger_warning.call_count == 2
 
 
 # --- Tests for close_page ---
@@ -184,13 +262,31 @@ async def test_close_page_closes_page_and_context(mock_page):
 
 @pytest.mark.asyncio
 async def test_close_page_does_not_raise_when_close_fails(mock_page, mocker):
-    """解放の失敗は記録のみとし、後続のURL処理を止めない。"""
-    mock_page.context = AsyncMock(spec=BrowserContext)
+    """page.close() が失敗しても context.close() を試行し、後続のURL処理を止めない。"""
+    mock_context = AsyncMock(spec=BrowserContext)
+    mock_page.context = mock_context
     mock_page.close.side_effect = PlaywrightError("target closed")
     mock_logger_warning = mocker.patch("content_extractor.playwright_helpers.logger.warning")
 
     await close_page(mock_page)  # 例外を送出しない
 
+    mock_page.close.assert_awaited_once()
+    mock_context.close.assert_awaited_once()
+    mock_logger_warning.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_close_page_does_not_raise_when_context_close_fails(mock_page, mocker):
+    """context.close() が失敗しても警告ログのみ記録し、例外を送出しない。"""
+    mock_context = AsyncMock(spec=BrowserContext)
+    mock_context.close.side_effect = PlaywrightError("context closed")
+    mock_page.context = mock_context
+    mock_logger_warning = mocker.patch("content_extractor.playwright_helpers.logger.warning")
+
+    await close_page(mock_page)
+
+    mock_page.close.assert_awaited_once()
+    mock_context.close.assert_awaited_once()
     mock_logger_warning.assert_called_once()
 
 
