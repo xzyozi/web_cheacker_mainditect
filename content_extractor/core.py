@@ -352,9 +352,9 @@ async def quick_extract_content(
         return None
 
     context = await browser.new_context(viewport={"width": 1920, "height": 1080})
-    page = await context.new_page()
 
     try:
+        page = await context.new_page()
         found_tree = None
         # ページ移動と初期待機を簡略化
         await page.goto(url, wait_until="domcontentloaded", timeout=10000)
