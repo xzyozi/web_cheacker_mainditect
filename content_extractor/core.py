@@ -2,7 +2,6 @@ import asyncio
 from datetime import datetime
 import re
 import sys
-import traceback
 from typing import Any
 
 from aiohttp import ClientError
@@ -56,13 +55,6 @@ logger = setup_logger("web-cheacker", log_file=f"./log/web-chk_{formatted_now}.l
 # ----------------------------------------------------------------
 # debugger
 # ----------------------------------------------------------------
-# error chackintg
-def print_error_details(e: Exception) -> None:
-    """例外オブジェクトから詳細なエラー情報をログに出力します。"""
-    logger.error(f"Error type: {type(e).__name__}")
-    logger.error(f"Error message: {str(e)}")
-    logger.error("Traceback:")
-    traceback.print_exc(file=sys.stdout)
 
 
 async def extract_main_content(url: str, browser: Browser, count: int = 0, arg_webtype: Any = None) -> DOMTreeSt | None:
@@ -227,17 +219,20 @@ async def extract_main_content(url: str, browser: Browser, count: int = 0, arg_w
             return None
 
     except PlaywrightTimeoutError as e:
-        logger.error(f"Playwrightの操作中にタイムアウトが発生しました: {url} - {e}")
-        print_error_details(e)
+        logger.exception(f"Playwrightの操作中にタイムアウトが発生しました: {url} - {e}")
         return None
-    except ClientError as e:
-        logger.error(f"HTTPリクエスト中にエラーが発生しました: {url} - {e}")
-        print_error_details(e)
+    except PlaywrightError as e:
+        logger.exception(f"Playwrightの操作中にエラーが発生しました: {url} - {e}")
         return None
-    except Exception as e:
-        logger.error(f"extract_main_contentの実行中に予期せぬエラーが発生しました: {url}")
-        print_error_details(e)
+    except (ClientError, asyncio.TimeoutError) as e:
+        logger.exception(f"HTTPリクエスト中にエラーが発生しました: {url} - {e}")
         return None
+    except OSError as e:
+        logger.exception(f"ファイルI/O中にエラーが発生しました: {url} - {e}")
+        return None
+    except Exception:
+        logger.exception(f"extract_main_contentの実行中に予期せぬエラーが発生しました: {url}")
+        raise
 
     finally:
         if page:
@@ -396,10 +391,12 @@ async def quick_extract_content(
     except PlaywrightTimeoutError as e:
         logger.error(f"Quickスキャン中のPlaywright操作でタイムアウトしました: {url} - {e}")
         return None  # Quickスキャン失敗
-    except Exception as e:
-        logger.error(f"Quickスキャン中に予期せぬエラーが発生: {url}")
-        print_error_details(e)
+    except PlaywrightError as e:
+        logger.exception(f"Quickスキャン中のPlaywright操作でエラーが発生しました: {url} - {e}")
         return None  # Quickスキャン失敗
+    except Exception:
+        logger.exception(f"Quickスキャン中に予期せぬエラーが発生: {url}")
+        raise
     finally:
         await context.close()
 
