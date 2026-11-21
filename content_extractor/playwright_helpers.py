@@ -66,7 +66,7 @@ async def setup_page(url: str, browser: Browser):
 
 # セレクタが一意でないときに、目的の要素（位置が一致するもの）から、
 # 親をたどる `nth-of-type` 付きの絶対パスを作る JavaScript。
-# 引数: { selector, rect: {x, y, width, height} }
+# 引数: { selector, rect: {x, y, width, height} }（make_tree の bounding_box と同じビューポート相対座標）
 # 戻り値: { count: ヒット件数, path: 位置が一致した要素の絶対パス（見つからなければ null） }
 _UNIQUE_SELECTOR_JS = """
 ({ selector, rect }) => {
@@ -76,11 +76,10 @@ _UNIQUE_SELECTOR_JS = """
     } catch (e) {
         return { count: -1, path: null };
     }
-    const sx = window.scrollX, sy = window.scrollY;
     const near = (a, b) => Math.abs(a - b) < 1;
     const target = nodes.find((el) => {
         const r = el.getBoundingClientRect();
-        return near(r.x + sx, rect.x) && near(r.y + sy, rect.y)
+        return near(r.x, rect.x) && near(r.y, rect.y)
             && near(r.width, rect.width) && near(r.height, rect.height);
     });
     if (!target) {
@@ -107,11 +106,12 @@ async def ensure_unique_selector(page: Page, selector: str, rect: dict) -> str:
     同じクラスの要素が複数あると、保存したセレクタが次回に別の要素を指して、誤検知の原因になる。
     複数ヒットしたときは、位置（`rect`）が一致する要素から `nth-of-type` 付きの絶対パスを作る。
     確認できなかった場合（無効なセレクタ・位置が一致する要素が無い）は、元のセレクタを返す。
+    `make_tree` が取得した `bounding_box` と比較するため、同じスクロール位置で呼び出すことを前提とする。
 
     Args:
         page: 対象ページ。
         selector: 確認するセレクタ。
-        rect: 目的の要素の位置とサイズ（ページ座標）。`x`, `y`, `width`, `height`。
+        rect: 目的の要素の位置とサイズ（ビューポート相対座標）。`x`, `y`, `width`, `height`。
     """
     if not selector:
         return selector

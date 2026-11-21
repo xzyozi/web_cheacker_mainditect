@@ -18,8 +18,10 @@ from playwright.async_api import async_playwright
 import pytest
 import pytest_asyncio
 
+from content_extractor import core as content_extractor_core
 from content_extractor import playwright_helpers
 from content_extractor.core import extract_main_content, quick_extract_content
+from content_extractor.make_tree import make_tree
 
 pytestmark = pytest.mark.integration
 
@@ -161,7 +163,7 @@ async def test_quick_scan_detects_changed_links(browser, site):
     assert all("/article-v2/" in link for link in quick.links)
 
 
-def build_duplicate_class_page() -> str:
+def build_duplicate_class_page(extra_style: str = "", body_prefix: str = "") -> str:
     """同じクラス名（`card`）を持つ兄弟要素が複数ある一覧ページ。
 
     `div.card` のようなタグとクラスだけのセレクタは、3件すべてにヒットしてしまう。
@@ -182,9 +184,10 @@ def build_duplicate_class_page() -> str:
   <style>
     body {{ margin: 0; font-family: sans-serif; }}
     .card {{ width: 60%; margin: 20px auto; min-height: 240px; }}
+    {extra_style}
   </style>
 </head>
-<body>{cards}
+<body>{body_prefix}{cards}
 </body>
 </html>
 """
@@ -209,6 +212,79 @@ async def test_saved_primary_selector_matches_exactly_one_element(browser, site)
         await page.close()
 
     assert hits == 1, f"セレクタ {result.css_selector!r} が {hits} 件にヒットしている"
+
+
+def build_scrolled_duplicate_class_page() -> str:
+    """`adjust_page_view` 実行後も `window.scrollY > 0` となる、重複クラスを持つ縦長ページ。
+
+    `header` に `100vh` を指定しているため、`adjust_page_view` が初期ページ高に合わせて
+    ビューポート高を広げた後に再レイアウトが発生し、`window.scrollTo(0, scrollHeight)` で
+    `window.scrollY > 0` になる。
+    """
+    return build_duplicate_class_page(
+        extra_style="header { height: 100vh; background: #eee; }",
+        body_prefix="\n  <header></header>",
+    )
+
+
+@pytest.mark.asyncio
+async def test_saved_primary_selector_matches_exactly_one_element_on_scrolled_page(browser, site, mocker):
+    """スクロール発生ページ（window.scrollY > 0）でも、重複クラスが nth-of-type の一意なセレクタに置き換わる。"""
+    base_url, root = site
+    (root / "index.html").write_text(build_scrolled_duplicate_class_page(), encoding="utf-8")
+    url = f"{base_url}/index.html"
+
+    scroll_ys: list[float] = []
+    orig_ensure_unique_selector = content_extractor_core.ensure_unique_selector
+
+    async def spy_ensure_unique_selector(page, selector, rect):
+        scroll_ys.append(await page.evaluate("window.scrollY"))
+        return await orig_ensure_unique_selector(page, selector, rect)
+
+    mocker.patch.object(content_extractor_core, "ensure_unique_selector", side_effect=spy_ensure_unique_selector)
+
+    result = await extract_main_content(url, browser)
+    assert result is not None
+    assert result.css_selector
+    assert scroll_ys and any(y > 0 for y in scroll_ys), f"スクロールが発生していない: scroll_ys={scroll_ys}"
+    assert "nth-of-type(" in result.css_selector, f"重複セレクタが一意化されていない: {result.css_selector!r}"
+
+    page = await browser.new_page()
+    try:
+        await page.goto(url)
+        hits = await page.locator(result.css_selector).count()
+    finally:
+        await page.close()
+
+    assert hits == 1, f"セレクタ {result.css_selector!r} が {hits} 件にヒットしている"
+
+
+@pytest.mark.asyncio
+async def test_ensure_unique_selector_matches_scrolled_element_from_make_tree(browser, site):
+    """window.scrollY > 0 の状態で make_tree が取得した rect と ensure_unique_selector の座標系が一致する。"""
+    base_url, root = site
+    (root / "index.html").write_text(build_scrolled_duplicate_class_page(), encoding="utf-8")
+    url = f"{base_url}/index.html"
+
+    page = await browser.new_page(viewport={"width": 1920, "height": 1080})
+    try:
+        await page.goto(url)
+        await page.evaluate("window.scrollTo(0, 600)")
+        scroll_y = await page.evaluate("window.scrollY")
+        assert scroll_y > 0
+
+        tree = await make_tree(page, wait_for_load=False)
+        assert tree is not None
+        card_nodes = [child for child in tree.children if child.css_selector == "div.card"]
+        assert len(card_nodes) == 3
+
+        unique_selector = await playwright_helpers.ensure_unique_selector(
+            page, card_nodes[1].css_selector, card_nodes[1].rect.to_dict()
+        )
+        assert "nth-of-type(" in unique_selector
+        assert await page.locator(unique_selector).count() == 1
+    finally:
+        await page.close()
 
 
 @pytest.mark.asyncio
