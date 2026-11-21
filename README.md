@@ -21,7 +21,10 @@ main/
 │
 ├─ users/                  # ユーザーごとの設定とデータ
 │   ├─ config.yaml         # 共通のメインアプリケーション設定 (ユーザー専用が無い場合に使用)
-│   └─ {ユーザー名}/        # ユーザーディレクトリの例 (例: 'jav')
+│   ├─ sample/             # 新規プロファイル作成用のサンプルテンプレート
+│   │   ├─ cheacker_url.json.sample
+│   │   └─ mail.yaml.sample
+│   └─ {ユーザー名}/        # ユーザーディレクトリ (Git管理対象外、例: 'jav')
 │       ├─ cheacker_url.json  # 監視対象URLとその状態のリスト (JSON配列)
 │       ├─ config.yaml        # このユーザー用のメインアプリケーション設定 (任意・共通設定より優先)
 │       └─ mail.yaml          # メール通知設定
@@ -82,9 +85,9 @@ pip install ".[quality]"
     ```
 
 3.  **ユーザープロファイルの設定:**
-    - `users/`ディレクトリ内に新しいディレクトリを作成します (例: `users/my_profile`)。
+    - `users/`ディレクトリ内に新しいディレクトリを作成します (例: `users/my_profile`)。実プロファイルは `.gitignore` により Git 管理対象外になります。
     - 共通設定として `users/config.yaml` を利用できます。ユーザーごとに設定を上書きしたい場合のみ、`users/my_profile/config.yaml` を作成してください。
-    - 新しいユーザーディレクトリ内に、以下のファイルを作成します。
+    - `users/sample/` 内の `.sample` ファイルを新しいユーザーディレクトリへコピーし、`.sample` を外して実設定に書き換えます（`cheacker_url.json.sample` → `cheacker_url.json`、`mail.yaml.sample` → `mail.yaml`）。
 
     **a) `cheacker_url.json`**
     このファイルには、チェックするURLのリストが含まれています。JSONオブジェクトの配列です。新しいURLの場合、`url`のみを提供すれば十分です。ファイルが無い場合は、空の状態から作成されます。
