@@ -1,5 +1,6 @@
 from unittest.mock import AsyncMock, MagicMock
 
+from playwright.async_api import Error as PlaywrightError
 import pytest
 
 from content_extractor import playwright_helpers
@@ -416,3 +417,71 @@ class TestEscapeCssSelectorColons:
         selector = "#header > div.md:flex-col:first-child a:hover"
         expected = r"#header > div.md\:flex-col:first-child a:hover"
         assert _escape_css_selector_colons(selector) == expected
+
+
+@pytest.mark.asyncio
+async def test_extract_main_content_playwright_error_returns_none(mocker, mock_browser):
+    """Full スキャン中の PlaywrightError は記録して None を返し、ページを解放する。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
+    mock_page = AsyncMock()
+    mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock, return_value=mock_page)
+    mocker.patch(
+        "content_extractor.core.adjust_page_view", new_callable=AsyncMock, side_effect=PlaywrightError("pw err")
+    )
+    mock_close_page = mocker.patch("content_extractor.core.close_page", new_callable=AsyncMock)
+
+    result = await extract_main_content("http://mock.url", mock_browser)
+
+    assert result is None
+    mock_close_page.assert_awaited_once_with(mock_page)
+
+
+@pytest.mark.asyncio
+async def test_extract_main_content_reraises_unexpected_exception(mocker, mock_browser):
+    """Full スキャン中の予期せぬ例外は logger.exception で記録して再送出する。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
+    mock_page = AsyncMock()
+    mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock, return_value=mock_page)
+    mocker.patch("content_extractor.core.adjust_page_view", new_callable=AsyncMock, side_effect=RuntimeError("boom"))
+    mock_close_page = mocker.patch("content_extractor.core.close_page", new_callable=AsyncMock)
+    mock_logger_exception = mocker.patch("content_extractor.core.logger.exception")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await extract_main_content("http://mock.url", mock_browser)
+
+    mock_logger_exception.assert_called_once()
+    mock_close_page.assert_awaited_once_with(mock_page)
+
+
+@pytest.mark.asyncio
+async def test_quick_extract_content_playwright_error_returns_none(mocker, mock_browser):
+    """Quick スキャン中の PlaywrightError は記録して None を返し、コンテキストを閉じる。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
+    mock_context = AsyncMock()
+    mock_page = AsyncMock()
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.return_value = mock_page
+    mock_page.goto.side_effect = PlaywrightError("navigation failed")
+
+    result = await quick_extract_content("http://mock.url", mock_browser, ["div.main"], "plane")
+
+    assert result is None
+    mock_context.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_quick_extract_content_reraises_unexpected_exception(mocker, mock_browser):
+    """Quick スキャン中の予期せぬ例外は logger.exception で記録して再送出する。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
+    mock_context = AsyncMock()
+    mock_page = AsyncMock()
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.return_value = mock_page
+    mock_page.goto.side_effect = RuntimeError("unexpected quick error")
+    mock_logger_exception = mocker.patch("content_extractor.core.logger.exception")
+
+    with pytest.raises(RuntimeError, match="unexpected quick error"):
+        await quick_extract_content("http://mock.url", mock_browser, ["div.main"], "plane")
+
+    mock_logger_exception.assert_called_once()
+    mock_context.close.assert_awaited_once()

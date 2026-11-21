@@ -4,6 +4,8 @@ import sys
 from typing import Any, Dict, Optional
 
 from playwright.async_api import ElementHandle, Page, async_playwright
+from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from .dom_treeSt import BoundingBox, DOMTreeSt
 
@@ -36,7 +38,7 @@ async def make_tree(
                 if not bounding_box:
                     # Skip elements that are not rendered (no bounding box)
                     return None
-            except Exception as e:
+            except PlaywrightError as e:
                 logger.debug(f"Could not get bounding box for an element, skipping it: {str(e)}")
                 return None
 
@@ -74,7 +76,7 @@ async def make_tree(
 
             return tree
 
-        except Exception as e:
+        except PlaywrightError as e:
             logger.error(f"Error parsing element: {str(e)}")
             return None
 
@@ -84,7 +86,7 @@ async def make_tree(
                 logger.debug("Waiting for network to be idle...")
                 await page.wait_for_load_state("networkidle", timeout=timeout)
                 logger.info("Network is idle.")
-            except Exception as e:
+            except (PlaywrightTimeoutError, PlaywrightError) as e:
                 logger.warning(f"Network did not become idle within {timeout}ms: {str(e)}")
 
         root_element = await page.query_selector(selector)
@@ -94,9 +96,12 @@ async def make_tree(
 
         return await parse_element(root_element)
 
-    except Exception as e:
+    except PlaywrightError as e:
         logger.critical(f"Failed to create DOM tree for selector '{selector}': {str(e)}")
         return None
+    except Exception:
+        logger.exception(f"Unexpected error creating DOM tree for selector '{selector}'")
+        raise
 
 
 def escape_css_identifier(value: str) -> str:
