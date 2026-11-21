@@ -1,15 +1,34 @@
 import math
-from typing import List
-
-from sentence_transformers import SentenceTransformer
-from sentence_transformers.util import cos_sim
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+from typing import Any, List
 
 from setup_logger import setup_logger
 
 from .config import QUALITY_SCORING_CONFIG
 from .dom_treeSt import DOMTreeSt
+
+SentenceTransformer: Any
+cos_sim: Any
+try:
+    from sentence_transformers import SentenceTransformer as _SentenceTransformer
+    from sentence_transformers.util import cos_sim as _cos_sim
+
+    SentenceTransformer = _SentenceTransformer
+    cos_sim = _cos_sim
+except ImportError:
+    SentenceTransformer = None
+    cos_sim = None
+
+TfidfVectorizer: Any
+cosine_similarity: Any
+try:
+    from sklearn.feature_extraction.text import TfidfVectorizer as _TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity as _cosine_similarity
+
+    TfidfVectorizer = _TfidfVectorizer
+    cosine_similarity = _cosine_similarity
+except ImportError:
+    TfidfVectorizer = None
+    cosine_similarity = None
 
 logger = setup_logger("relevance_scorer")
 
@@ -24,6 +43,17 @@ class RelevanceScorer:
         Args:
             model_name (str): sentence-transformersで使用する事前学習済みモデル名。
         """
+        if SentenceTransformer is None:
+            raise ImportError(
+                "sentence-transformers が導入されていません。`uv sync --extra quality` または "
+                "`pip install sentence-transformers` を実行してください。"
+            )
+        if TfidfVectorizer is None:
+            raise ImportError(
+                "scikit-learn が導入されていません。`uv sync --extra quality` または "
+                "`pip install scikit-learn` を実行してください。"
+            )
+
         try:
             # モデルは比較的高価な処理なので、インスタンス生成時に一度だけロードする
             self.semantic_model = SentenceTransformer(model_name)
@@ -47,6 +77,17 @@ class RelevanceScorer:
         """各アイテムの関連性スコアを計算し、DOMTreeStオブジェクトを更新します。"""
         if not items or not self.semantic_model:
             return items
+
+        if cosine_similarity is None:
+            raise ImportError(
+                "scikit-learn が導入されていません。`uv sync --extra quality` または "
+                "`pip install scikit-learn` を実行してください。"
+            )
+        if cos_sim is None:
+            raise ImportError(
+                "sentence-transformers が導入されていません。`uv sync --extra quality` または "
+                "`pip install sentence-transformers` を実行してください。"
+            )
 
         # 各アイテムからテキストを抽出 (タイトルやスニペットを想定)
         item_texts = [item.text for item in items]
