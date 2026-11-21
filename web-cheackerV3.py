@@ -10,6 +10,7 @@ import shutil
 import sys
 import threading
 import traceback
+from typing import Any
 
 import pandas as pd
 from playwright.async_api import Browser, async_playwright
@@ -501,7 +502,7 @@ async def process_url_async(
             error_list.append([url, e, last_entry.line, last_entry.lineno])
 
 
-async def main():
+async def main() -> None:
     # 使い方: python web-cheackerV3.py [ユーザー名]（省略時は jav）
     user = User(sys.argv[1] if len(sys.argv) > 1 else "jav")
     config = user.config
@@ -515,7 +516,7 @@ async def main():
     util_str.util_handle_path(user.data_file_path)
 
     data_manager = DataManager(user.data_file_path)
-    error_list = []
+    error_list: list[list[Any]] = []
 
     # 同時実行数を設定から取得
     worker_count = config.get("scan", {}).get("worker_threads", 2)
@@ -573,8 +574,10 @@ async def main():
     if permanent_image_list:
         for i, url in enumerate(diff_urls):
             # Assuming the lists correspond by index
-            if i < len(permanent_image_list) and permanent_image_list[i]:
-                data_manager.update_image_filename(url, permanent_image_list[i])
+            if i < len(permanent_image_list):
+                image_path = permanent_image_list[i]
+                if image_path:
+                    data_manager.update_image_filename(url, image_path)
 
     # --- データ保存 (画像ファイル名を含む) ---
     data_manager.save_data()
