@@ -3,6 +3,7 @@ import hashlib
 import os
 from typing import Optional
 from urllib.parse import urljoin, urlparse
+from weakref import WeakKeyDictionary
 
 import aiohttp
 from PIL import Image, UnidentifiedImageError
@@ -14,9 +15,10 @@ from setup_logger import setup_logger
 
 logger = setup_logger("playwright_helpers")
 
-# Retry settings
+# Retry and timeout settings
 MAX_RETRIES = 3
 RETRY_DELAY_SECONDS = 2
+ROBOTS_FETCH_TIMEOUT_SECONDS = 10
 
 
 async def _cleanup_setup_resources(page: Optional[Page], context: Optional[BrowserContext]) -> None:
@@ -171,9 +173,10 @@ async def fetch_robots_txt(url):
     """対象ウェブサイトからrobots.txtの内容を取得します。"""
     parsed_url = urlparse(url)
     robots_url = urljoin(f"{parsed_url.scheme}://{parsed_url.netloc}", "/robots.txt")
+    timeout = aiohttp.ClientTimeout(total=ROBOTS_FETCH_TIMEOUT_SECONDS)
 
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(robots_url) as response:
                 if response.status == 200:
                     return await response.text()
@@ -200,6 +203,19 @@ def is_scraping_allowed(
 # robots.txt の取得結果をオリジン（scheme://host）ごとに保持する。
 # 1回の実行で同じサイトに何度もアクセスしないよう、取得失敗（None）もキャッシュする。
 _ROBOTS_CACHE: dict[str, str | None] = {}
+# 同一オリジンへの並列判定で重複取得を防ぐため、イベントループごとにオリジン単位のロックを保持する。
+_ROBOTS_LOCKS: WeakKeyDictionary[asyncio.AbstractEventLoop, dict[str, asyncio.Lock]] = WeakKeyDictionary()
+
+
+def _get_robots_lock(origin: str) -> asyncio.Lock:
+    """現在のイベントループに紐づくオリジン単位のロックを返す。"""
+    loop = asyncio.get_running_loop()
+    locks = _ROBOTS_LOCKS.setdefault(loop, {})
+    lock = locks.get(origin)
+    if lock is None:
+        lock = asyncio.Lock()
+        locks[origin] = lock
+    return lock
 
 
 async def is_url_allowed(url: str) -> bool:
@@ -215,7 +231,9 @@ async def is_url_allowed(url: str) -> bool:
 
     origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
     if origin not in _ROBOTS_CACHE:
-        _ROBOTS_CACHE[origin] = await fetch_robots_txt(url)
+        async with _get_robots_lock(origin):
+            if origin not in _ROBOTS_CACHE:
+                _ROBOTS_CACHE[origin] = await fetch_robots_txt(url)
 
     robots_txt = _ROBOTS_CACHE[origin]
     if not robots_txt:
