@@ -94,10 +94,10 @@ uv sync --extra dev --extra mutation
 
 ### PR CI（`.github/workflows/mutation-pr.yml`）
 
-- **実行契機**: `main` / `develop` 向け PR で `src/**/*.py`、`app/**/*.py`、`tests/**/*.py`、`pyproject.toml`、`uv.lock` が変更されたとき（および手動実行）。
+- **実行契機**: `main` / `develop` 向け PR で `content_extractor/**/*.py`、`utils/**/*.py`、`text_struct/**/*.py`、`mail/**/*.py`、ルート直下の `*.py`、`test/**/*.py`、`pyproject.toml`、`uv.lock` が変更されたとき（および手動実行）。
 - **実行モードの自動切替**:
-  - `src/` または `app/` に追加・変更・リネーム（`--diff-filter=ACMR`）がある場合：変更モジュールのみを `module.*` パターンで差分実行（`set -f` でシェル glob 展開を抑止）。
-  - ソース変更がなく `tests/` や設定のみ変更された場合：キャッシュを復元して引数なし実行（`mutmut` v3 のインクリメンタル実行）を行い、テスト追加による Survived 解消を検証する。
+  - 対象ソース（`content_extractor/`、`utils/`、`text_struct/`、`mail/`、ルート直下の `*.py`）に追加・変更・リネーム（`--diff-filter=ACMR`）がある場合：変更モジュールのみを `module.*` パターンで差分実行（`set -f` でシェル glob 展開を抑止）。
+  - ソース変更がなく `test/` や設定のみ変更された場合：キャッシュを復元して引数なし実行（`mutmut` v3 のインクリメンタル実行）を行い、テスト追加による Survived 解消を検証する。
 - **キャッシュ**: `mutmut-pr-<ref>-<uv.lockハッシュ>-<github.sha>` をキーとし、同一 PR 内の再 push でも最新 `mutants/` を保存する。未ヒット時は `main` の Nightly キャッシュへフォールバックする。
 - **成果物**: GitHub Step Summary に結果一覧を出力し、Artifact（`mutation-pr-report`）へ `mutation-results.txt` と Survived 上位 20 件の差分（`mutation-survived-diffs.txt`）を保存する。
 

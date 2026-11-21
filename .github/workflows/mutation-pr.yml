@@ -4,9 +4,12 @@ on:
   pull_request:
     branches: [main, develop]
     paths:
-      - 'src/**/*.py'
-      - 'app/**/*.py'
-      - 'tests/**/*.py'
+      - 'content_extractor/**/*.py'
+      - 'utils/**/*.py'
+      - 'text_struct/**/*.py'
+      - 'mail/**/*.py'
+      - '*.py'
+      - 'test/**/*.py'
       - 'pyproject.toml'
       - 'uv.lock'
   workflow_dispatch:
@@ -72,12 +75,12 @@ jobs:
           fi
 
           BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          CHANGED_SRC=$(git diff --name-only --diff-filter=ACMR "${BASE_SHA}...HEAD" -- 'src/**/*.py' 'app/**/*.py')
-          CHANGED_TESTS=$(git diff --name-only --diff-filter=ACMR "${BASE_SHA}...HEAD" -- 'tests/**/*.py' 'pyproject.toml' 'uv.lock')
+          CHANGED_SRC=$(git diff --name-only --diff-filter=ACMR "${BASE_SHA}...HEAD" -- ':(glob)content_extractor/**/*.py' ':(glob)utils/**/*.py' ':(glob)text_struct/**/*.py' ':(glob)mail/**/*.py' ':(glob)*.py')
+          CHANGED_TESTS=$(git diff --name-only --diff-filter=ACMR "${BASE_SHA}...HEAD" -- ':(glob)test/**/*.py' 'pyproject.toml' 'uv.lock')
 
           if [ -n "$CHANGED_SRC" ]; then
             PATTERNS=$(printf '%s\n' "$CHANGED_SRC" \
-              | sed -E 's|^src/||; s|\.py$||; s|/|.|g; s|(^|\.)__init__$||' \
+              | sed -E 's#\.py$##; s#/#.#g; s#(^|\.)__init__$##' \
               | awk 'NF {print $1".*"}' \
               | sort -u \
               | tr '\n' ' ')
