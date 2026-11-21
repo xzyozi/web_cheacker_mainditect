@@ -1,0 +1,22 @@
+[
+  {
+    "url": "https://example.com/news",
+    "run_code": "",
+    "result_vl": "",
+    "updated_datetime": "",
+    "full_scan_datetime": "",
+    "css_selector_list": [],
+    "web_page_type": "",
+    "image_filename": ""
+  },
+  {
+    "url": "https://another-site.org/updates",
+    "run_code": "",
+    "result_vl": "",
+    "updated_datetime": "",
+    "full_scan_datetime": "",
+    "css_selector_list": [],
+    "web_page_type": "",
+    "image_filename": ""
+  }
+]

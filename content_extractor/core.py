@@ -1,16 +1,33 @@
-from typing import Dict, List, Any, Union , Optional
-import re
-import os
-from collections import Counter
 import asyncio
-from playwright.async_api import async_playwright, Page, Browser, TimeoutError as PlaywrightTimeoutError
-from aiohttp import ClientError
-
-import traceback
-import sys
-import hashlib
 from datetime import datetime
+import re
+import sys
+from typing import Any
+
+from aiohttp import ClientError
 import numpy as np
+from playwright.async_api import Browser, async_playwright
+from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+
+# my module
+from setup_logger import setup_logger
+from utils.file_handler import save_json
+
+from .dom_treeSt import DOMTreeSt
+from .dom_utils import rescore_main_content_with_children
+from .make_tree import make_tree
+from .playwright_helpers import (
+    adjust_page_view,
+    close_page,
+    ensure_unique_selector,
+    is_url_allowed,
+    setup_page,
+)
+from .quality_evaluator import is_no_results_page, quantify_search_results
+from .scorer import MainContentScorer
+from .web_type_chk import WebType, WebTypeCHK
+
 
 def _escape_css_selector_colons(selector: str) -> str:
     """
@@ -21,47 +38,26 @@ def _escape_css_selector_colons(selector: str) -> str:
     # 正規表現を使って、ドットの後に続くコロンをエスケープ
     # 例: .md:px-12 -> .md\:px-12
     # ただし、すでにエスケープされている場合は無視する
-    escaped_selector = re.sub(r'(?<!\\)([.][a-zA-Z0-9_-]+):([a-zA-Z0-9_-]+)', r'\1\\:\2', selector)
+    escaped_selector = re.sub(r"(?<!\\)([.][a-zA-Z0-9_-]+):([a-zA-Z0-9_-]+)", r"\1\\:\2", selector)
     return escaped_selector
 
-# my module 
-from .scorer import MainContentScorer
-from .make_tree import make_tree
-from .web_type_chk import WebTypeCHK, WebType
-from .dom_treeSt import DOMTreeSt, BoundingBox
-from .dom_utils import rescore_main_content_with_children
-from .playwright_helpers import setup_page, adjust_page_view, fetch_robots_txt, is_scraping_allowed
-from .quality_evaluator import is_no_results_page, quantify_search_results
-from setup_logger import setup_logger
-from utils.file_handler import save_json
 
-if sys.platform == 'win32':
+if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-# logger setting 
+# logger setting
 LOGGER_DATEFORMAT = "%Y%m%d_%H%M%S"
 nowtime = datetime.now()
 formatted_now = nowtime.strftime(LOGGER_DATEFORMAT)
-logger = setup_logger("web-cheacker",log_file=f"./log/web-chk_{formatted_now}.log")
+logger = setup_logger("web-cheacker", log_file=f"./log/web-chk_{formatted_now}.log")
 
 
 # ----------------------------------------------------------------
-# debugger 
+# debugger
 # ----------------------------------------------------------------
-# error chackintg 
-def print_error_details(e : Exception) -> None :
-    """例外オブジェクトから詳細なエラー情報をログに出力します。"""
-    logger.error(f"Error type: {type(e).__name__}")
-    logger.error(f"Error message: {str(e)}")
-    logger.error("Traceback:")
-    traceback.print_exc(file=sys.stdout)
 
 
-async def extract_main_content(url: str,
-                    browser: Browser,
-                    count : int = 0,
-                    arg_webtype : Any = None
-                    ) -> DOMTreeSt | None:       
+async def extract_main_content(url: str, browser: Browser, count: int = 0, arg_webtype: Any = None) -> DOMTreeSt | None:
     """
     URLからメインコンテンツを抽出し、DOMTreeStオブジェクトとして返します。(Fullスキャン)
     robots.txtの確認、ページ遷移の検知、コンテンツのスコアリングと再評価を行います。
@@ -77,18 +73,9 @@ async def extract_main_content(url: str,
     """
     page = None
     try:
-        # robots.txtを取得
-        robots_txt = await fetch_robots_txt(url)
-        
-        if robots_txt:
-            # スクレイピングが許可されているか確認
-            from urllib.parse import urlparse
-            parsed_url = urlparse(url)
-            target_path = parsed_url.path or "/"
-            
-            if not is_scraping_allowed(robots_txt, target_path):
-                logger.info(f"robots.txtにより、このURLのスクレイピングは許可されていません: {url}")
-                return None
+        if not await is_url_allowed(url):
+            logger.info(f"robots.txtにより、このURLのスクレイピングは許可されていません: {url}")
+            return None
 
         page = await setup_page(url, browser)
         if not page:
@@ -109,17 +96,19 @@ async def extract_main_content(url: str,
         chktype = webtype.webtype_chk()
         watch_url = webtype.next_url
 
-        if watch_url and count < 3 :
+        if watch_url and count < 3:
             logger.info(f"URL updated: {url} -> {watch_url}. Restarting process...")
+            # 再帰呼び出し前に現在のページを解放し、finally での二重クローズを防ぐ
+            current_page = page
+            page = None
+            await close_page(current_page)
             # 前回時点のwebtypeが存在する場合はそちらを採用する
-            if arg_webtype:
-                return await extract_main_content(watch_url, browser, count + 1, arg_webtype=arg_webtype)  # 再帰的に処理を実行
-            else:
-                return await extract_main_content(watch_url, browser, count + 1, arg_webtype=chktype)  # 再帰的に処理を実行
+            next_webtype = arg_webtype if arg_webtype else chktype
+            return await extract_main_content(
+                watch_url, browser, count + 1, arg_webtype=next_webtype
+            )  # 再帰的に処理を実行
 
-
-        tree = [tree]  # Convert tree to list[Dict]
-        scorer = MainContentScorer(tree, dimensions['width'], dimensions['height'])
+        scorer = MainContentScorer([tree], dimensions["width"], dimensions["height"])
         main_contents = scorer.find_candidates()
 
         if not main_contents:
@@ -145,25 +134,28 @@ async def extract_main_content(url: str,
             while loop_count < max_loop_count:
                 # 現在の最有力候補を一時保存 (次のイテレーションでprev_bestとなる)
                 prev_best = current_best
-                
+
                 # 最有力候補の子要素を再スコアリングし、新たな候補リストとする
                 rescored_children_of_prev_best = rescore_main_content_with_children(prev_best)
 
                 logger.debug(f" Parent selector : {prev_best.css_selector} / Score: {prev_best.score}")
                 if rescored_children_of_prev_best:
-                    logger.debug(f" -> Best Child selector: {rescored_children_of_prev_best[0].css_selector} / Score: {rescored_children_of_prev_best[0].score}")
+                    logger.debug(
+                        f" -> Best Child selector: {rescored_children_of_prev_best[0].css_selector}"
+                        f" / Score: {rescored_children_of_prev_best[0].score}"
+                    )
 
                 # 子要素が見つからない、または子要素のスコアが親を超えなくなったら、
                 # 親が最良のコンテンツブロックと判断してループを抜ける。
                 if not rescored_children_of_prev_best or prev_best.score >= rescored_children_of_prev_best[0].score:
-                    current_best_children = rescored_children_of_prev_best # Keep these for selector generation
+                    current_best_children = rescored_children_of_prev_best  # Keep these for selector generation
                     break
-                
+
                 # もしより良い子要素が見つかったら、それを新たなcurrent_bestとし、その子リストを保持する
                 current_best = rescored_children_of_prev_best[0]
-                current_best_children = rescored_children_of_prev_best # Update children for the new current_best
+                current_best_children = rescored_children_of_prev_best  # Update children for the new current_best
                 loop_count += 1
-            
+
             if loop_count == max_loop_count:
                 logger.warning("再評価ループが上限に達しました。")
 
@@ -174,14 +166,20 @@ async def extract_main_content(url: str,
 
             # 最終的に選択されたコンテンツの子ノードをログ出力
             logger.info("Rescored child nodes of final content:")
-            for child in current_best_children[:5]: # Display up to 5 children
+            for child in current_best_children[:5]:  # Display up to 5 children
                 logger.debug(child)
+
+            # 保存するプライマリセレクタが、ページ内で複数の要素にヒットすると、次回のQuickスキャンで
+            # 別の要素を拾って誤検知する。複数ヒットのときは、位置から一意なパスに置き換える。
+            final_content.css_selector = await ensure_unique_selector(
+                page, final_content.css_selector, final_content.rect.to_dict()
+            )
 
             # css_selector_list setting
             # 堅牢なセレクタ候補を上位3つまで取得（空のセレクタは除外）
             # `current_best_children`は`final_content`の子要素のリストになっている
             selector_candidates = [node.css_selector for node in current_best_children[1:4] if node.css_selector]
-            
+
             # 自身のセレクタも候補の先頭に追加しておく
             if final_content.css_selector and final_content.css_selector not in selector_candidates:
                 selector_candidates.insert(0, final_content.css_selector)
@@ -189,7 +187,9 @@ async def extract_main_content(url: str,
             # 最終的に選ばれたコンテンツに、セレクタ候補リストとプライマリセレクタを格納
             # この時点では品質評価は行わない
             final_content.css_selector_list = selector_candidates
-            if selector_candidates and not final_content.css_selector: # final_content.css_selectorがまだ設定されていない場合にのみ割り当てる
+            if (
+                selector_candidates and not final_content.css_selector
+            ):  # final_content.css_selectorがまだ設定されていない場合にのみ割り当てる
                 final_content.css_selector = selector_candidates[0]
             # css_selector_list 設定終了
 
@@ -205,12 +205,12 @@ async def extract_main_content(url: str,
                     final_content.web_type = previous_type.name
             else:
                 final_content.web_type = current_type.name
-            final_content.is_empty_result = False # 明示的にFalseを設定
+            final_content.is_empty_result = False  # 明示的にFalseを設定
 
             json_data = final_content.to_dict()
 
             # JSONを保存
-            save_json(json_data,url)
+            save_json(json_data, url)
 
             return final_content
         else:
@@ -219,27 +219,27 @@ async def extract_main_content(url: str,
             return None
 
     except PlaywrightTimeoutError as e:
-        logger.error(f"Playwrightの操作中にタイムアウトが発生しました: {url} - {e}")
-        print_error_details(e)
+        logger.exception(f"Playwrightの操作中にタイムアウトが発生しました: {url} - {e}")
         return None
-    except ClientError as e:
-        logger.error(f"HTTPリクエスト中にエラーが発生しました: {url} - {e}")
-        print_error_details(e)
+    except PlaywrightError as e:
+        logger.exception(f"Playwrightの操作中にエラーが発生しました: {url} - {e}")
         return None
-    except Exception as e:
-        logger.error(f"extract_main_contentの実行中に予期せぬエラーが発生しました: {url}")
-        print_error_details(e)
+    except (ClientError, asyncio.TimeoutError) as e:
+        logger.exception(f"HTTPリクエスト中にエラーが発生しました: {url} - {e}")
         return None
+    except OSError as e:
+        logger.exception(f"ファイルI/O中にエラーが発生しました: {url} - {e}")
+        return None
+    except Exception:
+        logger.exception(f"extract_main_contentの実行中に予期せぬエラーが発生しました: {url}")
+        raise
 
     finally:
         if page:
-            await page.close()
+            await close_page(page)
 
 
-async def evaluate_search_quality(url: str,
-                                  browser: Browser,
-                                  search_query: str
-                                  ) -> DOMTreeSt | None:
+async def evaluate_search_quality(url: str, browser: Browser, search_query: str) -> DOMTreeSt | None:
     """
     検索結果ページの品質を多角的に評価します。
     コンテンツ抽出後、フェーズ1〜3の評価処理を実行します。
@@ -260,7 +260,7 @@ async def evaluate_search_quality(url: str,
 
     page = await setup_page(url, browser)
     if not page:
-        return content_node # ページ準備に失敗しても、抽出済みのコンテンツは返す
+        return content_node  # ページ準備に失敗しても、抽出済みのコンテンツは返す
 
     try:
         # フェーズ1: 「結果なし」ページの高速トリアージ
@@ -280,6 +280,7 @@ async def evaluate_search_quality(url: str,
 
         # フェーズ3: 結果の関連性スコアリング
         from .relevance_scorer import RelevanceScorer
+
         logger.info(f"検索クエリ '{search_query}' との関連性スコアリングを開始します。")
         scorer = RelevanceScorer()
         scored_items = scorer.score_relevance(search_query, content_node.result_items)
@@ -287,30 +288,35 @@ async def evaluate_search_quality(url: str,
 
         if scored_items:
             scores = [item.relevance_score for item in scored_items]
-            content_node.avg_relevance = np.mean(scores)
-            content_node.relevance_variance = np.var(scores)
-            content_node.max_relevance = np.max(scores)
-            logger.info(f"関連性スコアを計算しました: Avg={content_node.avg_relevance:.2f}, Var={content_node.relevance_variance:.2f}, Max={content_node.max_relevance:.2f}")
+            content_node.avg_relevance = float(np.mean(scores))
+            content_node.relevance_variance = float(np.var(scores))
+            content_node.max_relevance = float(np.max(scores))
+            logger.info(
+                f"関連性スコアを計算しました: Avg={content_node.avg_relevance:.2f}, "
+                f"Var={content_node.relevance_variance:.2f}, Max={content_node.max_relevance:.2f}"
+            )
 
             # フェーズ4: SQS計算と最終判定
             sqs, category = scorer.calculate_sqs(
                 result_count=content_node.result_count,
                 avg_relevance=content_node.avg_relevance,
                 relevance_variance=content_node.relevance_variance,
-                max_relevance=content_node.max_relevance
+                max_relevance=content_node.max_relevance,
             )
             content_node.sqs_score = sqs
             content_node.quality_category = category
 
         return content_node
     finally:
-        await page.close()
+        await close_page(page)
 
-async def quick_extract_content(url: str,
-                                browser: Browser,
-                                css_selector_list: list[str],
-                                webtype_str: str,
-                                ):
+
+async def quick_extract_content(
+    url: str,
+    browser: Browser,
+    css_selector_list: list[str],
+    webtype_str: str,
+):
     """
     CSSセレクタリストを使用して、ページから迅速にメインコンテンツを抽出します。(Quickスキャン)
     セレクタが見つかった場合、その要素をDOMツリーとして返します。
@@ -324,15 +330,11 @@ async def quick_extract_content(url: str,
     Returns:
         DOMTreeSt | None: 抽出されたメインコンテンツのDOMTreeStオブジェクト。失敗した場合はNone。
     """
-    
+
     webtype = WebType.from_string(webtype_str)
     # logger.info(f"chk webtype : {webtype}({type(webtype)}) -- {WebType.page_changer} ({type(WebType.page_changer)})")
-    if webtype == WebType.page_changer or webtype == WebType.not_quickscan :
+    if webtype == WebType.page_changer or webtype == WebType.not_quickscan:
         logger.warning(f"webtype is pagechange full scan process start :{webtype}")
-        return await extract_main_content(url, browser, arg_webtype=webtype)
-
-    if webtype in [WebType.page_changer, WebType.not_quickscan]:
-        logger.warning(f"webtype is pagechange, starting full scan process: {webtype}")
         return await extract_main_content(url, browser, arg_webtype=webtype)
 
     # セレクタリストが空の場合はFullスキャンに移行
@@ -340,20 +342,25 @@ async def quick_extract_content(url: str,
         logger.warning("No selectors provided for quick scan, starting full scan.")
         return await extract_main_content(url, browser, arg_webtype=webtype)
 
-    context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
-    page = await context.new_page()
-    
+    # Full スキャンと同様に、robots.txt で許可されていない URL にはアクセスしない
+    if not await is_url_allowed(url):
+        logger.info(f"robots.txtにより、このURLのQuickスキャンは許可されていません: {url}")
+        return None
+
+    context = await browser.new_context(viewport={"width": 1920, "height": 1080})
+
     try:
+        page = await context.new_page()
         found_tree = None
         # ページ移動と初期待機を簡略化
-        await page.goto(url, wait_until='domcontentloaded', timeout=10000)
+        await page.goto(url, wait_until="domcontentloaded", timeout=10000)
 
         # セレクタをループで試す
         for selector in css_selector_list:
             escaped_selector = _escape_css_selector_colons(selector)
             try:
                 # 短いタイムアウトでセレクタの存在を確認
-                await page.wait_for_selector(escaped_selector, state='attached', timeout=5000)
+                await page.wait_for_selector(escaped_selector, state="attached", timeout=5000)
                 logger.info(f"Selector found, extracting content with: {escaped_selector}")
                 tree = await make_tree(page, selector=escaped_selector)
                 if tree:
@@ -363,14 +370,15 @@ async def quick_extract_content(url: str,
                     css_selector_list.insert(0, selector)
                     found_tree.css_selector_list = css_selector_list
                     found_tree.css_selector = selector
-                    break # 見つかったらループを抜ける
-            except PlaywrightTimeoutError:
+                    break  # 見つかったらループを抜ける
+            except (PlaywrightTimeoutError, PlaywrightError):
+                # 無効なセレクタは TimeoutError ではなく Error になるため、同様に次のセレクタへ進む
                 logger.debug(f"Selector failed, trying next: {escaped_selector}")
-                continue # 次のセレクタへ
-        
+                continue  # 次のセレクタへ
+
         if not found_tree:
             logger.warning(f"All selectors failed for URL: {url}. Quick scan failed.")
-            return None # 全て失敗したらNoneを返す
+            return None  # 全て失敗したらNoneを返す
 
         found_tree.url = url
         found_tree.web_type = webtype_str
@@ -378,11 +386,13 @@ async def quick_extract_content(url: str,
 
     except PlaywrightTimeoutError as e:
         logger.error(f"Quickスキャン中のPlaywright操作でタイムアウトしました: {url} - {e}")
-        return None # Quickスキャン失敗
-    except Exception as e:
-        logger.error(f"Quickスキャン中に予期せぬエラーが発生: {url}")
-        print_error_details(e)
-        return None # Quickスキャン失敗
+        return None  # Quickスキャン失敗
+    except PlaywrightError as e:
+        logger.exception(f"Quickスキャン中のPlaywright操作でエラーが発生しました: {url} - {e}")
+        return None  # Quickスキャン失敗
+    except Exception:
+        logger.exception(f"Quickスキャン中に予期せぬエラーが発生: {url}")
+        raise
     finally:
         await context.close()
 
@@ -415,7 +425,6 @@ async def run_quick_scan_standalone(url: str, css_selector_list: list[str], webt
                 await browser.close()
 
 
-
 async def run_search_quality_evaluation_standalone(url: str, search_query: str):
     """
     単一URLの検索品質評価をスタンドアロンで実行します。
@@ -443,20 +452,14 @@ if __name__ == "__main__":
     )
     parser.add_argument("url", help="The URL to test.")
     parser.add_argument(
-        "--mode", "-m",
+        "--mode",
+        "-m",
         choices=["full", "quick", "quality"],
         default="full",
-        help="実行するスキャンモード。'full'はフルスキャン、'quick'はクイックスキャンを実行します。デフォルト: full"
+        help="実行するスキャンモード。'full'はフルスキャン、'quick'はクイックスキャンを実行します。デフォルト: full",
     )
-    parser.add_argument(
-        "--selectors",
-        nargs='+',
-        help="'quick'モードで使用するCSSセレクタ。"
-    )
-    parser.add_argument(
-        "--query", "-q",
-        help="'quality'モードで使用する検索クエリ。"
-    )
+    parser.add_argument("--selectors", nargs="+", help="'quick'モードで使用するCSSセレクタ。")
+    parser.add_argument("--query", "-q", help="'quality'モードで使用する検索クエリ。")
     args = parser.parse_args()
 
     # --- 実行ロジック ---
@@ -465,21 +468,23 @@ if __name__ == "__main__":
 
     result_obj = None
 
-    if args.mode == 'full':
+    if args.mode == "full":
         # --- Fullスキャン実行 ---
         logger.info("Fullスキャンを実行します...")
         result_obj = asyncio.run(run_full_scan_standalone(args.url))
 
-    elif args.mode == 'quick':
+    elif args.mode == "quick":
         # --- Quickスキャン実行 ---
         if not args.selectors:
             logger.error("エラー: 'quick'モードには --selectors が必要です。")
             sys.exit(1)
-        
-        logger.info(f"Quickスキャンを実行します (セレクタ: {args.selectors})")
-        result_obj = asyncio.run(run_quick_scan_standalone(url=args.url, css_selector_list=args.selectors, webtype_str="plane"))
 
-    elif args.mode == 'quality':
+        logger.info(f"Quickスキャンを実行します (セレクタ: {args.selectors})")
+        result_obj = asyncio.run(
+            run_quick_scan_standalone(url=args.url, css_selector_list=args.selectors, webtype_str="plane")
+        )
+
+    elif args.mode == "quality":
         # --- 品質評価スキャン実行 ---
         if not args.query:
             logger.error("エラー: 'quality'モードには --query が必要です。")
@@ -499,7 +504,10 @@ if __name__ == "__main__":
         if result_obj.is_empty_result:
             logger.info("品質評価結果: 結果なしページ")
         elif result_obj.result_count > 0:
-            logger.info(f"品質評価結果: {result_obj.result_count}件のアイテムを検出 (AvgRelevance: {result_obj.avg_relevance:.2f})")
+            logger.info(
+                f"品質評価結果: {result_obj.result_count}件のアイテムを検出 "
+                f"(AvgRelevance: {result_obj.avg_relevance:.2f})"
+            )
         # print(result_obj) # オブジェクト全体を詳細に見たい場合は、この行のコメントを外してください
     else:
         logger.warning("テストは終了しましたが、コンテンツは抽出されませんでした。")

@@ -1,8 +1,13 @@
 import math
-from typing import Dict, List, Any, Union , Optional
+from typing import List
+
 from scipy import stats
 
-from .dom_treeSt import DOMTreeSt, BoundingBox
+from .dom_treeSt import DOMTreeSt
+
+# 候補とみなす最小面積（px²）。bounding_box はピクセル単位のため、1x1px の要素などを除外する
+MIN_ELEMENT_AREA_PX = 100
+
 
 class MainContentScorer:
     """
@@ -23,32 +28,36 @@ class MainContentScorer:
 
     class Weights:
         """スコア計算における各要素の重み"""
-        X = 1                   # X座標の中心度
-        Y = 1                   # Y座標の上部度
-        WIDTH = 1               # 幅の広さ
-        HEIGHT = 1.5            # 高さ（特に重視）
-        MAIN_TAG_BONUS = 0.5    # <main>タグなどへのボーナス
-        MAX_NORMALIZED_HEIGHT = 0.9 # 画面からはみ出す要素へのペナルティ閾値
-        LINK_LENGTH_WEIGHT = 1.0 # リンク密度の影響度
-        TEXT_LENGTH_WEIGHT = 1.5 # テキスト量の影響度（特に重視）
+
+        X = 1  # X座標の中心度
+        Y = 1  # Y座標の上部度
+        WIDTH = 1  # 幅の広さ
+        HEIGHT = 1.5  # 高さ（特に重視）
+        MAIN_TAG_BONUS = 0.5  # <main>タグなどへのボーナス
+        MAX_NORMALIZED_HEIGHT = 0.9  # 画面からはみ出す要素へのペナルティ閾値
+        LINK_LENGTH_WEIGHT = 1.0  # リンク密度の影響度
+        TEXT_LENGTH_WEIGHT = 1.5  # テキスト量の影響度（特に重視）
 
     class LinkScoring:
         """リンク数のスコアリングパラメータ"""
-        MEAN = 6      # リンク数がこの値に近いほど高評価
-        STD_LOW = 5   # 平均より少ない場合のばらつき
-        STD_HIGH = 30 # 平均より多い場合のばらつき
+
+        MEAN = 6  # リンク数がこの値に近いほど高評価
+        STD_LOW = 5  # 平均より少ない場合のばらつき
+        STD_HIGH = 30  # 平均より多い場合のばらつき
 
     class TextScoring:
         """テキスト量のスコアリングパラメータ"""
-        MEAN = 50     # テキスト長がこの値に近いほど高評価
+
+        MEAN = 50  # テキスト長がこの値に近いほど高評価
         STD_LOW = 40
         STD_HIGH = 1000
 
-    def __init__(self,
-                 tree: list[DOMTreeSt],
-                 width: int,
-                 height: int
-                 ):
+    def __init__(
+        self, tree: list[DOMTreeSt], width: float, height: float, origin_x: float = 0.0, origin_y: float = 0.0
+    ):
+        # origin: 評価領域の左上のページ座標。再スコアリング時は親要素の位置を渡し、相対座標で評価する
+        self.origin_x = origin_x
+        self.origin_y = origin_y
         if isinstance(tree, list):
             self.tree = tree
         else:
@@ -57,11 +66,9 @@ class MainContentScorer:
         self.width = width
         self.height = height
 
-    def _calculate_screen_occupancy_multiplier(self,
-                                               occupancy_rate: float,
-                                               peak: float = 0.8,
-                                               sigma: float = 0.3
-                                               ) -> float:
+    def _calculate_screen_occupancy_multiplier(
+        self, occupancy_rate: float, peak: float = 0.8, sigma: float = 0.3
+    ) -> float:
         """
         画面占有率に基づいてスコアの倍率を計算する。
         この関数はガウス関数（正規分布）を使用し、基準値（peak）を中心に
@@ -92,7 +99,7 @@ class MainContentScorer:
         else:
             score = math.exp(-0.5 * ((link_length - self.LinkScoring.MEAN) / self.LinkScoring.STD_HIGH) ** 2)
 
-        return score ** self.Weights.LINK_LENGTH_WEIGHT
+        return score**self.Weights.LINK_LENGTH_WEIGHT
 
     def _score_text_length(self, node: DOMTreeSt) -> float:
         """
@@ -106,12 +113,13 @@ class MainContentScorer:
         else:
             text_length = len(node.text)
 
-        if text_length == 0: score = 0
+        if text_length == 0:
+            score = 0.0
         elif text_length <= self.TextScoring.MEAN:
             score = math.exp(-0.5 * ((text_length - self.TextScoring.MEAN) / self.TextScoring.STD_LOW) ** 2)
         else:
             score = math.exp(-0.5 * ((text_length - self.TextScoring.MEAN) / self.TextScoring.STD_HIGH) ** 2)
-        return score ** self.Weights.TEXT_LENGTH_WEIGHT
+        return score**self.Weights.TEXT_LENGTH_WEIGHT
 
     def _calculate_base_score(self, node: DOMTreeSt) -> float:
         """
@@ -121,21 +129,20 @@ class MainContentScorer:
         score = 1.0
 
         # 1. 画面占有率: 要素が画面に占める面積が大きいほど高スコア
-        element_area = node.rect.width * node.rect.height if node.rect else 0 # rectがNoneの場合を考慮
+        element_area = node.rect.width * node.rect.height if node.rect else 0  # rectがNoneの場合を考慮
         page_area = self.width * self.height if self.width * self.height > 0 else 1
         occupancy_rate = element_area / page_area
         multiplier = self._calculate_screen_occupancy_multiplier(occupancy_rate)
         score *= multiplier
 
         # 2. 位置とサイズ: 画面中央・上部にある、幅広・高身長の要素を高スコア
-        if node.rect: # rectがNoneの場合を考慮
-            x = (node.rect.x + node.rect.width / 2) / self.width if self.width > 0 else 0
-            y = node.rect.y / self.height if self.height > 0 else 0
+        if node.rect:  # rectがNoneの場合を考慮
+            x = (node.rect.x - self.origin_x + node.rect.width / 2) / self.width if self.width > 0 else 0
+            y = (node.rect.y - self.origin_y) / self.height if self.height > 0 else 0
             w = node.rect.width / self.width if self.width > 0 else 0
             h = node.rect.height / self.height if self.height > 0 else 0
-        else: # rectがNoneの場合は全て0とする
+        else:  # rectがNoneの場合は全て0とする
             x, y, w, h = 0, 0, 0, 0
-
 
         x_score = self.X_DIST.pdf(x) ** self.Weights.X
         y_score = self.Y_DIST.pdf(y) ** self.Weights.Y
@@ -186,7 +193,7 @@ class MainContentScorer:
 
         nodes = self.tree
         candidates = []
-        while nodes :
+        while nodes:
             node = nodes.pop(0)
 
             if is_valid_element(node):
@@ -214,9 +221,14 @@ class MainContentScorer:
 
         scored_nodes: List[DOMTreeSt] = []
         nodes_to_score = list(self.tree)  # Make a copy to iterate over
+        # 平坦化済みリストの子を extend すると同じノードを二重に評価するため、評価済みは飛ばす
+        seen: set[int] = set()
 
         while nodes_to_score:
-            node = nodes_to_score.pop(0) # Corrected line
+            node = nodes_to_score.pop(0)
+            if id(node) in seen:
+                continue
+            seen.add(id(node))
             self._score_for_refinement(node, depth_diff=depth_diff)
             scored_nodes.append(node)
             nodes_to_score.extend(node.children)
@@ -225,10 +237,10 @@ class MainContentScorer:
 
         return scored_nodes
 
-def calculate_depth_weight(current_depth : int ,
-                           max_depth : int = 5,
-                           base_weight :float =1.0 ,
-                           weight_factor :float =4.0) -> float:
+
+def calculate_depth_weight(
+    current_depth: int, max_depth: int = 5, base_weight: float = 1.0, weight_factor: float = 4.0
+) -> float:
     """
     現在の階層レベルに基づいて depth の重みを計算する関数。
     深い階層にあるほど高い重みを返します。
@@ -236,8 +248,9 @@ def calculate_depth_weight(current_depth : int ,
     # 負の深さは0として扱う
     current_depth = max(0, current_depth)
     depth_ratio = current_depth / max_depth
-    weight = base_weight * (weight_factor ** depth_ratio)
+    weight = base_weight * (weight_factor**depth_ratio)
     return weight
+
 
 def is_main_element(node: DOMTreeSt) -> bool:
     """
@@ -246,7 +259,7 @@ def is_main_element(node: DOMTreeSt) -> bool:
     """
     # node.tagがNoneの場合を考慮
     if node.tag is None or node.tag == "":
-        return False # タグがない場合はメイン要素ではない
+        return False  # タグがない場合はメイン要素ではない
 
     tag = node.tag.upper()
     if tag == "MAIN":
@@ -258,6 +271,7 @@ def is_main_element(node: DOMTreeSt) -> bool:
     if node_id and isinstance(node_id, str) and "main" in node_id.lower():
         return True
     return False
+
 
 """
 リファクタリング前の is_valid_element 関数 (参考)
@@ -277,6 +291,8 @@ def is_valid_element(node: DOMTreeSt) -> bool:
         return False
     return True
 """
+
+
 def is_valid_element(node: DOMTreeSt) -> bool:
     """
     ノードがメインコンテンツの候補として有効かどうかを判定します。
@@ -293,13 +309,13 @@ def is_valid_element(node: DOMTreeSt) -> bool:
     # 非コンテナ要素を明示的に除外するアプローチに変更。
     # 現在は、主要な非コンテンツ領域タグのみを除外対象とする。
     invalid_tags = [
-        "NAV",      # ナビゲーション
-        "ASIDE",    # サイドバー
-        "HEADER",   # ヘッダー
-        "FOOTER",   # フッター
-        "MENU",     # メニュー
-        "BODY",     # body全体を候補にしない
-        "HTML",     # html全体を候補にしない
+        "NAV",  # ナビゲーション
+        "ASIDE",  # サイドバー
+        "HEADER",  # ヘッダー
+        "FOOTER",  # フッター
+        "MENU",  # メニュー
+        "BODY",  # body全体を候補にしない
+        "HTML",  # html全体を候補にしない
     ]
     if tag in invalid_tags:
         return False
@@ -307,6 +323,6 @@ def is_valid_element(node: DOMTreeSt) -> bool:
     # 画面に対して極端に小さい要素は除外
     # node.rectがNoneの場合を考慮
     area = node.rect.width * node.rect.height if node.rect else 0
-    if area < 0.05:
+    if area < MIN_ELEMENT_AREA_PX:
         return False
     return True

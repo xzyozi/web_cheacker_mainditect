@@ -1,10 +1,29 @@
-import tkinter as tk
-from tkinter import ttk, scrolledtext
 import json
-import subprocess
-import threading
 import os
+import subprocess
 import sys
+import threading
+import tkinter as tk
+from tkinter import scrolledtext, ttk
+from typing import Any
+
+TARGET_MODULE = "content_extractor.core"
+
+
+def build_command(case: dict[str, Any]) -> list[str]:
+    """テストケース定義から content_extractor.core 実行用コマンドを組み立てる。"""
+    command = [
+        sys.executable,  # 'python'の代わりに、現在実行中のPythonインタプリタの絶対パスを使用
+        "-m",
+        TARGET_MODULE,
+        case["url"],
+        "--mode",
+        case["mode"],
+    ]
+    if case["mode"] == "quick" and case.get("selector"):
+        command.extend(["--selectors", case["selector"]])
+    return command
+
 
 class TestRunnerApp:
     def __init__(self, root):
@@ -17,13 +36,10 @@ class TestRunnerApp:
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
         # プロジェクトのルートディレクトリ (test/ の一つ上)
         self.project_root = os.path.dirname(self.script_dir)
-        # 呼び出すスクリプトへの絶対パス
-        self.target_script_path = os.path.join(self.project_root, "playwright_mainditect_v3.py")
         # 読み込むテストケースファイルへの絶対パス
-        self.test_cases_path = os.path.join(self.script_dir, "test_cases.json")
-        
+        self.test_cases_path = os.path.join(self.script_dir, "test_cases..json")
 
-        # これにより、playwright_mainditect_v3が依存する他のモジュールを正しく見つけられるようになります。
+        # これにより、content_extractor.core が依存する他のモジュールを正しく見つけられるようになります。
         if self.project_root not in sys.path:
             sys.path.insert(0, self.project_root)
 
@@ -62,7 +78,6 @@ class TestRunnerApp:
 
     def load_test_cases(self):
         try:
-
             with open(self.test_cases_path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except FileNotFoundError:
@@ -79,7 +94,7 @@ class TestRunnerApp:
         self.output_text.config(state=tk.NORMAL)
         self.output_text.delete(1.0, tk.END)
         self.output_text.insert(tk.END, f"Running test: {selected_case['name']}\n")
-        self.output_text.insert(tk.END, "-"*50 + "\n")
+        self.output_text.insert(tk.END, "-" * 50 + "\n")
         self.output_text.config(state=tk.DISABLED)
         self.run_button.config(state=tk.DISABLED)
 
@@ -88,29 +103,22 @@ class TestRunnerApp:
         thread.start()
 
     def _execute_subprocess(self, case):
-        command = [
-            sys.executable,  # 'python'の代わりに、現在実行中のPythonインタプリタの絶対パスを使用
-            self.target_script_path,
-            case["url"],
-            "--mode",
-            case["mode"]
-        ]
-        if case["mode"] == "quick" and case["selector"]:
-            command.extend(["--selector", case["selector"]])
+        command = build_command(case)
 
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            encoding='utf-8',
-            errors='replace',
+            encoding="utf-8",
+            errors="replace",
             cwd=self.project_root,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
 
-        for line in iter(process.stdout.readline, ''):
-            self.root.after(0, self.update_output, line)
+        if process.stdout is not None:
+            for line in iter(process.stdout.readline, ""):
+                self.root.after(0, self.update_output, line)
 
         process.wait()
         self.root.after(0, self.on_test_complete)
@@ -122,8 +130,9 @@ class TestRunnerApp:
         self.output_text.config(state=tk.DISABLED)
 
     def on_test_complete(self):
-        self.update_output("\n" + "-"*50 + "\nTest finished.\n")
+        self.update_output("\n" + "-" * 50 + "\nTest finished.\n")
         self.run_button.config(state=tk.NORMAL)
+
 
 if __name__ == "__main__":
     root = tk.Tk()

@@ -1,9 +1,12 @@
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
-import sys
+from unittest.mock import AsyncMock, MagicMock
 
-from content_extractor.dom_treeSt import DOMTreeSt, BoundingBox
-from content_extractor.core import extract_main_content, _escape_css_selector_colons
+from playwright.async_api import Error as PlaywrightError
+import pytest
+
+from content_extractor import playwright_helpers
+from content_extractor.core import _escape_css_selector_colons, extract_main_content, quick_extract_content
+from content_extractor.dom_treeSt import DOMTreeSt
+from content_extractor.web_type_chk import WebType
 
 # =================================================================
 # core.py のテスト
@@ -15,10 +18,12 @@ from content_extractor.core import extract_main_content, _escape_css_selector_co
 # 設計書セクション: 3.2. `core.py` (インテグレーションテスト)
 # -----------------------------------------------------------------
 
+
 @pytest.fixture
 def mock_browser():
     """PlaywrightのBrowserオブジェクトのモックを返すフィクスチャ。"""
     return AsyncMock()
+
 
 @pytest.fixture
 def dom_tree_fixture():
@@ -27,12 +32,12 @@ def dom_tree_fixture():
     設計書に記載の構造をモデル化する。
     """
     # 子から親へ定義していく
-    p_node = DOMTreeSt(tag='p', text='This is the real content.', score=95, depth=4)
-    article_node = DOMTreeSt(tag='article', attributes={'id': 'main-article'}, score=70, depth=3, children=[p_node])
-    nav_node = DOMTreeSt(tag='nav', score=10, depth=3) # is_valid=False になる想定
-    main_node = DOMTreeSt(tag='main', score=0, depth=2, children=[article_node, nav_node])
-    wrapper_node = DOMTreeSt(tag='div', attributes={'id': 'wrapper'}, score=80, depth=1, children=[main_node])
-    body_node = DOMTreeSt(tag='body', score=0, depth=0, children=[wrapper_node])
+    p_node = DOMTreeSt(tag="p", text="This is the real content.", score=95, depth=4)
+    article_node = DOMTreeSt(tag="article", attributes={"id": "main-article"}, score=70, depth=3, children=[p_node])
+    nav_node = DOMTreeSt(tag="nav", score=10, depth=3)  # is_valid=False になる想定
+    main_node = DOMTreeSt(tag="main", score=0, depth=2, children=[article_node, nav_node])
+    wrapper_node = DOMTreeSt(tag="div", attributes={"id": "wrapper"}, score=80, depth=1, children=[main_node])
+    body_node = DOMTreeSt(tag="body", score=0, depth=0, children=[wrapper_node])
 
     # 循環参照を簡易的に設定
     p_node.parent = article_node
@@ -56,15 +61,19 @@ async def test_extract_main_content_refinement_loop(mocker, mock_browser, dom_tr
     `extract_main_content`が、スコアの低い親からスコアの高い子孫へと
     正しくコンテンツを絞り込んでいくプロセスをテストする。
     """
-    # ----- モックの設定 ----- 
+    # ----- モックの設定 -----
 
     # 外部依存や副作用のある関数をモック化
-    mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value=None)
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
     mock_page = AsyncMock()
-    mocker.patch('content_extractor.core.setup_page', new_callable=AsyncMock, return_value=mock_page)
-    mocker.patch('content_extractor.core.adjust_page_view', new_callable=AsyncMock, return_value={'width': 1920, 'height': 1080})
-    mocker.patch('content_extractor.core.make_tree', new_callable=AsyncMock, return_value=dom_tree_fixture[0]) # make_treeはリストではなく単一の木を返す
-    mocker.patch('content_extractor.core.save_json') # JSON保存は無効化
+    mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock, return_value=mock_page)
+    mocker.patch(
+        "content_extractor.core.adjust_page_view", new_callable=AsyncMock, return_value={"width": 1920, "height": 1080}
+    )
+    mocker.patch(
+        "content_extractor.core.make_tree", new_callable=AsyncMock, return_value=dom_tree_fixture[0]
+    )  # make_treeはリストではなく単一の木を返す
+    mocker.patch("content_extractor.core.save_json")  # JSON保存は無効化
 
     # `MainContentScorer` のモック
     mock_scorer_instance = MagicMock()
@@ -72,35 +81,35 @@ async def test_extract_main_content_refinement_loop(mocker, mock_browser, dom_tr
     article_node = wrapper_node.children[0].children[0]
     initial_candidates = [wrapper_node, article_node]
     mock_scorer_instance.find_candidates.return_value = initial_candidates
-    
-    mock_scorer_class = mocker.patch('content_extractor.core.MainContentScorer')
+
+    mock_scorer_class = mocker.patch("content_extractor.core.MainContentScorer")
     mock_scorer_class.return_value = mock_scorer_instance
 
     # `rescore_main_content_with_children` のモック
     p_node = article_node.children[0]
-    
+
     # スコアを再設定して、テストの意図を明確にする
-    article_node.score = 85 # wrapper(80)を上回る
-    p_node.score = 95       # article(85)を上回る
+    article_node.score = 85  # wrapper(80)を上回る
+    p_node.score = 95  # article(85)を上回る
 
     mock_rescore = mocker.patch(
-        'content_extractor.core.rescore_main_content_with_children',
+        "content_extractor.core.rescore_main_content_with_children",
         side_effect=[
-            [article_node], # 1回目 (wrapperの子) -> articleが最高スコア
-            [p_node],       # 2回目 (articleの子) -> pが最高スコア
-            []              # 3回目 (pの子) -> 子なしでループ終了
-        ]
+            [article_node],  # 1回目 (wrapperの子) -> articleが最高スコア
+            [p_node],  # 2回目 (articleの子) -> pが最高スコア
+            [],  # 3回目 (pの子) -> 子なしでループ終了
+        ],
     )
 
-    # ----- テスト対象関数の実行 ----- 
+    # ----- テスト対象関数の実行 -----
     final_content = await extract_main_content(url="http://mock.url", browser=mock_browser)
 
-    # ----- アサーション ----- 
+    # ----- アサーション -----
 
     assert final_content is not None
-    assert final_content.tag == 'p'
-    assert final_content.text == 'This is the real content.'
-    
+    assert final_content.tag == "p"
+    assert final_content.text == "This is the real content."
+
     # ループ後の最終スコアは `rescore` の結果に依存する
     assert final_content.score == 95
 
@@ -108,7 +117,7 @@ async def test_extract_main_content_refinement_loop(mocker, mock_browser, dom_tr
     assert mock_rescore.call_count == 3
     mock_rescore.assert_any_call(wrapper_node)
     mock_rescore.assert_any_call(article_node)
-    
+
     # 3回目の呼び出しは、2回目の勝者であるp_nodeに対して行われる
     mock_rescore.assert_any_call(p_node)
 
@@ -116,52 +125,90 @@ async def test_extract_main_content_refinement_loop(mocker, mock_browser, dom_tr
 @pytest.mark.asyncio
 async def test_extract_main_content_robots_disallowed(mocker, mock_browser):
     """Test that extract_main_content returns None if robots.txt disallows scraping."""
-    mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value="User-agent: *\nDisallow: /")
-    mocker.patch('content_extractor.core.is_scraping_allowed', return_value=False)
-    
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=False)
+
     result = await extract_main_content(url="http://mock.url/some/path", browser=mock_browser)
-    
+
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_quick_extract_content_robots_disallowed(mocker, mock_browser):
+    """Quickスキャンでも、robots.txtで許可されていないURLにはブラウザを開かず None を返す。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=False)
+
+    result = await quick_extract_content("http://mock.url/private", mock_browser, ["div.main"], "plane")
+
+    assert result is None
+    mock_browser.new_context.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_quick_and_full_scan_share_robots_cache(mocker, mock_browser):
+    """Quick スキャンと Full スキャンで同一オリジンの robots.txt キャッシュを共有し、取得が1回で済む。"""
+    playwright_helpers._ROBOTS_CACHE.clear()
+    try:
+        mock_fetch = mocker.patch(
+            "content_extractor.playwright_helpers.fetch_robots_txt",
+            new_callable=AsyncMock,
+            return_value="User-agent: *\nAllow: /",
+        )
+        mocker.patch("content_extractor.core.make_tree", new_callable=AsyncMock, return_value=None)
+        mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock, return_value=None)
+
+        await quick_extract_content("http://mock.url/page1", mock_browser, ["div.main"], "plane")
+        await extract_main_content("http://mock.url/page2", mock_browser)
+
+        assert mock_fetch.await_count == 1
+    finally:
+        playwright_helpers._ROBOTS_CACHE.clear()
+
 
 @pytest.mark.asyncio
 async def test_extract_main_content_setup_page_fails(mocker, mock_browser):
     """Test that extract_main_content returns None if setup_page fails."""
-    mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value=None)
-    mocker.patch('content_extractor.core.setup_page', new_callable=AsyncMock, return_value=None)
-    
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
+    mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock, return_value=None)
+
     result = await extract_main_content(url="http://mock.url", browser=mock_browser)
-    
+
     assert result is None
+
 
 @pytest.mark.asyncio
 async def test_extract_main_content_make_tree_fails(mocker, mock_browser):
     """Test that extract_main_content returns None if make_tree fails."""
-    mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value=None)
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
     mock_page = AsyncMock()
-    mocker.patch('content_extractor.core.setup_page', new_callable=AsyncMock, return_value=mock_page)
-    mocker.patch('content_extractor.core.adjust_page_view', new_callable=AsyncMock, return_value={'width': 1920, 'height': 1080})
-    mocker.patch('content_extractor.core.make_tree', new_callable=AsyncMock, return_value=None)
-    
+    mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock, return_value=mock_page)
+    mocker.patch(
+        "content_extractor.core.adjust_page_view", new_callable=AsyncMock, return_value={"width": 1920, "height": 1080}
+    )
+    mocker.patch("content_extractor.core.make_tree", new_callable=AsyncMock, return_value=None)
+
     result = await extract_main_content(url="http://mock.url", browser=mock_browser)
-    
+
     assert result is None
+
 
 @pytest.mark.asyncio
 async def test_extract_main_content_no_candidates(mocker, mock_browser, dom_tree_fixture):
     """Test that extract_main_content returns None if no candidates are found."""
-    mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value=None)
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
     mock_page = AsyncMock()
-    mocker.patch('content_extractor.core.setup_page', new_callable=AsyncMock, return_value=mock_page)
-    mocker.patch('content_extractor.core.adjust_page_view', new_callable=AsyncMock, return_value={'width': 1920, 'height': 1080})
-    mocker.patch('content_extractor.core.make_tree', new_callable=AsyncMock, return_value=dom_tree_fixture[0])
-    
+    mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock, return_value=mock_page)
+    mocker.patch(
+        "content_extractor.core.adjust_page_view", new_callable=AsyncMock, return_value={"width": 1920, "height": 1080}
+    )
+    mocker.patch("content_extractor.core.make_tree", new_callable=AsyncMock, return_value=dom_tree_fixture[0])
+
     mock_scorer_instance = MagicMock()
-    mock_scorer_instance.find_candidates.return_value = [] # No candidates
-    mock_scorer_class = mocker.patch('content_extractor.core.MainContentScorer')
+    mock_scorer_instance.find_candidates.return_value = []  # No candidates
+    mock_scorer_class = mocker.patch("content_extractor.core.MainContentScorer")
     mock_scorer_class.return_value = mock_scorer_instance
-    
+
     result = await extract_main_content(url="http://mock.url", browser=mock_browser)
-    
+
     assert result is None
 
 
@@ -172,52 +219,57 @@ async def test_extract_main_content_recursive_call(mocker, mock_browser, dom_tre
     # with the new URL during the recursive call.
 
     # Mock dependencies
-    mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value=None)
-    
-    # Mock setup_page to track its calls
-    mock_setup_page = mocker.patch('content_extractor.core.setup_page', new_callable=AsyncMock)
-    mock_setup_page.return_value = AsyncMock() # Return a mock page object
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
 
-    mocker.patch('content_extractor.core.adjust_page_view', new_callable=AsyncMock, return_value={'width': 1920, 'height': 1080})
-    mocker.patch('content_extractor.core.make_tree', new_callable=AsyncMock, return_value=dom_tree_fixture[0])
+    # Mock setup_page to track its calls
+    mock_setup_page = mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock)
+    mock_setup_page.return_value = AsyncMock()  # Return a mock page object
+
+    mocker.patch(
+        "content_extractor.core.adjust_page_view", new_callable=AsyncMock, return_value={"width": 1920, "height": 1080}
+    )
+    mocker.patch("content_extractor.core.make_tree", new_callable=AsyncMock, return_value=dom_tree_fixture[0])
 
     # Mock WebTypeCHK: first call returns a new URL, second call does not.
     mock_webtype_instance1 = MagicMock()
     mock_webtype_instance1.webtype_chk.return_value = "page_changer"
     mock_webtype_instance1.next_url = "http://mock.url/page/2"
-    
+
     mock_webtype_instance2 = MagicMock()
     mock_webtype_instance2.webtype_chk.return_value = "page_changer"
     mock_webtype_instance2.next_url = None
-    mocker.patch('content_extractor.core.WebTypeCHK', side_effect=[mock_webtype_instance1, mock_webtype_instance2])
-    
+    mocker.patch("content_extractor.core.WebTypeCHK", side_effect=[mock_webtype_instance1, mock_webtype_instance2])
+
     # Mock scorer for the recursive call to prevent further complex logic
     mock_scorer_instance = MagicMock()
     mock_scorer_instance.find_candidates.return_value = []
-    mocker.patch('content_extractor.core.MainContentScorer', return_value=mock_scorer_instance)
+    mocker.patch("content_extractor.core.MainContentScorer", return_value=mock_scorer_instance)
 
     # --- Run test ---
     await extract_main_content(url="http://mock.url/page/1", browser=mock_browser)
 
     # --- Assertions ---
     assert mock_setup_page.call_count == 2
-    
+
     # Check that setup_page was called with the initial URL, then the new one.
     first_call_args = mock_setup_page.call_args_list[0].args
     second_call_args = mock_setup_page.call_args_list[1].args
-    
+
     assert first_call_args[0] == "http://mock.url/page/1"
     assert second_call_args[0] == "http://mock.url/page/2"
+
 
 @pytest.mark.asyncio
 async def test_extract_main_content_rescore_no_improvement(mocker, mock_browser, dom_tree_fixture):
     """Test that the rescoring loop terminates if the score does not improve."""
-    mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value=None)
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
     mock_page = AsyncMock()
-    mocker.patch('content_extractor.core.setup_page', new_callable=AsyncMock, return_value=mock_page)
-    mocker.patch('content_extractor.core.adjust_page_view', new_callable=AsyncMock, return_value={'width': 1920, 'height': 1080})
-    mocker.patch('content_extractor.core.make_tree', new_callable=AsyncMock, return_value=dom_tree_fixture[0])
-    mocker.patch('content_extractor.core.save_json')
+    mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock, return_value=mock_page)
+    mocker.patch(
+        "content_extractor.core.adjust_page_view", new_callable=AsyncMock, return_value={"width": 1920, "height": 1080}
+    )
+    mocker.patch("content_extractor.core.make_tree", new_callable=AsyncMock, return_value=dom_tree_fixture[0])
+    mocker.patch("content_extractor.core.save_json")
 
     parent_node = dom_tree_fixture[0].children[0]
     parent_node.score = 90
@@ -226,16 +278,17 @@ async def test_extract_main_content_rescore_no_improvement(mocker, mock_browser,
 
     mock_scorer_instance = MagicMock()
     mock_scorer_instance.find_candidates.return_value = [parent_node]
-    mocker.patch('content_extractor.core.MainContentScorer', return_value=mock_scorer_instance)
-    
+    mocker.patch("content_extractor.core.MainContentScorer", return_value=mock_scorer_instance)
+
     # rescore returns child with lower score, then empty list
-    mocker.patch('content_extractor.core.rescore_main_content_with_children', side_effect=[[child_node], []])
+    mocker.patch("content_extractor.core.rescore_main_content_with_children", side_effect=[[child_node], []])
 
     result = await extract_main_content(url="http://mock.url", browser=mock_browser)
-    
+
     # The loop should find child's score (80) is not > parent's (90), so it breaks.
     # The returned content should be the parent from before the break.
     assert result is parent_node
+
 
 @pytest.mark.asyncio
 async def test_extract_main_content_selector_generation(mocker, mock_browser):
@@ -243,103 +296,366 @@ async def test_extract_main_content_selector_generation(mocker, mock_browser):
     `extract_main_content`が最終的なメインコンテンツの`css_selector`と
     `css_selector_list`を正しく生成することをテストする。
     """
-    # ----- モックの設定 ----- 
-    mocker.patch('content_extractor.core.fetch_robots_txt', new_callable=AsyncMock, return_value=None)
+    # ----- モックの設定 -----
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
     mock_page = AsyncMock()
-    mocker.patch('content_extractor.core.setup_page', new_callable=AsyncMock, return_value=mock_page)
-    mocker.patch('content_extractor.core.adjust_page_view', new_callable=AsyncMock, return_value={'width': 1920, 'height': 1080})
-    mocker.patch('content_extractor.core.save_json')
+    mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock, return_value=mock_page)
+    mocker.patch(
+        "content_extractor.core.adjust_page_view", new_callable=AsyncMock, return_value={"width": 1920, "height": 1080}
+    )
+    mocker.patch("content_extractor.core.save_json")
 
     # DOMツリーのフィクスチャをカスタマイズして、明確なセレクタを持つようにする
-    p_node = DOMTreeSt(tag='p', text='Real content.', score=95, depth=4, css_selector='div#main-article > p.content')
-    img_node = DOMTreeSt(tag='img', score=60, css_selector='article#main-article > img.hero') # Additional child for article_node
-    article_node = DOMTreeSt(tag='article', attributes={'id': 'main-article'}, score=85, depth=3, children=[p_node, img_node], css_selector='article#main-article')
-    span_ad_node = DOMTreeSt(tag='span', score=70, css_selector='div.section > span.ad') # Additional child for div_section_node
-    div_section_node = DOMTreeSt(tag='div', attributes={'class': 'section'}, score=80, depth=2, children=[article_node, span_ad_node], css_selector='div.section')
-    body_node = DOMTreeSt(tag='body', score=0, depth=0, children=[div_section_node], css_selector='body')
+    p_node = DOMTreeSt(tag="p", text="Real content.", score=95, depth=4, css_selector="div#main-article > p.content")
+    img_node = DOMTreeSt(
+        tag="img", score=60, css_selector="article#main-article > img.hero"
+    )  # Additional child for article_node
+    article_node = DOMTreeSt(
+        tag="article",
+        attributes={"id": "main-article"},
+        score=85,
+        depth=3,
+        children=[p_node, img_node],
+        css_selector="article#main-article",
+    )
+    span_ad_node = DOMTreeSt(
+        tag="span", score=70, css_selector="div.section > span.ad"
+    )  # Additional child for div_section_node
+    div_section_node = DOMTreeSt(
+        tag="div",
+        attributes={"class": "section"},
+        score=80,
+        depth=2,
+        children=[article_node, span_ad_node],
+        css_selector="div.section",
+    )
+    body_node = DOMTreeSt(tag="body", score=0, depth=0, children=[div_section_node], css_selector="body")
 
-    mocker.patch('content_extractor.core.make_tree', new_callable=AsyncMock, return_value=body_node)
+    mocker.patch("content_extractor.core.make_tree", new_callable=AsyncMock, return_value=body_node)
 
     mock_scorer_instance = MagicMock()
     # Initial candidates: div.section (parent) and article#main-article (child)
     mock_scorer_instance.find_candidates.return_value = [div_section_node, article_node]
-    mocker.patch('content_extractor.core.MainContentScorer', return_value=mock_scorer_instance)
+    mocker.patch("content_extractor.core.MainContentScorer", return_value=mock_scorer_instance)
 
     # `rescore_main_content_with_children` のモック
     # 1. `div_section_node` の子を再スコア -> `article_node`がベスト (children: [article_node, span_ad_node])
     # 2. `article_node` の子を再スコア -> `p_node`がベスト (children: [p_node, img_node])
     # 3. `p_node` の子を再スコア -> 子なしでループ終了 (children: [])
     mocker.patch(
-        'content_extractor.core.rescore_main_content_with_children',
+        "content_extractor.core.rescore_main_content_with_children",
         side_effect=[
-            [article_node, span_ad_node], # first call (children of div_section_node)
-            [p_node, img_node],           # second call (children of article_node)
-            []                            # third call (children of p_node)
-        ]
+            [article_node, span_ad_node],  # first call (children of div_section_node)
+            [p_node, img_node],  # second call (children of article_node)
+            [],  # third call (children of p_node)
+        ],
     )
 
-    # ----- テスト対象関数の実行 ----- 
+    # ----- テスト対象関数の実行 -----
     final_content = await extract_main_content(url="http://mock.url", browser=mock_browser)
 
-    # ----- アサーション ----- 
+    # ----- アサーション -----
     assert final_content is not None
-    assert final_content.tag == 'p'
-    assert final_content.text == 'Real content.'
-    assert final_content.css_selector == 'div#main-article > p.content'
+    assert final_content.tag == "p"
+    assert final_content.text == "Real content."
+    assert final_content.css_selector == "div#main-article > p.content"
 
     # Assert css_selector_list
     # The `current_best_children` for `final_content` (p_node) would be [p_node, img_node]
     # `selector_candidates` takes from current_best_children[1:4], so `img_node`'s selector will be picked.
     # Then `final_content.css_selector` is inserted at the front.
-    assert final_content.css_selector_list == ['div#main-article > p.content']
+    assert final_content.css_selector_list == ["div#main-article > p.content"]
     assert len(final_content.css_selector_list) == 1
+
 
 # -----------------------------------------------------------------
 # Test Case 3.9: `_escape_css_selector_colons` (ユニットテスト)
 # -----------------------------------------------------------------
+
 
 class TestEscapeCssSelectorColons:
     """_escape_css_selector_colons関数のユニットテスト"""
 
     def test_standard_tailwind_class(self):
         """標準的なTailwindCSSクラスが正しくエスケープされることを確認"""
-        selector = 'div.px-6.py-12.md:px-12.md:py-16'
-        expected = 'div.px-6.py-12.md\:px-12.md\:py-16'
+        selector = "div.px-6.py-12.md:px-12.md:py-16"
+        expected = r"div.px-6.py-12.md\:px-12.md\:py-16"
         assert _escape_css_selector_colons(selector) == expected
 
     def test_multiple_colons_in_class_name(self):
         """複数のコロンを含むクラス名が正しくエスケープされることを確認"""
-        selector = 'span.sm:text-lg:hover' # This selector itself is slightly malformed for standard CSS,
-                                           # but if it were to be interpreted as two separate class-colon parts
-                                           # then it should be escaped as such. The regex handles this by escaping
-                                           # any colon that follows a class-like pattern.
-        expected = 'span.sm\:text-lg:hover'
+        selector = "span.sm:text-lg:hover"  # This selector itself is slightly malformed for standard CSS,
+        # but if it were to be interpreted as two separate class-colon parts
+        # then it should be escaped as such. The regex handles this by escaping
+        # any colon that follows a class-like pattern.
+        expected = r"span.sm\:text-lg:hover"
         assert _escape_css_selector_colons(selector) == expected
 
     def test_no_colons_in_selector(self):
         """コロンを含まない通常のCSSセレクタが変更されないことを確認"""
-        selector = 'div.container'
-        expected = 'div.container'
+        selector = "div.container"
+        expected = "div.container"
         assert _escape_css_selector_colons(selector) == expected
 
     def test_pseudo_class_colon_not_escaped(self):
         """擬似クラスのコロンがエスケープされないことを確認"""
-        selector = 'a:hover'
-        expected = 'a:hover'
+        selector = "a:hover"
+        expected = "a:hover"
         assert _escape_css_selector_colons(selector) == expected
 
-        selector_nth = 'p:nth-child(2n+1)'
-        expected_nth = 'p:nth-child(2n+1)'
+        selector_nth = "p:nth-child(2n+1)"
+        expected_nth = "p:nth-child(2n+1)"
         assert _escape_css_selector_colons(selector_nth) == expected_nth
 
     def test_already_escaped_colon(self):
         """既にエスケープされているコロンが二重にエスケープされないことを確認"""
-        selector = 'div.md\:px-12'
-        expected = 'div.md\:px-12'
+        selector = r"div.md\:px-12"
+        expected = r"div.md\:px-12"
         assert _escape_css_selector_colons(selector) == expected
 
     def test_complex_selector_combination(self):
         """ID、クラス、擬似クラスなどが混在する複雑なセレクタで正しくエスケープされることを確認"""
-        selector = '#header > div.md:flex-col:first-child a:hover'
-        expected = '#header > div.md\:flex-col:first-child a:hover'
+        selector = "#header > div.md:flex-col:first-child a:hover"
+        expected = r"#header > div.md\:flex-col:first-child a:hover"
         assert _escape_css_selector_colons(selector) == expected
+
+
+@pytest.mark.asyncio
+async def test_extract_main_content_playwright_error_returns_none(mocker, mock_browser):
+    """Full スキャン中の PlaywrightError は記録して None を返し、ページを解放する。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
+    mock_page = AsyncMock()
+    mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock, return_value=mock_page)
+    mocker.patch(
+        "content_extractor.core.adjust_page_view", new_callable=AsyncMock, side_effect=PlaywrightError("pw err")
+    )
+    mock_close_page = mocker.patch("content_extractor.core.close_page", new_callable=AsyncMock)
+
+    result = await extract_main_content("http://mock.url", mock_browser)
+
+    assert result is None
+    mock_close_page.assert_awaited_once_with(mock_page)
+
+
+@pytest.mark.asyncio
+async def test_extract_main_content_reraises_unexpected_exception(mocker, mock_browser):
+    """Full スキャン中の予期せぬ例外は logger.exception で記録して再送出する。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
+    mock_page = AsyncMock()
+    mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock, return_value=mock_page)
+    mocker.patch("content_extractor.core.adjust_page_view", new_callable=AsyncMock, side_effect=RuntimeError("boom"))
+    mock_close_page = mocker.patch("content_extractor.core.close_page", new_callable=AsyncMock)
+    mock_logger_exception = mocker.patch("content_extractor.core.logger.exception")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await extract_main_content("http://mock.url", mock_browser)
+
+    mock_logger_exception.assert_called_once()
+    mock_close_page.assert_awaited_once_with(mock_page)
+
+
+@pytest.mark.asyncio
+async def test_quick_extract_content_playwright_error_returns_none(mocker, mock_browser):
+    """Quick スキャン中の PlaywrightError は記録して None を返し、コンテキストを閉じる。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
+    mock_context = AsyncMock()
+    mock_page = AsyncMock()
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.return_value = mock_page
+    mock_page.goto.side_effect = PlaywrightError("navigation failed")
+
+    result = await quick_extract_content("http://mock.url", mock_browser, ["div.main"], "plane")
+
+    assert result is None
+    mock_context.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_quick_extract_content_reraises_unexpected_exception(mocker, mock_browser):
+    """Quick スキャン中の予期せぬ例外は logger.exception で記録して再送出する。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
+    mock_context = AsyncMock()
+    mock_page = AsyncMock()
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.return_value = mock_page
+    mock_page.goto.side_effect = RuntimeError("unexpected quick error")
+    mock_logger_exception = mocker.patch("content_extractor.core.logger.exception")
+
+    with pytest.raises(RuntimeError, match="unexpected quick error"):
+        await quick_extract_content("http://mock.url", mock_browser, ["div.main"], "plane")
+
+    mock_logger_exception.assert_called_once()
+    mock_context.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_quick_extract_content_new_page_playwright_error_closes_context(mocker, mock_browser):
+    """Quick スキャンで context.new_page() が PlaywrightError を出しても None を返し、コンテキストを閉じる。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
+    mock_context = AsyncMock()
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.side_effect = PlaywrightError("new_page failed")
+
+    result = await quick_extract_content("http://mock.url", mock_browser, ["div.main"], "plane")
+
+    assert result is None
+    mock_context.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_quick_extract_content_new_page_unexpected_error_closes_context(mocker, mock_browser):
+    """Quick スキャンで context.new_page() が予期せぬ例外を出してもコンテキストを閉じて再送出する。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
+    mock_context = AsyncMock()
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.side_effect = RuntimeError("unexpected new_page error")
+    mock_logger_exception = mocker.patch("content_extractor.core.logger.exception")
+
+    with pytest.raises(RuntimeError, match="unexpected new_page error"):
+        await quick_extract_content("http://mock.url", mock_browser, ["div.main"], "plane")
+
+    mock_logger_exception.assert_called_once()
+    mock_context.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_extract_main_content_closes_page_before_recursion(mocker, mock_browser, dom_tree_fixture):
+    """再帰呼び出し前に現在の page を close_page で解放し、finally での二重クローズが起きない。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
+
+    page1 = AsyncMock(name="page1")
+    page2 = AsyncMock(name="page2")
+    events: list[tuple[str, object]] = []
+
+    async def fake_setup_page(url, browser):
+        events.append(("setup", url))
+        return page1 if url.endswith("/1") else page2
+
+    async def fake_close_page(page):
+        events.append(("close", page))
+
+    mocker.patch("content_extractor.core.setup_page", side_effect=fake_setup_page)
+    mock_close_page = mocker.patch("content_extractor.core.close_page", side_effect=fake_close_page)
+    mocker.patch(
+        "content_extractor.core.adjust_page_view", new_callable=AsyncMock, return_value={"width": 1920, "height": 1080}
+    )
+    mocker.patch("content_extractor.core.make_tree", new_callable=AsyncMock, return_value=dom_tree_fixture[0])
+
+    wt1 = MagicMock()
+    wt1.webtype_chk.return_value = "page_changer"
+    wt1.next_url = "http://mock.url/page/2"
+
+    wt2 = MagicMock()
+    wt2.webtype_chk.return_value = "page_changer"
+    wt2.next_url = None
+    mocker.patch("content_extractor.core.WebTypeCHK", side_effect=[wt1, wt2])
+
+    mock_scorer = MagicMock()
+    mock_scorer.find_candidates.return_value = []
+    mocker.patch("content_extractor.core.MainContentScorer", return_value=mock_scorer)
+
+    await extract_main_content(url="http://mock.url/page/1", browser=mock_browser)
+
+    assert events == [
+        ("setup", "http://mock.url/page/1"),
+        ("close", page1),
+        ("setup", "http://mock.url/page/2"),
+        ("close", page2),
+    ]
+    assert mock_close_page.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_extract_main_content_no_double_close_when_recursive_call_raises(mocker, mock_browser, dom_tree_fixture):
+    """再帰先で予期せぬ例外が発生しても、再帰前に閉じた page1 を二重クローズしない。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
+
+    page1 = AsyncMock(name="page1")
+    page2 = AsyncMock(name="page2")
+    mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock, side_effect=[page1, page2])
+    mock_close_page = mocker.patch("content_extractor.core.close_page", new_callable=AsyncMock)
+    mocker.patch(
+        "content_extractor.core.adjust_page_view",
+        new_callable=AsyncMock,
+        side_effect=[{"width": 1920, "height": 1080}, RuntimeError("recursive boom")],
+    )
+    mocker.patch("content_extractor.core.make_tree", new_callable=AsyncMock, return_value=dom_tree_fixture[0])
+
+    wt1 = MagicMock()
+    wt1.webtype_chk.return_value = "page_changer"
+    wt1.next_url = "http://mock.url/page/2"
+    mocker.patch("content_extractor.core.WebTypeCHK", return_value=wt1)
+
+    with pytest.raises(RuntimeError, match="recursive boom"):
+        await extract_main_content(url="http://mock.url/page/1", browser=mock_browser)
+
+    assert mock_close_page.await_args_list == [mocker.call(page1), mocker.call(page2)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("webtype_str", ["page_changer", "not_quickscan"])
+async def test_quick_extract_content_delegates_non_quickscan_types_to_full_scan(mocker, mock_browser, webtype_str):
+    """page_changer / not_quickscan 指定時は Quick スキャンを行わず extract_main_content へ委譲する。"""
+    expected_node = DOMTreeSt(tag="article", text="full")
+    mock_full = mocker.patch(
+        "content_extractor.core.extract_main_content",
+        new_callable=AsyncMock,
+        return_value=expected_node,
+    )
+
+    result = await quick_extract_content("http://mock.url", mock_browser, ["div.main"], webtype_str)
+
+    assert result is expected_node
+    mock_full.assert_awaited_once_with("http://mock.url", mock_browser, arg_webtype=WebType.from_string(webtype_str))
+    mock_browser.new_context.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_quick_extract_content_falls_back_on_invalid_selector_playwright_error(mocker, mock_browser):
+    """無効なセレクタが PlaywrightError を起こしても、次の有効なセレクタへフォールバックして成功する。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
+    mock_context = AsyncMock()
+    mock_page = AsyncMock()
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.return_value = mock_page
+    mock_page.wait_for_selector.side_effect = [
+        PlaywrightError("SyntaxError: Failed to execute 'querySelector' on 'Document': 'div[invalid===' is not valid"),
+        None,
+    ]
+    expected_tree = DOMTreeSt(tag="main", text="extracted content")
+    mock_make_tree = mocker.patch(
+        "content_extractor.core.make_tree",
+        new_callable=AsyncMock,
+        return_value=expected_tree,
+    )
+
+    selectors = ["div[invalid===", "main.article"]
+    result = await quick_extract_content("http://mock.url", mock_browser, selectors, "plane")
+
+    assert result is expected_tree
+    assert result.css_selector == "main.article"
+    assert result.css_selector_list == ["main.article", "div[invalid==="]
+    assert result.url == "http://mock.url"
+    assert result.web_type == "plane"
+    assert mock_page.wait_for_selector.await_count == 2
+    mock_make_tree.assert_awaited_once_with(mock_page, selector="main.article")
+    mock_context.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_quick_extract_content_returns_none_when_all_selectors_raise_playwright_error(mocker, mock_browser):
+    """全セレクタが PlaywrightError を起こした場合は None を返し、コンテキストを閉じる。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
+    mock_context = AsyncMock()
+    mock_page = AsyncMock()
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.return_value = mock_page
+    mock_page.wait_for_selector.side_effect = PlaywrightError("invalid selector")
+    mock_make_tree = mocker.patch("content_extractor.core.make_tree", new_callable=AsyncMock)
+
+    result = await quick_extract_content("http://mock.url", mock_browser, ["bad[1", "bad[2"], "plane")
+
+    assert result is None
+    assert mock_page.wait_for_selector.await_count == 2
+    mock_make_tree.assert_not_awaited()
+    mock_context.close.assert_awaited_once()

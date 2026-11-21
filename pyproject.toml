@@ -6,11 +6,11 @@ build-backend = "hatchling.build"
 name = "web-cheacker-mainditect"
 version = "0.1.0"
 description = "A web checker and content extraction tool."
-readme = "readme.md"
-requires-python = ">=3.8"
+readme = "README.md"
+requires-python = ">=3.10"
 license = "MIT"
 authors = [
-  { name = "Your Name", email = "you@example.com" },
+  { name = "xzyozi" },
 ]
 
 # Main application dependencies
@@ -26,8 +26,11 @@ dependencies = [
   "requests",
 ]
 
+[tool.hatch.build.targets.wheel]
+# Flat-layout scripts (no package named after the project): skip file selection
+bypass-selection = true
 [project.urls]
-Homepage = "https://github.com/user/repo" # Change to your repo URL
+Homepage = "https://github.com/xzyozi/web_cheacker_mainditect"
 
 [project.optional-dependencies]
 # Development and testing tools
@@ -37,6 +40,20 @@ dev = [
   "pytest-mock",
   "pytest-asyncio",
   "pytest-cov",
+  "ruff",
+  "mypy",
+]
+
+# Search quality evaluation (SQS): relevance scoring of search result pages.
+# Heavy (pulls in torch), so it is not part of the default install: uv sync --extra quality
+quality = [
+  "scikit-learn",
+  "sentence-transformers",
+]
+
+# Mutation testing (Linux / WSL2 / CI only): uv sync --extra dev --extra mutation
+mutation = [
+  "mutmut>=3.0.0",
 ]
 
 [tool.hatch.scripts]
@@ -59,3 +76,57 @@ test = "pytest"
 
 # Create the .bat shortcut for running the application
 create-shortcut = "python create_shortcut.py"
+
+# ==========================================
+# Linter & Formatter (Ruff)
+# ==========================================
+[tool.ruff]
+line-length = 120
+exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    "venv",
+    ".venv",
+    "mutants",
+    # レビュー文書内のコード片は整形対象外（移行前の review/ と同じ扱い）
+    "docs/review",
+]
+
+[tool.ruff.lint]
+# E: pycodestyle errors, F: Pyflakes, W: pycodestyle warnings, I: isort
+# BLE: flake8-blind-except, B: flake8-bugbear
+select = ["E", "F", "W", "I", "BLE", "B"]
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+
+# ==========================================
+# Type Checker (Mypy)
+# ==========================================
+[tool.mypy]
+python_version = "3.10"
+warn_unused_configs = true
+show_error_codes = true
+# 型定義の無いサードパーティ製ライブラリ（playwright, scipy, yaml 等）で落とさない
+ignore_missing_imports = true
+exclude = [
+    "build/",
+    "venv/",
+    "\\.venv/",
+    "mutants/",
+]
+
+# ==========================================
+# Testing (Pytest)
+# ==========================================
+[tool.pytest.ini_options]
+testpaths = ["test"]
+python_files = ["test_*.py"]
+# CI では PYTHONPATH を設定しないため、プロジェクトルートを import パスに加える
+pythonpath = ["."]
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: 実ブラウザ（Chromium）とローカルHTTPサーバーを使う結合テスト。未導入の環境ではスキップされる",
+]

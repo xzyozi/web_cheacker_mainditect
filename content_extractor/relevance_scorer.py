@@ -1,33 +1,68 @@
 import math
-import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-from sentence_transformers import SentenceTransformer
-from sentence_transformers.util import cos_sim
-from typing import List
+from typing import Any, List
 
-from .dom_treeSt import DOMTreeSt
-from .config import QUALITY_SCORING_CONFIG
 from setup_logger import setup_logger
 
+from .config import QUALITY_SCORING_CONFIG
+from .dom_treeSt import DOMTreeSt
+
+SentenceTransformer: Any
+cos_sim: Any
+try:
+    from sentence_transformers import SentenceTransformer as _SentenceTransformer
+    from sentence_transformers.util import cos_sim as _cos_sim
+
+    SentenceTransformer = _SentenceTransformer
+    cos_sim = _cos_sim
+except ImportError:
+    SentenceTransformer = None
+    cos_sim = None
+
+TfidfVectorizer: Any
+cosine_similarity: Any
+try:
+    from sklearn.feature_extraction.text import TfidfVectorizer as _TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity as _cosine_similarity
+
+    TfidfVectorizer = _TfidfVectorizer
+    cosine_similarity = _cosine_similarity
+except ImportError:
+    TfidfVectorizer = None
+    cosine_similarity = None
+
 logger = setup_logger("relevance_scorer")
+
 
 class RelevanceScorer:
     """
     検索クエリと結果アイテムリストの関連性をスコアリングするクラス。
     """
-    def __init__(self, model_name='all-MiniLM-L6-v2'):
+
+    def __init__(self, model_name="all-MiniLM-L6-v2"):
         """
         Args:
             model_name (str): sentence-transformersで使用する事前学習済みモデル名。
         """
+        if SentenceTransformer is None:
+            raise ImportError(
+                "sentence-transformers が導入されていません。`uv sync --extra quality` または "
+                "`pip install sentence-transformers` を実行してください。"
+            )
+        if TfidfVectorizer is None:
+            raise ImportError(
+                "scikit-learn が導入されていません。`uv sync --extra quality` または "
+                "`pip install scikit-learn` を実行してください。"
+            )
+
         try:
             # モデルは比較的高価な処理なので、インスタンス生成時に一度だけロードする
             self.semantic_model = SentenceTransformer(model_name)
         except Exception as e:
             logger.error(f"SentenceTransformerモデルの読み込みに失敗しました: {e}")
             # アプリケーションを停止させるか、明確なエラーを投げる
-            raise ImportError("SentenceTransformerの初期化に失敗しました。`pip install sentence-transformers` を確認してください。") from e
+            raise ImportError(
+                "SentenceTransformerの初期化に失敗しました。`pip install sentence-transformers` を確認してください。"
+            ) from e
         self.tfidf_vectorizer = TfidfVectorizer()
 
     def _calculate_jaccard(self, text1: str, text2: str) -> float:
@@ -42,6 +77,17 @@ class RelevanceScorer:
         """各アイテムの関連性スコアを計算し、DOMTreeStオブジェクトを更新します。"""
         if not items or not self.semantic_model:
             return items
+
+        if cosine_similarity is None:
+            raise ImportError(
+                "scikit-learn が導入されていません。`uv sync --extra quality` または "
+                "`pip install scikit-learn` を実行してください。"
+            )
+        if cos_sim is None:
+            raise ImportError(
+                "sentence-transformers が導入されていません。`uv sync --extra quality` または "
+                "`pip install sentence-transformers` を実行してください。"
+            )
 
         # 各アイテムからテキストを抽出 (タイトルやスニペットを想定)
         item_texts = [item.text for item in items]
@@ -59,47 +105,45 @@ class RelevanceScorer:
         for i, item in enumerate(items):
             # 3. Jaccard Similarity
             jaccard_score = self._calculate_jaccard(query, item.text)
-            
+
             # 4. ハイブリッドスコアの計算 (重みは設定ファイルで管理することを推奨)
             relevance_score = (
-                (0.2 * jaccard_score) +
-                (0.3 * tfidf_scores[i]) +
-                (0.5 * float(semantic_scores[i]))  # numpy.float32をfloatにキャスト
+                (0.2 * jaccard_score)
+                + (0.3 * tfidf_scores[i])
+                + (0.5 * float(semantic_scores[i]))  # numpy.float32をfloatにキャスト
             )
             item.relevance_score = relevance_score
-        
+
         return items
 
-    def calculate_sqs(self,
-                      result_count: int,
-                      avg_relevance: float,
-                      relevance_variance: float,
-                      max_relevance: float) -> tuple[float, str]:
+    def calculate_sqs(
+        self, result_count: int, avg_relevance: float, relevance_variance: float, max_relevance: float
+    ) -> tuple[float, str]:
         """SQSスコアと品質カテゴリを計算して返す。"""
         if result_count == 0:
             return 0, "Invalid/Empty"
 
-        weights = QUALITY_SCORING_CONFIG['sqs_weights']
-        thresholds = QUALITY_SCORING_CONFIG['sqs_thresholds']
+        weights = QUALITY_SCORING_CONFIG["sqs_weights"]
+        thresholds = QUALITY_SCORING_CONFIG["sqs_thresholds"]
 
         # SQS計算式の各項を計算
-        count_score = math.log(result_count + 1) * weights['result_count']
-        avg_rel_score = avg_relevance * weights['avg_relevance']
-        variance_penalty = relevance_variance * weights['relevance_variance']
-        max_rel_score = max_relevance * weights['max_relevance']
+        count_score = math.log(result_count + 1) * weights["result_count"]
+        avg_rel_score = avg_relevance * weights["avg_relevance"]
+        variance_penalty = relevance_variance * weights["relevance_variance"]
+        max_rel_score = max_relevance * weights["max_relevance"]
 
         # SQSを計算 (スケールを100点満点に調整)
         sqs = (count_score + avg_rel_score - variance_penalty + max_rel_score) * 100
         sqs_score = max(0, sqs)  # 負の値にならないようにする
 
         # 最終分類
-        if sqs_score >= thresholds['valid']:
+        if sqs_score >= thresholds["valid"]:
             quality_category = "Valid"
-        elif sqs_score >= thresholds['low_quality']:
+        elif sqs_score >= thresholds["low_quality"]:
             quality_category = "Low Quality"
         else:
             quality_category = "Invalid/Empty"
-        
+
         logger.info(f"SQS: {sqs_score:.2f}, Category: {quality_category}")
-        
+
         return sqs_score, quality_category

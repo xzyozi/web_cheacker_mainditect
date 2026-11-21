@@ -4,7 +4,7 @@ import os
 
 # Content of the .bat file to be created.
 # It activates the virtual environment and runs the main Python script.
-BAT_CONTENT = """@echo off
+BAT_CONTENT = r"""@echo off
 setlocal
 rem Change directory to the script's location. This makes the script portable.
 cd /d "%~dp0"
@@ -29,6 +29,7 @@ endlocal
 
 FILE_NAME = "cheack.bat"
 
+
 def create_shortcut():
     """Writes the BAT_CONTENT to the specified FILE_NAME."""
     try:
@@ -39,6 +40,7 @@ def create_shortcut():
         print(f"You can now run '{FILE_NAME}' to start the application.")
     except IOError as e:
         print(f"Error: Unable to create file '{FILE_NAME}': {e}")
+
 
 if __name__ == "__main__":
     print("--- Shortcut Creator ---")
