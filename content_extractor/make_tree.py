@@ -56,6 +56,7 @@ async def make_tree(
                 tag=properties["tag"],
                 id=properties["id"],
                 attributes=properties["attributes"],
+                # el.bounding_box() は getBoundingClientRect() と同じビューポート相対座標を返す
                 rect=BoundingBox(
                     x=bounding_box["x"],
                     y=bounding_box["y"],
