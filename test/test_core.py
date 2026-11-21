@@ -608,3 +608,54 @@ async def test_quick_extract_content_delegates_non_quickscan_types_to_full_scan(
     assert result is expected_node
     mock_full.assert_awaited_once_with("http://mock.url", mock_browser, arg_webtype=WebType.from_string(webtype_str))
     mock_browser.new_context.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_quick_extract_content_falls_back_on_invalid_selector_playwright_error(mocker, mock_browser):
+    """無効なセレクタが PlaywrightError を起こしても、次の有効なセレクタへフォールバックして成功する。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
+    mock_context = AsyncMock()
+    mock_page = AsyncMock()
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.return_value = mock_page
+    mock_page.wait_for_selector.side_effect = [
+        PlaywrightError("SyntaxError: Failed to execute 'querySelector' on 'Document': 'div[invalid===' is not valid"),
+        None,
+    ]
+    expected_tree = DOMTreeSt(tag="main", text="extracted content")
+    mock_make_tree = mocker.patch(
+        "content_extractor.core.make_tree",
+        new_callable=AsyncMock,
+        return_value=expected_tree,
+    )
+
+    selectors = ["div[invalid===", "main.article"]
+    result = await quick_extract_content("http://mock.url", mock_browser, selectors, "plane")
+
+    assert result is expected_tree
+    assert result.css_selector == "main.article"
+    assert result.css_selector_list == ["main.article", "div[invalid==="]
+    assert result.url == "http://mock.url"
+    assert result.web_type == "plane"
+    assert mock_page.wait_for_selector.await_count == 2
+    mock_make_tree.assert_awaited_once_with(mock_page, selector="main.article")
+    mock_context.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_quick_extract_content_returns_none_when_all_selectors_raise_playwright_error(mocker, mock_browser):
+    """全セレクタが PlaywrightError を起こした場合は None を返し、コンテキストを閉じる。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
+    mock_context = AsyncMock()
+    mock_page = AsyncMock()
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.return_value = mock_page
+    mock_page.wait_for_selector.side_effect = PlaywrightError("invalid selector")
+    mock_make_tree = mocker.patch("content_extractor.core.make_tree", new_callable=AsyncMock)
+
+    result = await quick_extract_content("http://mock.url", mock_browser, ["bad[1", "bad[2"], "plane")
+
+    assert result is None
+    assert mock_page.wait_for_selector.await_count == 2
+    mock_make_tree.assert_not_awaited()
+    mock_context.close.assert_awaited_once()
