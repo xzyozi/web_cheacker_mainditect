@@ -1,6 +1,36 @@
 from itertools import zip_longest
+from urllib.parse import urlparse
 
 import jinja2
+
+ALLOWED_URL_SCHEMES = frozenset({"http", "https"})
+
+
+def _is_safe_http_url(url: object) -> bool:
+    """http / https スキームと有効なホストを持つ安全な URL かを判定する。"""
+    if not isinstance(url, str):
+        return False
+
+    candidate = url.strip()
+    if not candidate:
+        return False
+
+    # 制御文字を含む URL はブラウザ側のスキーム解釈の揺れを防ぐため拒否する
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in candidate):
+        return False
+
+    try:
+        parsed = urlparse(candidate)
+        hostname = parsed.hostname
+    except ValueError:
+        return False
+
+    if parsed.scheme.lower() not in ALLOWED_URL_SCHEMES:
+        return False
+    if not parsed.netloc or not hostname or not hostname.strip():
+        return False
+
+    return True
 
 
 def generate_notification(urls: list):
@@ -58,7 +88,8 @@ def generate_html(url_list, image_list):
     cids = {path: f"image_{i}" for i, path in enumerate(image_list) if path}
 
     for url, image_path in zip_longest(url_list, image_list):
-        item = {"url": url, "cid": None}
+        safe_url = url.strip() if isinstance(url, str) and _is_safe_http_url(url) else None
+        item = {"url": url, "safe_url": safe_url, "cid": None}
         if image_path and image_path in cids:
             item["cid"] = cids[image_path]
         items.append(item)
@@ -85,7 +116,9 @@ def generate_html(url_list, image_list):
             {% for item in items %}
                 <li>
                     <p>"{{ item.url }}"</p>
-                    <a href="{{ item.url }}" target="_blank">リンクを開く</a><br>
+                    {% if item.safe_url %}
+                    <a href="{{ item.safe_url }}" target="_blank">リンクを開く</a><br>
+                    {% endif %}
                     {% if item.cid %}
                     <img src="cid:{{ item.cid }}" style="max-width:500px;">
                     {% else %}
