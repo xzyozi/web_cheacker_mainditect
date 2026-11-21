@@ -1,7 +1,14 @@
 import pytest
 
 from content_extractor.dom_treeSt import BoundingBox, DOMTreeSt
-from content_extractor.scorer import MainContentScorer, calculate_depth_weight, is_main_element, is_valid_element
+from content_extractor.dom_utils import rescore_main_content_with_children
+from content_extractor.scorer import (
+    MIN_ELEMENT_AREA_PX,
+    MainContentScorer,
+    calculate_depth_weight,
+    is_main_element,
+    is_valid_element,
+)
 
 # =================================================================
 # scorer.py のテスト
@@ -149,10 +156,26 @@ def test_is_valid_element_with_invalid_tag():
 
 def test_is_valid_element_with_too_small_area():
     """Test Case 3: 面積が小さすぎる。"""
-    # 面積のチェック `area < 0.05` は、ピクセル値ではなく正規化された座標を想定しているように見える。
-    # このテストは、非常に小さい面積を持つノードをテストする。
+    # 面積のチェック `area < MIN_ELEMENT_AREA_PX` (100 px²) はピクセル単位で極小要素を除外する。
+    # ここでは最小面積未満（0.04 px² < 100 px²）のノードが無効になることをテストする。
     node = DOMTreeSt(tag="div", rect=BoundingBox(x=0, y=0, width=0.2, height=0.2))  # area = 0.04
     assert is_valid_element(node) is False
+
+
+@pytest.mark.parametrize(
+    "width, height, expected",
+    [
+        (9, 9, False),  # 81 px² < MIN_ELEMENT_AREA_PX (100) -> 除外
+        (10, 9.9, False),  # 99 px² < MIN_ELEMENT_AREA_PX (100) -> 除外
+        (10, 10, True),  # 100 px² == MIN_ELEMENT_AREA_PX (100) -> 許可
+        (100, 1, True),  # 100 px² == MIN_ELEMENT_AREA_PX (100) -> 許可
+    ],
+)
+def test_is_valid_element_min_area_boundary(width, height, expected):
+    """MIN_ELEMENT_AREA_PX = 100 の境界値で極小要素が除外・許可されることを確認する。"""
+    assert MIN_ELEMENT_AREA_PX == 100
+    node = DOMTreeSt(tag="div", rect=BoundingBox(x=0, y=0, width=width, height=height))
+    assert is_valid_element(node) is expected
 
 
 @pytest.mark.parametrize(
@@ -364,3 +387,82 @@ def test_score_parent_and_children_depth_weighting(scorer_instance):
     print(f"Child score (depth 2): {child_score}")
 
     assert child_score > parent_score
+
+
+def _build_parent_with_two_children(offset_x: float, offset_y: float) -> tuple[DOMTreeSt, DOMTreeSt, DOMTreeSt]:
+    """親の位置を (offset_x, offset_y) だけ平行移動した同じ相対構造のツリーを生成する。"""
+    child_center = DOMTreeSt(
+        tag="div",
+        attributes={"id": "center"},
+        text="a" * 50,
+        links=[""] * 3,
+        rect=BoundingBox(offset_x + 300, offset_y + 200, 200, 200),
+        depth=2,
+    )
+    child_edge = DOMTreeSt(
+        tag="div",
+        attributes={"id": "edge"},
+        text="a" * 50,
+        links=[""] * 3,
+        rect=BoundingBox(offset_x + 0, offset_y + 0, 200, 200),
+        depth=2,
+    )
+    parent = DOMTreeSt(
+        tag="section",
+        text="a" * 10,
+        links=[],
+        rect=BoundingBox(offset_x, offset_y, 800, 600),
+        depth=1,
+        children=[child_center, child_edge],
+    )
+    return parent, child_center, child_edge
+
+
+def test_rescore_relative_coordinates_preserve_ranking_across_parent_positions():
+    """
+    origin_x / origin_y による相対座標評価（rescore_main_content_with_children 連携）で、
+    親要素のページ座標を移動しても子要素の相対スコア・順位が逆転しないことを確認する。
+    """
+    parent_origin, center_origin, edge_origin = _build_parent_with_two_children(0.0, 0.0)
+    rescore_main_content_with_children(parent_origin)
+
+    parent_shifted, center_shifted, edge_shifted = _build_parent_with_two_children(500.0, 500.0)
+    rescore_main_content_with_children(parent_shifted)
+
+    # 相対位置が良い center が両ケースで edge より高スコアになり、順位が逆転しない
+    assert center_origin.score > edge_origin.score
+    assert center_shifted.score > edge_shifted.score
+
+    # 親座標オフセットを差し引くため、算出されるスコア自体も一致する
+    assert center_shifted.score == pytest.approx(center_origin.score)
+    assert edge_shifted.score == pytest.approx(edge_origin.score)
+
+    # 対照確認: origin_x / origin_y が 0 のままだと移動後の座標で順位が逆転する
+    parent_no_origin, center_no_origin, edge_no_origin = _build_parent_with_two_children(500.0, 500.0)
+    MainContentScorer(
+        tree=[parent_no_origin, center_no_origin, edge_no_origin],
+        width=800,
+        height=600,
+        origin_x=0.0,
+        origin_y=0.0,
+    ).score_parent_and_children()
+    assert edge_no_origin.score > center_no_origin.score
+
+
+def test_score_parent_and_children_deduplicates_with_seen(mocker):
+    """
+    平坦化済みツリーのように親と子孫が同じリストに含まれていても、
+    seen セットにより同一ノードの重複評価が抑止されることを確認する。
+    """
+    grandchild = DOMTreeSt(tag="p", text="a" * 50, rect=BoundingBox(120, 120, 200, 100), depth=3)
+    child = DOMTreeSt(tag="div", text="a" * 20, rect=BoundingBox(100, 100, 400, 300), depth=2, children=[grandchild])
+    parent = DOMTreeSt(tag="main", text="a" * 10, rect=BoundingBox(50, 50, 800, 600), depth=1, children=[child])
+
+    scorer = MainContentScorer(tree=[parent, child, grandchild, child], width=800, height=600)
+    spy_refine = mocker.spy(scorer, "_score_for_refinement")
+
+    scored_nodes = scorer.score_parent_and_children()
+
+    assert len(scored_nodes) == 3
+    assert len({id(node) for node in scored_nodes}) == 3
+    assert spy_refine.call_count == 3
