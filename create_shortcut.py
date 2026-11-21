@@ -4,18 +4,18 @@ import os
 
 # Content of the .bat file to be created.
 # It activates the virtual environment and runs the main Python script.
-BAT_CONTENT = """@echo off
+BAT_CONTENT = r"""@echo off
 setlocal
 rem Change directory to the script's location. This makes the script portable.
 cd /d "%~dp0"
 
 echo "Attempting to activate virtual environment..."
 rem Activate virtual environment if it exists within the project structure.
-if exist ".venv\\Scripts\activate.bat" (
-    call .venv\\Scripts\activate.bat
+if exist ".venv\Scripts\activate.bat" (
+    call .venv\Scripts\activate.bat
     echo "Virtual environment activated."
 ) else (
-    echo "WARNING: Virtual environment not found at .\\.venv\\ . Trying to run with system python."
+    echo "WARNING: Virtual environment not found at .\.venv\ . Trying to run with system python."
 )
 
 echo "Starting the application (web-cheackerV3.py)..."
