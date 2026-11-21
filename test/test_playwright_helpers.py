@@ -10,6 +10,7 @@ import pytest
 
 from content_extractor import playwright_helpers
 from content_extractor.playwright_helpers import (
+    _UNIQUE_SELECTOR_JS,
     _cleanup_setup_resources,
     adjust_page_view,
     close_page,
@@ -341,6 +342,22 @@ async def test_ensure_unique_selector_empty_selector(mock_page):
     """空のセレクタは、ページを評価せずそのまま返す。"""
     assert await ensure_unique_selector(mock_page, "", RECT) == ""
     mock_page.evaluate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_ensure_unique_selector_uses_viewport_coordinates(mock_page):
+    """_UNIQUE_SELECTOR_JS はスクロール量を加算せず、ビューポート相対座標をそのまま比較する。"""
+    rect = {"x": 120.5, "y": -300.0, "width": 400.0, "height": 240.0}
+    mock_page.evaluate.return_value = {"count": 2, "path": "html > body:nth-of-type(1) > div:nth-of-type(2)"}
+
+    result = await ensure_unique_selector(mock_page, "div.card", rect)
+
+    assert result == "html > body:nth-of-type(1) > div:nth-of-type(2)"
+    mock_page.evaluate.assert_awaited_once_with(_UNIQUE_SELECTOR_JS, {"selector": "div.card", "rect": rect})
+    assert "scrollX" not in _UNIQUE_SELECTOR_JS
+    assert "scrollY" not in _UNIQUE_SELECTOR_JS
+    assert "near(r.x, rect.x)" in _UNIQUE_SELECTOR_JS
+    assert "near(r.y, rect.y)" in _UNIQUE_SELECTOR_JS
 
 
 # --- Tests for adjust_page_view ---
