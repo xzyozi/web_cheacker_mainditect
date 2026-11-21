@@ -98,15 +98,15 @@ async def extract_main_content(url: str, browser: Browser, count: int = 0, arg_w
 
         if watch_url and count < 3:
             logger.info(f"URL updated: {url} -> {watch_url}. Restarting process...")
+            # 再帰呼び出し前に現在のページを解放し、finally での二重クローズを防ぐ
+            current_page = page
+            page = None
+            await close_page(current_page)
             # 前回時点のwebtypeが存在する場合はそちらを採用する
-            if arg_webtype:
-                return await extract_main_content(
-                    watch_url, browser, count + 1, arg_webtype=arg_webtype
-                )  # 再帰的に処理を実行
-            else:
-                return await extract_main_content(
-                    watch_url, browser, count + 1, arg_webtype=chktype
-                )  # 再帰的に処理を実行
+            next_webtype = arg_webtype if arg_webtype else chktype
+            return await extract_main_content(
+                watch_url, browser, count + 1, arg_webtype=next_webtype
+            )  # 再帰的に処理を実行
 
         scorer = MainContentScorer([tree], dimensions["width"], dimensions["height"])
         main_contents = scorer.find_candidates()
@@ -335,10 +335,6 @@ async def quick_extract_content(
     # logger.info(f"chk webtype : {webtype}({type(webtype)}) -- {WebType.page_changer} ({type(WebType.page_changer)})")
     if webtype == WebType.page_changer or webtype == WebType.not_quickscan:
         logger.warning(f"webtype is pagechange full scan process start :{webtype}")
-        return await extract_main_content(url, browser, arg_webtype=webtype)
-
-    if webtype in [WebType.page_changer, WebType.not_quickscan]:
-        logger.warning(f"webtype is pagechange, starting full scan process: {webtype}")
         return await extract_main_content(url, browser, arg_webtype=webtype)
 
     # セレクタリストが空の場合はFullスキャンに移行

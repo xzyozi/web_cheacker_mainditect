@@ -502,6 +502,12 @@ async def process_url_async(
             error_list.append([url, e, last_entry.line, last_entry.lineno])
 
 
+def _cleanup_temp_dir(temp_dir: str) -> None:
+    """一時フォルダが存在する場合は削除する。"""
+    if os.path.isdir(temp_dir):
+        shutil.rmtree(temp_dir)
+
+
 async def main() -> None:
     # 使い方: python web-cheackerV3.py [ユーザー名]（省略時は jav）
     user = User(sys.argv[1] if len(sys.argv) > 1 else "jav")
@@ -510,93 +516,91 @@ async def main() -> None:
 
     # 一時フォルダのクリーンアップ
     temp_dir = config.get("screenshot", {}).get("temporary_dir", "temp_image")
-    if os.path.isdir(temp_dir):
-        shutil.rmtree(temp_dir)
+    _cleanup_temp_dir(temp_dir)
 
-    util_str.util_handle_path(user.data_file_path)
+    try:
+        util_str.util_handle_path(user.data_file_path)
 
-    data_manager = DataManager(user.data_file_path)
-    error_list: list[list[Any]] = []
+        data_manager = DataManager(user.data_file_path)
+        error_list: list[list[Any]] = []
 
-    # 同時実行数を設定から取得
-    worker_count = config.get("scan", {}).get("worker_threads", 2)
-    semaphore = asyncio.Semaphore(worker_count)
-    logger.info(f"Starting {worker_count} async workers...")
+        # 同時実行数を設定から取得
+        worker_count = config.get("scan", {}).get("worker_threads", 2)
+        semaphore = asyncio.Semaphore(worker_count)
+        logger.info(f"Starting {worker_count} async workers...")
 
-    diff_urls: list[str] = []
-    email_image_list: list[str | None] = []
-    permanent_image_list: list[str | None] = []
+        diff_urls: list[str] = []
+        email_image_list: list[str | None] = []
+        permanent_image_list: list[str | None] = []
 
-    # ブラウザは1回の実行で1つだけ起動し、スキャンとスクリーンショットで共有する
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        try:
-            tasks = []
-            for index, row in data_manager.df.iterrows():
-                if "url" in row and row["url"]:
-                    task = asyncio.create_task(
-                        process_url_async(row["url"], index, data_manager, error_list, config, semaphore, browser)
+        # ブラウザは1回の実行で1つだけ起動し、スキャンとスクリーンショットで共有する
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            try:
+                tasks = []
+                for index, row in data_manager.df.iterrows():
+                    if "url" in row and row["url"]:
+                        task = asyncio.create_task(
+                            process_url_async(row["url"], index, data_manager, error_list, config, semaphore, browser)
+                        )
+                        tasks.append(task)
+
+                # 全てのタスクが完了するのを待つ
+                if tasks:
+                    await asyncio.gather(*tasks)
+                logger.info("All async workers have finished.")
+
+                # スキャン結果は、後続の処理（スクリーンショット・通知）で失敗しても失われないよう、先に保存する
+                data_manager.save_data()
+
+                # --- 差分チェック ---
+                diff_urls = data_manager.chk_diff()
+
+                # --- Screenshot Generation ---
+                ss_config = config.get("screenshot", {})
+                if diff_urls and ss_config.get("enabled", False):
+                    perm_dir = user.image_dir_path  # Use the correct path
+                    email_width = ss_config.get("email_width", 500)
+                    perm_width = ss_config.get("permanent_width", 1920)
+
+                    logger.info(f"Generating screenshots for email to {temp_dir}...")
+                    email_image_list = await save_screenshot(
+                        browser, url_list=diff_urls, save_dir=temp_dir, width=email_width
                     )
-                    tasks.append(task)
 
-            # 全てのタスクが完了するのを待つ
-            if tasks:
-                await asyncio.gather(*tasks)
-            logger.info("All async workers have finished.")
+                    logger.info(f"Generating screenshots for permanent storage to {perm_dir}...")
+                    permanent_image_list = await save_screenshot(
+                        browser, url_list=diff_urls, save_dir=perm_dir, width=perm_width
+                    )
+            finally:
+                await browser.close()
 
-            # スキャン結果は、後続の処理（スクリーンショット・通知）で失敗しても失われないよう、先に保存する
-            data_manager.save_data()
+        # --- Update DataFrame with permanent image filenames ---
+        if permanent_image_list:
+            for i, url in enumerate(diff_urls):
+                # Assuming the lists correspond by index
+                if i < len(permanent_image_list):
+                    image_path = permanent_image_list[i]
+                    if image_path:
+                        data_manager.update_image_filename(url, image_path)
 
-            # --- 差分チェック ---
-            diff_urls = data_manager.chk_diff()
+        # --- データ保存 (画像ファイル名を含む) ---
+        data_manager.save_data()
 
-            # --- Screenshot Generation ---
-            ss_config = config.get("screenshot", {})
-            if diff_urls and ss_config.get("enabled", False):
-                temp_dir = ss_config.get("temporary_dir", "temp_image")
-                perm_dir = user.image_dir_path  # Use the correct path
-                email_width = ss_config.get("email_width", 500)
-                perm_width = ss_config.get("permanent_width", 1920)
+        # --- 通知処理 ---
+        await notification_manager.send_update_notification(diff_urls, email_image_list)
 
-                logger.info(f"Generating screenshots for email to {temp_dir}...")
-                email_image_list = await save_screenshot(
-                    browser, url_list=diff_urls, save_dir=temp_dir, width=email_width
-                )
+        if error_list:
+            logger.info("-------- ERROR list output -----------")
+            for error_msg in error_list:
+                logger.warning(error_msg)
 
-                logger.info(f"Generating screenshots for permanent storage to {perm_dir}...")
-                permanent_image_list = await save_screenshot(
-                    browser, url_list=diff_urls, save_dir=perm_dir, width=perm_width
-                )
-        finally:
-            await browser.close()
+        notification_manager.send_error_notification(error_list)
 
-    # --- Update DataFrame with permanent image filenames ---
-    if permanent_image_list:
-        for i, url in enumerate(diff_urls):
-            # Assuming the lists correspond by index
-            if i < len(permanent_image_list):
-                image_path = permanent_image_list[i]
-                if image_path:
-                    data_manager.update_image_filename(url, image_path)
-
-    # --- データ保存 (画像ファイル名を含む) ---
-    data_manager.save_data()
-
-    # --- 通知処理 ---
-    await notification_manager.send_update_notification(diff_urls, email_image_list)
-
-    if error_list:
-        logger.info("-------- ERROR list output -----------")
-        for error_msg in error_list:
-            logger.warning(error_msg)
-
-    notification_manager.send_error_notification(error_list)
-
-    # 一時フォルダの再クリーンアップ
-    if os.path.isdir(temp_dir):
-        shutil.rmtree(temp_dir)
-
-    logger.info(f"{data_manager.df}")
+        logger.info(f"{data_manager.df}")
+    finally:
+        # 一時フォルダの再クリーンアップ（途中例外時も確実に削除する）
+        _cleanup_temp_dir(temp_dir)
 
 
 if __name__ == "__main__":

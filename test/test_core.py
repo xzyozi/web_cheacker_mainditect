@@ -6,6 +6,7 @@ import pytest
 from content_extractor import playwright_helpers
 from content_extractor.core import _escape_css_selector_colons, extract_main_content, quick_extract_content
 from content_extractor.dom_treeSt import DOMTreeSt
+from content_extractor.web_type_chk import WebType
 
 # =================================================================
 # core.py のテスト
@@ -515,3 +516,95 @@ async def test_quick_extract_content_new_page_unexpected_error_closes_context(mo
 
     mock_logger_exception.assert_called_once()
     mock_context.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_extract_main_content_closes_page_before_recursion(mocker, mock_browser, dom_tree_fixture):
+    """再帰呼び出し前に現在の page を close_page で解放し、finally での二重クローズが起きない。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
+
+    page1 = AsyncMock(name="page1")
+    page2 = AsyncMock(name="page2")
+    events: list[tuple[str, object]] = []
+
+    async def fake_setup_page(url, browser):
+        events.append(("setup", url))
+        return page1 if url.endswith("/1") else page2
+
+    async def fake_close_page(page):
+        events.append(("close", page))
+
+    mocker.patch("content_extractor.core.setup_page", side_effect=fake_setup_page)
+    mock_close_page = mocker.patch("content_extractor.core.close_page", side_effect=fake_close_page)
+    mocker.patch(
+        "content_extractor.core.adjust_page_view", new_callable=AsyncMock, return_value={"width": 1920, "height": 1080}
+    )
+    mocker.patch("content_extractor.core.make_tree", new_callable=AsyncMock, return_value=dom_tree_fixture[0])
+
+    wt1 = MagicMock()
+    wt1.webtype_chk.return_value = "page_changer"
+    wt1.next_url = "http://mock.url/page/2"
+
+    wt2 = MagicMock()
+    wt2.webtype_chk.return_value = "page_changer"
+    wt2.next_url = None
+    mocker.patch("content_extractor.core.WebTypeCHK", side_effect=[wt1, wt2])
+
+    mock_scorer = MagicMock()
+    mock_scorer.find_candidates.return_value = []
+    mocker.patch("content_extractor.core.MainContentScorer", return_value=mock_scorer)
+
+    await extract_main_content(url="http://mock.url/page/1", browser=mock_browser)
+
+    assert events == [
+        ("setup", "http://mock.url/page/1"),
+        ("close", page1),
+        ("setup", "http://mock.url/page/2"),
+        ("close", page2),
+    ]
+    assert mock_close_page.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_extract_main_content_no_double_close_when_recursive_call_raises(mocker, mock_browser, dom_tree_fixture):
+    """再帰先で予期せぬ例外が発生しても、再帰前に閉じた page1 を二重クローズしない。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
+
+    page1 = AsyncMock(name="page1")
+    page2 = AsyncMock(name="page2")
+    mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock, side_effect=[page1, page2])
+    mock_close_page = mocker.patch("content_extractor.core.close_page", new_callable=AsyncMock)
+    mocker.patch(
+        "content_extractor.core.adjust_page_view",
+        new_callable=AsyncMock,
+        side_effect=[{"width": 1920, "height": 1080}, RuntimeError("recursive boom")],
+    )
+    mocker.patch("content_extractor.core.make_tree", new_callable=AsyncMock, return_value=dom_tree_fixture[0])
+
+    wt1 = MagicMock()
+    wt1.webtype_chk.return_value = "page_changer"
+    wt1.next_url = "http://mock.url/page/2"
+    mocker.patch("content_extractor.core.WebTypeCHK", return_value=wt1)
+
+    with pytest.raises(RuntimeError, match="recursive boom"):
+        await extract_main_content(url="http://mock.url/page/1", browser=mock_browser)
+
+    assert mock_close_page.await_args_list == [mocker.call(page1), mocker.call(page2)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("webtype_str", ["page_changer", "not_quickscan"])
+async def test_quick_extract_content_delegates_non_quickscan_types_to_full_scan(mocker, mock_browser, webtype_str):
+    """page_changer / not_quickscan 指定時は Quick スキャンを行わず extract_main_content へ委譲する。"""
+    expected_node = DOMTreeSt(tag="article", text="full")
+    mock_full = mocker.patch(
+        "content_extractor.core.extract_main_content",
+        new_callable=AsyncMock,
+        return_value=expected_node,
+    )
+
+    result = await quick_extract_content("http://mock.url", mock_browser, ["div.main"], webtype_str)
+
+    assert result is expected_node
+    mock_full.assert_awaited_once_with("http://mock.url", mock_browser, arg_webtype=WebType.from_string(webtype_str))
+    mock_browser.new_context.assert_not_called()
