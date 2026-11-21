@@ -8,9 +8,9 @@
 import asyncio
 import json
 import logging
-import traceback
 from typing import Dict, Optional
 
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page, async_playwright
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
@@ -58,7 +58,7 @@ async def get_tree(
                 logging.info("Waiting for network idle...")
                 await page.wait_for_load_state("networkidle", timeout=timeout)
                 logging.info("Network is idle")
-            except Exception as e:
+            except (PlaywrightTimeoutError, PlaywrightError) as e:
                 logging.warning(f"Network did not become idle within {timeout}ms: {str(e)}")
 
         # Try to find element with JavaScript first
@@ -92,7 +92,7 @@ async def get_tree(
                 if not root:
                     logging.error(f"Element not found: {selector}")
                     return {}
-            except Exception as e:
+            except (PlaywrightTimeoutError, PlaywrightError) as e:
                 logging.error(f"Error finding element {selector}: {str(e)}")
 
                 # Additional debug information
@@ -136,7 +136,7 @@ async def get_tree(
                     bounding_box = await el.bounding_box()
                     if not bounding_box:
                         return {}
-                except Exception as e:
+                except PlaywrightError as e:
                     logging.debug(f"Could not get bounding box: {str(e)}")
                     return {}
 
@@ -175,13 +175,13 @@ async def get_tree(
 
                 return node
 
-            except Exception as e:
+            except PlaywrightError as e:
                 logging.error(f"Error parsing element: {str(e)}")
                 return {}
 
         return await parse_element(root)
 
-    except Exception as e:
+    except PlaywrightError as e:
         logging.error(f"Error in get_tree: {str(e)}")
         return {}
 
@@ -291,9 +291,8 @@ async def choice_content(url: str, **kwargs):
 
             return tree
 
-        except Exception as e:
-            print(f"Error during content extraction: {str(e)}")
-            traceback.print_exc()
+        except (PlaywrightTimeoutError, PlaywrightError):
+            logging.exception("Error during content extraction")
             return {}
 
         finally:

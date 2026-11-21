@@ -99,13 +99,6 @@ exclude = [
 # BLE: flake8-blind-except, B: flake8-bugbear
 select = ["E", "F", "W", "I", "BLE", "B"]
 
-[tool.ruff.lint.per-file-ignores]
-# Issue #48 で対応予定のため一時除外
-"web-cheackerV3.py" = ["BLE001", "B006"]
-"search_and_validate.py" = ["BLE001"]
-"test/test_integration_extract.py" = ["BLE001"]
-"scripts/choice_content_experiment.py" = ["BLE001"]
-
 [tool.ruff.lint.isort]
 force-sort-within-sections = true
 

@@ -2,6 +2,8 @@ import asyncio
 from typing import List
 
 from playwright.async_api import Browser, async_playwright
+from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from content_extractor import run_search_quality_evaluation_standalone
 from setup_logger import setup_logger
@@ -38,7 +40,7 @@ async def search_on_google(browser: Browser, keyword: str) -> List[str]:
         unique_urls = list(dict.fromkeys(urls))
         logger.info(f"Found {len(unique_urls)} unique URLs.")
         return unique_urls
-    except Exception as e:
+    except (PlaywrightTimeoutError, PlaywrightError) as e:
         logger.error(f"Failed to search on Google: {e}")
         return []
     finally:
@@ -92,8 +94,8 @@ async def main(search_keyword: str):
                     logger.warning("  -> INVALID: Low quality or keyword not found.")
             else:
                 logger.warning(f"  -> Could not extract content from {url}")
-        except Exception as e:
-            logger.error(f"  -> Failed to process {url}: {e}")
+        except Exception:  # noqa: BLE001 - バッチ境界: 1 URL の評価失敗で後続 URL の処理を止めないため、記録して継続する
+            logger.exception(f"  -> Failed to process {url}")
 
     # 5. 最終結果の表示
     logger.info("\n--- Validation Complete ---")
