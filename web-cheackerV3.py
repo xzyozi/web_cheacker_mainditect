@@ -108,7 +108,7 @@ class User:
                     return
             except FileNotFoundError:
                 continue
-            except Exception as e:
+            except (yaml.YAMLError, OSError, UnicodeDecodeError) as e:
                 logger.error(f"Error loading app config from {config_path}: {e}")
                 self.config = {}
                 return
@@ -118,7 +118,9 @@ class User:
         )
         self.config = {}  # 設定ファイルがなくてもエラーにならないように空の辞書をセット
 
-    def send_resultmail(self, body, body_type, image_list=[]):
+    def send_resultmail(self, body, body_type, image_list=None):
+        if image_list is None:
+            image_list = []
         if self.yaml_file is not None:
             send_email(
                 self.yaml_file,
@@ -492,10 +494,10 @@ async def process_url_async(
                 logger.warning(f"TIMEOUT for {url}: {timeout_msg}")
                 error_list.append([url, timeout_msg])
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - バッチ境界: 1 URL の失敗で他 URL の監視を止めないため、記録して継続する
             tb = traceback.extract_tb(e.__traceback__)
             last_entry = tb[-1]
-            logger.error(f"Error processing URL {url}: {e} at line {last_entry.lineno}")
+            logger.exception(f"Error processing URL {url}: {e} at line {last_entry.lineno}")
             error_list.append([url, e, last_entry.line, last_entry.lineno])
 
 
