@@ -62,7 +62,7 @@ logger.debug(SCRIPT_PATH)
 # +----------------------------------------------------------------
 class User:
     def __init__(self, directory):
-        util_str.util_handle_path("./users/")
+        util_str.ensure_dir("./users/")
 
         self.directory = os.path.join("users", directory)
 
@@ -73,9 +73,9 @@ class User:
         self.json_dir_path = os.path.join(self.directory, "json/")
         self.image_dir_path = os.path.join(self.directory, "data", "images")
 
-        util_str.util_handle_path(self.data_file_path)
-        util_str.util_handle_path(self.json_dir_path)
-        util_str.util_handle_path(self.image_dir_path)
+        util_str.ensure_file(self.data_file_path)
+        util_str.ensure_dir(self.json_dir_path)
+        util_str.ensure_dir(self.image_dir_path)
 
         self.load_mail_settings()
         self.load_app_config()
@@ -194,9 +194,9 @@ def save_json(data: dict, url: str, directory=SAVE_JSON_DIR_PATH):
     Retrun:
         None
     """
-    domain = util_str.get_domain(url)
+    domain = util_str.sanitize_filename_part(util_str.get_domain(url)) or "unknown"
     file_path = os.path.join(directory, f"{domain}.json")
-    util_str.util_handle_path(file_path)  # ファイルを作成または取得する
+    util_str.ensure_file(file_path)  # ファイルを作成または取得する
 
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
@@ -519,7 +519,7 @@ async def main() -> None:
     _cleanup_temp_dir(temp_dir)
 
     try:
-        util_str.util_handle_path(user.data_file_path)
+        util_str.ensure_file(user.data_file_path)
 
         data_manager = DataManager(user.data_file_path)
         error_list: list[list[Any]] = []
