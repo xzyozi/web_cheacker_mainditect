@@ -18,6 +18,7 @@ def test_save_json(mock_util_str):
     expected_path = os.path.join(directory, f"{domain}.json")
 
     mock_util_str.get_domain.return_value = domain
+    mock_util_str.sanitize_filename_part.return_value = domain
     mock_util_str.util_handle_path.return_value = expected_path
 
     test_data = {"key": "value", "foo": "bar"}
@@ -29,6 +30,7 @@ def test_save_json(mock_util_str):
 
         # Assert
         mock_util_str.get_domain.assert_called_once_with(test_url)
+        mock_util_str.sanitize_filename_part.assert_called_once_with(domain)
         mock_util_str.util_handle_path.assert_called_once_with(expected_path)
         mocked_file.assert_called_once_with(expected_path, "w", encoding="utf-8")
 
@@ -37,3 +39,13 @@ def test_save_json(mock_util_str):
         written_data = "".join(call.args[0] for call in handle.write.call_args_list)
 
         assert json.loads(written_data) == test_data
+
+
+def test_save_json_sanitizes_port_in_url(tmp_path):
+    """ポート番号を含む URL でもファイル名禁止文字 `:` を `_` に変換して保存できる。"""
+    test_data = {"title": "local"}
+    save_json(test_data, "http://127.0.0.1:8080/news", directory=str(tmp_path))
+
+    saved_file = tmp_path / "127.0.0.1_8080.json"
+    assert saved_file.is_file()
+    assert json.loads(saved_file.read_text(encoding="utf-8")) == test_data

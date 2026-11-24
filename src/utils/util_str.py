@@ -1,34 +1,72 @@
+import logging
 import os
+import re
+from typing import Optional
 from urllib.parse import urlparse
 
-# +----------------------------------------------------------------
-# + get domain name
-# +----------------------------------------------------------------
+logger = logging.getLogger(__name__)
+
+_INVALID_FILENAME_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 
-def get_domain(url):
+def get_domain(url: str) -> str:
+    """URL からホスト部（netloc）を返す。"""
     parsed_url = urlparse(url)
-    domain = parsed_url.netloc
-    return domain
+    return parsed_url.netloc
 
 
-# +----------------------------------------------------------------
-# file edit faction
-# +----------------------------------------------------------------
-def util_handle_path(path, custom_filename=None):
-    """
-    指定されたパスに基づいて以下の操作を行います:
+def sanitize_filename_part(value: str) -> str:
+    """ファイル名に使用できない文字（ポート番号の `:` 等）を `_` に置換する。"""
+    return _INVALID_FILENAME_CHARS_RE.sub("_", value)
+
+
+def ensure_file(file_path: str) -> Optional[str]:
+    """指定されたパスに空ファイルを作成する（未存在時のみ）。失敗時は None を返す。"""
+    if os.path.isfile(file_path):
+        return file_path
+
+    try:
+        parent = os.path.dirname(file_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(file_path, "w", encoding="utf-8") as file:
+            file.write("")
+        logger.info(f"ファイル '{file_path}' を作成しました。")
+        return file_path
+    except OSError as e:
+        logger.error(f"ファイル '{file_path}' を作成できませんでした: {e}")
+        return None
+
+
+def ensure_dir(dir_path: str) -> Optional[str]:
+    """指定されたパスにディレクトリを作成する（未存在時のみ）。失敗時は None を返す。"""
+    if os.path.isdir(dir_path):
+        logger.debug(f"ディレクトリ '{dir_path}' はすでに存在します。")
+        return dir_path
+
+    try:
+        os.makedirs(dir_path, exist_ok=True)
+        logger.info(f"ディレクトリ '{dir_path}' を作成しました。")
+        return dir_path
+    except OSError as e:
+        logger.error(f"ディレクトリ '{dir_path}' を作成できませんでした: {e}")
+        return None
+
+
+def util_handle_path(path: str, custom_filename: Optional[str] = None) -> Optional[str]:
+    """指定されたパスに基づいてファイルまたはディレクトリを作成・取得する。
+
+    - 末尾がパス区切り文字（`/` または `\\`）の場合:
+      ディレクトリとして扱う（`custom_filename` 指定時はその配下のファイル）。
     - パスに拡張子が含まれる場合: ファイルを作成または取得します。
     - パスに拡張子が含まれず、カスタムファイル名が指定されている場合: カスタム名のファイルを作成します。
     - パスに拡張子が含まれず、カスタムファイル名が指定されていない場合: ディレクトリを作成します。
-
-    Args:
-        path (str): ファイルまたはディレクトリのパス。
-        custom_filename (str, optional): ファイル作成時のカスタム名。
-
-    Returns:
-        str: 作成または取得したファイル/ディレクトリのパス。エラーが発生した場合は None を返します。
     """
+    if path.endswith(("/", "\\")):
+        if custom_filename:
+            return _create_file(os.path.join(path, custom_filename))
+        return _create_directory(path)
+
     directory, filename = os.path.split(path)
     extension = os.path.splitext(filename)[-1]
 
@@ -42,34 +80,11 @@ def util_handle_path(path, custom_filename=None):
     return _create_directory(path)
 
 
-def _create_file(file_path):
+def _create_file(file_path: str) -> Optional[str]:
     """指定されたパスにファイルを作成します (存在しない場合)。"""
-    if os.path.isfile(file_path):
-        return file_path
-
-    try:
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        with open(file_path, "w") as file:
-            file.write("")
-        os.chmod(file_path, 0o755)
-        print(f"ファイル '{file_path}' を作成しました。")
-        return file_path
-    except IOError as e:
-        print(f"ファイル '{file_path}' を作成できませんでした: {e.strerror}")
-        return None
+    return ensure_file(file_path)
 
 
-def _create_directory(dir_path):
+def _create_directory(dir_path: str) -> Optional[str]:
     """指定されたパスにディレクトリを作成します (存在しない場合)。"""
-    if os.path.isdir(dir_path):
-        print(f"ディレクトリ '{dir_path}' はすでに存在します。")
-        return dir_path
-
-    try:
-        os.makedirs(dir_path)
-        os.chmod(dir_path, 0o755)
-        print(f"ディレクトリ '{dir_path}' を作成しました。")
-        return dir_path
-    except OSError as e:
-        print(f"ディレクトリ '{dir_path}' を作成できませんでした: {e.strerror}")
-        return None
+    return ensure_dir(dir_path)
