@@ -98,7 +98,7 @@ jobs:
           trap 'rm -f "$log_file"' EXIT
 
           set +e
-          uv run --no-sync pytest -rs 2>&1 | tee "$log_file"
+          uv run --no-sync pytest -rs --cov --cov-report=term-missing 2>&1 | tee "$log_file"
           exit_code=${PIPESTATUS[0]}
           set -e
 

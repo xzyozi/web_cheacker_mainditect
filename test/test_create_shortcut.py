@@ -19,7 +19,7 @@ def test_bat_content_contains_expected_windows_paths() -> None:
     assert r'if exist ".venv\Scripts\activate.bat" (' in create_shortcut.BAT_CONTENT
     assert r"    call .venv\Scripts\activate.bat" in create_shortcut.BAT_CONTENT
     assert r"WARNING: Virtual environment not found at .\.venv\ ." in create_shortcut.BAT_CONTENT
-    assert "python web-cheackerV3.py" in create_shortcut.BAT_CONTENT
+    assert "python src\\web-cheackerV3.py" in create_shortcut.BAT_CONTENT
 
 
 def test_create_shortcut_writes_valid_bat_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

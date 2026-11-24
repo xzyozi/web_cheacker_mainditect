@@ -1,6 +1,7 @@
 """test/run_test_gui.py のコマンド組み立てと CLI モジュール起動のテスト。"""
 
 import importlib.util
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -134,6 +135,8 @@ def test_content_extractor_core_module_help_exits_zero():
     result = subprocess.run(
         [sys.executable, "-m", "content_extractor.core", "--help"],
         cwd=PROJECT_ROOT,
+        # Windows の既定コード（cp932）でヘルプが出力されると UTF-8 で読めないため、UTF-8 に固定する
+        env={**os.environ, "PYTHONPATH": str(PROJECT_ROOT / "src"), "PYTHONIOENCODING": "utf-8"},
         capture_output=True,
         text=True,
         encoding="utf-8",

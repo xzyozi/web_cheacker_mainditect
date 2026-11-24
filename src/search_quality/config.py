@@ -1,9 +1,9 @@
 import json
 import os
 
-from setup_logger import setup_logger
+from utils.setup_logger import setup_logger
 
-logger = setup_logger("content_extractor_config")
+logger = setup_logger("search_quality_config")
 
 
 def _load_json_config(filename: str, default_config: dict) -> dict:

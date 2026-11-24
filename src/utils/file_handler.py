@@ -1,7 +1,7 @@
 import json
 import os
 
-import util_str
+from . import util_str
 
 
 def save_json(data: dict, url: str, directory="data"):

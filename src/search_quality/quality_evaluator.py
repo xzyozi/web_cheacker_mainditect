@@ -3,11 +3,11 @@ from typing import Optional
 
 from playwright.async_api import Page
 
-from setup_logger import setup_logger
+from content_extractor.dom_treeSt import DOMTreeSt
+from content_extractor.dom_utils import flatten_dom_tree
+from utils.setup_logger import setup_logger
 
 from .config import NO_RESULTS_CONFIG
-from .dom_treeSt import DOMTreeSt
-from .dom_utils import flatten_dom_tree
 
 logger = setup_logger("quality_evaluator")
 

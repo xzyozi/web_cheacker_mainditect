@@ -13,7 +13,7 @@ import yaml
 
 def _load_web_checker_module():
     """`web-cheackerV3.py` をログファイル生成の副作用なしに読み込む。"""
-    module_path = Path(__file__).resolve().parent.parent / "web-cheackerV3.py"
+    module_path = Path(__file__).resolve().parent.parent / "src" / "web-cheackerV3.py"
     test_logger = logging.getLogger("test_web_cheacker_v3_main")
     test_logger.setLevel(logging.DEBUG)
     test_logger.propagate = True
@@ -21,7 +21,7 @@ def _load_web_checker_module():
     spec = importlib.util.spec_from_file_location("web_cheacker_v3_main_under_test", module_path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    with patch("setup_logger.setup_logger", return_value=test_logger):
+    with patch("utils.setup_logger.setup_logger", return_value=test_logger):
         spec.loader.exec_module(module)
     return module
 
