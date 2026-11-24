@@ -51,7 +51,7 @@ related_documents:
 | 利用者       | 運用者（本ツールの設定者）   | コマンド起動、ユーザープロファイルとURLリストの管理、通知の受信          |
 | 外部システム | 監視対象Webサイト            | Chromium経由でページ取得。`robots.txt` を事前確認する                    |
 | 外部システム | Gmail SMTPサーバー           | 通知メールの送信先（`smtp.gmail.com` ポート587、STARTTLS）               |
-| 外部システム | Google検索（補助ツールのみ） | `search_and_validate.py` が検索結果のURLを取得する                       |
+| 外部システム | Google検索（補助ツールのみ） | `search_quality/search_and_validate.py` が検索結果のURLを取得する        |
 | 外部システム | Hugging Faceモデル配布元     | 品質評価の初回実行時に埋め込みモデルを取得する（`quality` 追加依存のみ） |
 
 - **前提・制約**:
