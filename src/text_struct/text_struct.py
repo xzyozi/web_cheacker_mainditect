@@ -33,51 +33,6 @@ def _is_safe_http_url(url: object) -> bool:
     return True
 
 
-def generate_notification(urls: list):
-    notification = """
- _________________________________________________
-/                                                  \\
-| New updates available!                           |
-|                                                  |
-| Please access the following URLs to check        |
-| for the latest information:                      |
-"""
-    for url in urls:
-        notification += f"\n| - {url}" + " " * (90 - len(url)) + "|"
-
-    notification += "\n\\_________________________________________________/\n"
-    notification += "       \\\\\n"  # ここでバックスラッシュをエスケープし、末尾のバックスラッシュを二重化
-    notification += "        \\\\\n"  # 同様にバックスラッシュをエスケープし、末尾のバックスラッシュを二重化
-    notification += "         \\\\\n"  # 同様にバックスラッシュをエスケープし、末尾のバックスラッシュを二重化
-    notification += "                                  .::::.\n"
-    notification += "                                .::::::::.\n"
-    notification += "                               :::::::::::\n"
-    notification += "                            ..:::::::::::'\n"
-    notification += "                         '::::::::::::'\n"
-    notification += "                           .::::::::::\n"
-    notification += "                      '::::::::::::::..\n"
-    notification += "                           ..::::::::::::.\n"
-    notification += "                         ``::::::::::::::::\n"
-    notification += "                          ::::``:::::::::'        .:::.\n"
-    notification += "                         ::::'   ':::::'       .::::::::.\n"
-    notification += "                       .::::'      ::::     .:::::::'::::.\n"
-    notification += "                      .:::'       :::::  .:::::::::' ':::::.\n"
-    notification += "                     .::'        :::::.:::::::::'      ':::::.\n"
-    notification += "                 ...:::          :::::::::::'          ::::::..\n"
-    notification += "                ```` ':.         '::::::::::            ::::::::..\n"
-    notification += "                                   ':::::::::             :::::::::\n"
-    notification += "                                     ':::::::.             :::::::::\n"
-    notification += "                                        :::::...           ::::::::::\n"
-    notification += "                                       ':::::::::.        .:::::::::'\n"
-    notification += "                                        .::::::::::       .:::::::'\n"
-    notification += "                                           ..::::::::    .:::::::'\n"
-    notification += "                                         ``:::::::::    ::::::''\n"
-    notification += "                                            ``:::::'   .::''''\n"
-    notification += "                                               `````\n"
-
-    return notification
-
-
 def generate_html(url_list, image_list):
     """
     指定されたURLと画像リストを元にHTMLを生成する。
@@ -138,17 +93,3 @@ def generate_html(url_list, image_list):
     # html_content = template.render(items=zip(url_list, [f"image_{i}" for i in range(len(image_list))]))
 
     return html_content
-
-
-if __name__ == "__main__":
-    # テスト用のURLリスト
-    urls = ["https://example.com/page1", "https://example.com/page2", "https://example.com/page3"]
-
-    # 通知を生成して表示
-    print(generate_notification(urls))
-
-    output = """
-
-    """
-
-    print(output)
