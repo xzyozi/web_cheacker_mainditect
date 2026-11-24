@@ -5,14 +5,14 @@ import sys
 from typing import Any
 
 from aiohttp import ClientError
-import numpy as np
 from playwright.async_api import Browser, async_playwright
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
-# my module
-from setup_logger import setup_logger
 from utils.file_handler import save_json
+
+# my module
+from utils.setup_logger import setup_logger
 
 from .dom_treeSt import DOMTreeSt
 from .dom_utils import rescore_main_content_with_children
@@ -24,7 +24,6 @@ from .playwright_helpers import (
     is_url_allowed,
     setup_page,
 )
-from .quality_evaluator import is_no_results_page, quantify_search_results
 from .scorer import MainContentScorer
 from .web_type_chk import WebType, WebTypeCHK
 
@@ -239,78 +238,6 @@ async def extract_main_content(url: str, browser: Browser, count: int = 0, arg_w
             await close_page(page)
 
 
-async def evaluate_search_quality(url: str, browser: Browser, search_query: str) -> DOMTreeSt | None:
-    """
-    検索結果ページの品質を多角的に評価します。
-    コンテンツ抽出後、フェーズ1〜3の評価処理を実行します。
-
-    Args:
-        url (str): 評価対象のURL。
-        browser (Browser): 使用するPlaywrightのBrowserインスタンス。
-        search_query (str): 関連性スコア計算のための検索クエリ。
-
-    Returns:
-        DOMTreeSt | None: 品質評価情報が付与されたDOMTreeStオブジェクト。
-    """
-    # 1. まずは純粋なコンテンツ抽出を行う
-    content_node = await extract_main_content(url, browser)
-
-    if not content_node:
-        return None
-
-    page = await setup_page(url, browser)
-    if not page:
-        return content_node  # ページ準備に失敗しても、抽出済みのコンテンツは返す
-
-    try:
-        # フェーズ1: 「結果なし」ページの高速トリアージ
-        if await is_no_results_page(page, content_node):
-            logger.info(f"URL: {url} は「結果なし」ページと判定されました。")
-            content_node.is_empty_result = True
-            return content_node
-
-        # フェーズ2: 検索結果アイテムの定量化
-        quantify_search_results(content_node)
-
-        # 定量化の結果、有効なアイテムが0件だった場合も「結果なし」と見なす
-        if content_node.result_count == 0:
-            logger.info(f"URL: {url} は有効な検索結果アイテムを含まないと判定されました。")
-            content_node.is_empty_result = True
-            return content_node
-
-        # フェーズ3: 結果の関連性スコアリング
-        from .relevance_scorer import RelevanceScorer
-
-        logger.info(f"検索クエリ '{search_query}' との関連性スコアリングを開始します。")
-        scorer = RelevanceScorer()
-        scored_items = scorer.score_relevance(search_query, content_node.result_items)
-        content_node.result_items = scored_items
-
-        if scored_items:
-            scores = [item.relevance_score for item in scored_items]
-            content_node.avg_relevance = float(np.mean(scores))
-            content_node.relevance_variance = float(np.var(scores))
-            content_node.max_relevance = float(np.max(scores))
-            logger.info(
-                f"関連性スコアを計算しました: Avg={content_node.avg_relevance:.2f}, "
-                f"Var={content_node.relevance_variance:.2f}, Max={content_node.max_relevance:.2f}"
-            )
-
-            # フェーズ4: SQS計算と最終判定
-            sqs, category = scorer.calculate_sqs(
-                result_count=content_node.result_count,
-                avg_relevance=content_node.avg_relevance,
-                relevance_variance=content_node.relevance_variance,
-                max_relevance=content_node.max_relevance,
-            )
-            content_node.sqs_score = sqs
-            content_node.quality_category = category
-
-        return content_node
-    finally:
-        await close_page(page)
-
-
 async def quick_extract_content(
     url: str,
     browser: Browser,
@@ -425,20 +352,6 @@ async def run_quick_scan_standalone(url: str, css_selector_list: list[str], webt
                 await browser.close()
 
 
-async def run_search_quality_evaluation_standalone(url: str, search_query: str):
-    """
-    単一URLの検索品質評価をスタンドアロンで実行します。
-    ブラウザの起動と終了を内包します。
-    """
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        try:
-            return await evaluate_search_quality(url, browser, search_query)
-        finally:
-            if browser:
-                await browser.close()
-
-
 if __name__ == "__main__":
     import argparse
     import time
@@ -454,12 +367,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--mode",
         "-m",
-        choices=["full", "quick", "quality"],
+        choices=["full", "quick"],
         default="full",
         help="実行するスキャンモード。'full'はフルスキャン、'quick'はクイックスキャンを実行します。デフォルト: full",
     )
     parser.add_argument("--selectors", nargs="+", help="'quick'モードで使用するCSSセレクタ。")
-    parser.add_argument("--query", "-q", help="'quality'モードで使用する検索クエリ。")
     args = parser.parse_args()
 
     # --- 実行ロジック ---
@@ -484,14 +396,6 @@ if __name__ == "__main__":
             run_quick_scan_standalone(url=args.url, css_selector_list=args.selectors, webtype_str="plane")
         )
 
-    elif args.mode == "quality":
-        # --- 品質評価スキャン実行 ---
-        if not args.query:
-            logger.error("エラー: 'quality'モードには --query が必要です。")
-            sys.exit(1)
-        logger.info(f"品質評価スキャンを実行します (クエリ: '{args.query}')")
-        result_obj = asyncio.run(run_search_quality_evaluation_standalone(url=args.url, search_query=args.query))
-
     end_time = time.time()
     processing_time = end_time - start_time
 
@@ -501,13 +405,6 @@ if __name__ == "__main__":
         logger.info(f"Primary CSS Selector: {result_obj.css_selector}")
         logger.info(f"Selector Candidates: {result_obj.css_selector_list}")
         logger.info(f"Extracted Links Count: {len(result_obj.links)}")
-        if result_obj.is_empty_result:
-            logger.info("品質評価結果: 結果なしページ")
-        elif result_obj.result_count > 0:
-            logger.info(
-                f"品質評価結果: {result_obj.result_count}件のアイテムを検出 "
-                f"(AvgRelevance: {result_obj.avg_relevance:.2f})"
-            )
         # print(result_obj) # オブジェクト全体を詳細に見たい場合は、この行のコメントを外してください
     else:
         logger.warning("テストは終了しましたが、コンテンツは抽出されませんでした。")

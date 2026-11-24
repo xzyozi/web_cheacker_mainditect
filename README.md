@@ -29,17 +29,22 @@ main/
 │       ├─ config.yaml        # このユーザー用のメインアプリケーション設定 (任意・共通設定より優先)
 │       └─ mail.yaml          # メール通知設定
 │
-├─ content_extractor/      # コンテンツ抽出とスキャンのためのコアロジック
+├─ src/                    # アプリケーションのソースコード（実行時は src を PYTHONPATH 先頭に置いて起動）
+│   ├─ web-cheackerV3.py   # アプリケーションを実行するためのメインスクリプト
+│   ├─ content_extractor/  # コンテンツ抽出とスキャンのためのコアロジック
+│   ├─ search_quality/     # 検索結果ページの品質評価（任意機能。監視本流からは未使用）
+│   ├─ mail/               # メール送信モジュール
+│   ├─ text_struct/        # メール用のHTML生成ロジック
+│   ├─ utils/              # 共通ユーティリティ
+│   ├─ setup_logger.py     # ロガー設定
+│   └─ util_str.py         # パス・ドメイン補助関数
 ├─ data/                   # スクリーンショットなどの永続的なデータを保存するディレクトリ
 │   └─ view/               # スクリーンショットの永続的な保存場所
 │
 ├─ log/                    # 実行ログ
 │   └─ web-chk_YYYYMMDD_HHMMSS.log
 │
-├─ mail/                   # メール送信モジュール
-├─ text_struct/            # メール用のHTML生成ロジック
-│
-├─ web-cheackerV3.py       # アプリケーションを実行するためのメインスクリプト
+├─ test/                   # テスト（pytest）
 ├─ pyproject.toml          # プロジェクト設定および依存関係の定義
 ├─ uv.lock                 # uv による依存関係ロックファイル
 └─ README.md               # このファイル
@@ -57,7 +62,7 @@ main/
 - `aiohttp`
 - `jinja2`
 
-検索結果ページの品質評価（`content_extractor` の `evaluate_search_quality`、`search_and_validate.py`）を使う場合は、追加の依存関係（`scikit-learn`、`sentence-transformers`）が必要です。これらは容量が大きいため、通常のインストールには含まれません。
+検索結果ページの品質評価（`search_quality` パッケージの `evaluate_search_quality`、`search_quality/search_and_validate.py`）を使う場合は、追加の依存関係（`scikit-learn`、`sentence-transformers`）が必要です。これらは容量が大きいため、通常のインストールには含まれません。
 
 ```bash
 uv sync --extra quality
@@ -133,5 +138,25 @@ pip install ".[quality]"
 Webチェッカーを実行するには、メインスクリプトを実行します。ユーザープロファイル名は、コマンドライン引数で指定します。省略した場合は `jav` が使われます。
 
 ```bash
-python web-cheackerV3.py my_profile
+python src/web-cheackerV3.py my_profile
 ```
+
+プロジェクトのルートで実行してください（`users/`、`log/`、`data/` はカレントディレクトリ基準で解決されます）。
+
+### 品質評価（任意機能）
+
+`src` を `PYTHONPATH` に加えて、プロジェクトのルートから実行します。
+
+```powershell
+$env:PYTHONPATH = "src"
+uv run python -m search_quality.evaluate <URL> --query <検索クエリ>
+```
+
+## 🧪 テストとカバレッジ
+
+```bash
+uv sync --extra dev
+uv run pytest --cov --cov-report=term-missing
+```
+
+カバレッジの対象は `src/` 配下です（設定は `pyproject.toml` の `[tool.coverage.*]`）。

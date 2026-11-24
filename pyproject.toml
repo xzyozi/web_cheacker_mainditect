@@ -82,6 +82,8 @@ create-shortcut = "python create_shortcut.py"
 # ==========================================
 [tool.ruff]
 line-length = 120
+# src/ 配下のモジュールを isort の first-party として扱う
+src = ["src", "."]
 exclude = [
     ".git",
     "__pycache__",
@@ -109,6 +111,9 @@ force-sort-within-sections = true
 python_version = "3.10"
 warn_unused_configs = true
 show_error_codes = true
+# src/ 配下のモジュールを解決する（`mypy .` で src と test の双方から import されるため）
+mypy_path = "src"
+explicit_package_bases = true
 # 型定義の無いサードパーティ製ライブラリ（playwright, scipy, yaml 等）で落とさない
 ignore_missing_imports = true
 exclude = [
@@ -124,9 +129,25 @@ exclude = [
 [tool.pytest.ini_options]
 testpaths = ["test"]
 python_files = ["test_*.py"]
-# CI では PYTHONPATH を設定しないため、プロジェクトルートを import パスに加える
-pythonpath = ["."]
+# CI では PYTHONPATH を設定しないため、ソース（src/）とプロジェクトルートを import パスに加える
+pythonpath = ["src", "."]
 asyncio_default_fixture_loop_scope = "function"
 markers = [
     "integration: 実ブラウザ（Chromium）とローカルHTTPサーバーを使う結合テスト。未導入の環境ではスキップされる",
+]
+
+# ==========================================
+# Coverage (pytest-cov)
+# 実行: uv run pytest --cov
+# ==========================================
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_also = [
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
 ]

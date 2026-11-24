@@ -2,7 +2,7 @@ import json
 import os
 from unittest.mock import mock_open, patch
 
-from content_extractor.config import _load_json_config
+from search_quality.config import _load_json_config
 
 # =================================================================
 # config.py のテスト

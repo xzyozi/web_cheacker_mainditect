@@ -1,6 +1,6 @@
 from PIL import Image, ImageDraw
 
-from setup_logger import setup_logger
+from .setup_logger import setup_logger
 
 logger = setup_logger(__name__)
 

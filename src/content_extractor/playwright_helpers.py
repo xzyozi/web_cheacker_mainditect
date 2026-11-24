@@ -11,7 +11,7 @@ from playwright.async_api import Browser, BrowserContext, Page
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
-from setup_logger import setup_logger
+from utils.setup_logger import setup_logger
 
 logger = setup_logger("playwright_helpers")
 

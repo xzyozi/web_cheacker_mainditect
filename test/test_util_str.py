@@ -3,7 +3,7 @@ from unittest.mock import mock_open, patch
 
 import pytest
 
-from util_str import get_domain, util_handle_path
+from utils.util_str import get_domain, util_handle_path
 
 # =================================================================
 # util_str.py のテスト

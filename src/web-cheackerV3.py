@@ -22,9 +22,9 @@ import yaml
 # +----------------------------------------------------------------
 from content_extractor import DOMTreeSt, extract_main_content, quick_extract_content, save_screenshot
 from mail import send_email
-from setup_logger import setup_logger
 from text_struct import text_struct
-import util_str
+from utils import util_str
+from utils.setup_logger import setup_logger
 
 # +----------------------------------------------------------------
 # + Constant definition
