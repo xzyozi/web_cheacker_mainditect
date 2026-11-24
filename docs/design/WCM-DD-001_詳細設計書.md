@@ -5,7 +5,7 @@ document_number: "WCM-DD-001"
 document_role: "normative"
 ssot_scope: "module_behavior"
 status: "draft"
-version: "0.1"
+version: "0.2"
 created_at: "2026-11-24"
 updated_at: "2026-11-24"
 author: "xzyozi"
@@ -40,21 +40,21 @@ WCM-BD-001 で定義した構成要素（C-001〜C-009）の内部制御を定�
 
 ### 1.3 対象機能一覧
 
-| 機能ID | 機能名                                     | 実装                                                      | 公開範囲         | 節   |
-| :----- | :----------------------------------------- | :-------------------------------------------------------- | :--------------- | :--- |
-| F-001  | 実行制御（バッチ全体）                     | `web-cheackerV3.py` `main`                                | 内部             | 3.1  |
-| F-002  | ユーザー設定の読込                         | `User`                                                    | 内部             | 3.2  |
-| F-003  | URL状態の管理と保存                        | `DataManager`                                             | 内部             | 3.2  |
-| F-004  | スキャン方針決定（URL単位）                | `process_url_async`                                       | 内部             | 3.3  |
-| F-005  | Fullスキャン                               | `extract_main_content`                                    | 内部             | 3.4  |
-| F-006  | Quickスキャン                              | `quick_extract_content`                                   | 内部             | 3.5  |
-| F-007  | メインコンテンツのスコアリング             | `MainContentScorer`、`rescore_main_content_with_children` | 内部             | 3.6  |
-| F-008  | ページ種別判定と最新ページ追従             | `WebTypeCHK`、`PageMonitor`                               | 内部             | 3.7  |
-| F-009  | ページ準備・robots.txt・スクリーンショット | `playwright_helpers.py`                                   | 内部             | 3.7  |
-| F-010  | 検索結果ページの品質評価                   | `evaluate_search_quality`、`RelevanceScorer`              | 内部（単体実行） | 3.8  |
-| F-011  | 検索妥当性検証                             | `search_and_validate.py`                                  | 内部（単体実行） | 3.8  |
-| F-012  | 通知（更新・エラー）                       | `NotificationManager`、`send_email`、`generate_html`      | 内部             | 3.9  |
-| F-013  | 横断基盤（ログ・パス作成・JSON保存）       | `setup_logger`、`util_str`、`utils.file_handler`          | 内部             | 3.10 |
+| 機能ID | 機能名                                     | 実装                                                         | 公開範囲         | 節   |
+| :----- | :----------------------------------------- | :----------------------------------------------------------- | :--------------- | :--- |
+| F-001  | 実行制御（バッチ全体）                     | `src/web-cheackerV3.py` `main`                               | 内部             | 3.1  |
+| F-002  | ユーザー設定の読込                         | `User`                                                       | 内部             | 3.2  |
+| F-003  | URL状態の管理と保存                        | `DataManager`                                                | 内部             | 3.2  |
+| F-004  | スキャン方針決定（URL単位）                | `process_url_async`                                          | 内部             | 3.3  |
+| F-005  | Fullスキャン                               | `extract_main_content`                                       | 内部             | 3.4  |
+| F-006  | Quickスキャン                              | `quick_extract_content`                                      | 内部             | 3.5  |
+| F-007  | メインコンテンツのスコアリング             | `MainContentScorer`、`rescore_main_content_with_children`    | 内部             | 3.6  |
+| F-008  | ページ種別判定と最新ページ追従             | `WebTypeCHK`、`PageMonitor`                                  | 内部             | 3.7  |
+| F-009  | ページ準備・robots.txt・スクリーンショット | `playwright_helpers.py`                                      | 内部             | 3.7  |
+| F-010  | 検索結果ページの品質評価                   | `search_quality.evaluate`、`RelevanceScorer`                 | 内部（単体実行） | 3.8  |
+| F-011  | 検索妥当性検証                             | `search_quality/search_and_validate.py`                      | 内部（単体実行） | 3.8  |
+| F-012  | 通知（更新・エラー）                       | `NotificationManager`、`send_email`、`generate_html`         | 内部             | 3.9  |
+| F-013  | 横断基盤（ログ・パス作成・JSON保存）       | `utils.setup_logger`、`utils.util_str`、`utils.file_handler` | 内部             | 3.10 |
 
 ---
 
@@ -78,7 +78,7 @@ WCM-BD-001 で定義した構成要素（C-001〜C-009）の内部制御を定�
 
 ### 2.3 時刻
 
-- 内部の保存時刻は UTC の ISO 8601（末尾 `Z`）とする。解析は ISO 8601 を先に試し、失敗した場合は旧形式（`YYYYMMDD HH:MM:SS` など10種）を UTC として解釈する。いずれも解析できない場合は `1970-01-01T00:00:00Z` を用いて警告する。
+- 内部の保存時刻は UTC の ISO 8601（末尾 `Z`）とする。解析は ISO 8601 を先に試し、失敗した場合は旧形式（`YYYYMMDD HH:MM:SS` など10種）を UTC として解釈する。タイムゾーンを持たない ISO 形式（例: `2024-01-02 03:04:05`）も UTC として扱う。いずれも解析できない場合は `1970-01-01T00:00:00Z` を用いて警告する。
 - Fullスキャンの要否は、`full_scan_datetime` と現在時刻の差を「日数（切り捨て）」で比較する。空欄または解析不能の場合は99日とみなす。
 
 ---
@@ -200,7 +200,7 @@ flowchart TD
 1. Quickスキャンの条件は、セレクタ一覧が空でなく、Full実施から4日未満で、`web_page_type` が設定済みであること。
 2. Quickが `None` を返した場合は、同じ呼び出しの中でFullへ進む。
 3. Fullが `None` を返した場合は、`Full scan returned None` をエラー一覧へ追加し、`clear_scan_data` を呼んで終了する。
-4. 「結果なし」と判定された場合は `Empty result page detected` をエラー一覧へ追加し、`clear_scan_data` を呼んで終了する。
+4. 「結果なし」と判定された場合（`is_empty_result` が真）は `Empty result page detected` をエラー一覧へ追加し、`clear_scan_data` を呼んで終了する。
 5. 更新の判定は、ハッシュが前回の `result_vl` と異なる場合、または `web_page_type` が空（初回）の場合に状態を更新する。ハッシュが同じなら状態は変更しない。
 6. 所要時間が `scan.timeout_per_url`（既定60秒）を超えた場合、実行中の中断はせず、超過メッセージをエラー一覧へ追加する。
 7. 例外は、`Exception` を捕捉してスタックトレースを記録し、`[URL, 例外, 該当行, 行番号]` をエラー一覧へ追加する（`clear_scan_data` は呼ばない）。
@@ -303,7 +303,7 @@ flowchart TD
 
 ### 3.8 品質評価と検索妥当性検証（F-010、F-011）
 
-`evaluate_search_quality(url, browser, search_query)` は、監視本流とは独立した任意機能である。
+`search_quality.evaluate.evaluate_search_quality(url, browser, search_query)` は、監視本流とは独立した任意機能である。`search_quality` パッケージは `content_extractor`（抽出処理）を利用するが、`content_extractor` は `search_quality` を参照しない。単体実行は `python -m search_quality.evaluate <URL> --query <クエリ>`（`src` を `PYTHONPATH` に加える）。
 
 | 段階 | 処理                                                                                                                                                                                                 |
 | :--- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -313,7 +313,8 @@ flowchart TD
 | 3    | 関連性スコア = 0.2×ジャカード + 0.3×TF-IDFコサイン + 0.5×埋め込みコサイン。平均・分散・最大を算出する                                                                                                |
 | 4    | SQS = 100 ×（ln(件数+1)×0.2 + 平均×0.4 − 分散×0.2 + 最大×0.2）。下限0。60以上は `Valid`、20以上は `Low Quality`、それ未満は `Invalid/Empty`（重みと閾値は `quality_config.json`）                    |
 
-- 「結果なし」の判定語・セレクタは `no_results_config.json`。設定ファイルが無い、またはJSONが不正な場合は、実装内の既定値を使う。
+- 現状、`is_empty_result` を真にするのは品質評価だけである。品質評価は本流から呼ばれないため、3.3 の「結果なしページ」の分岐は本流では到達しない（WCM-BD-001 Q-006）。
+- 「結果なし」の判定語・セレクタは `src/search_quality/config/no_results_config.json`。設定ファイルが無い、またはJSONが不正な場合は、実装内の既定値を使う。
 - `RelevanceScorer` は `scikit-learn` と `sentence-transformers` が無ければ `ImportError` を送出する（埋め込みモデルは `all-MiniLM-L6-v2`）。
 - 品質評価は、メインコンテンツ抽出のためにページを開いた後、判定のために同じURLを再度開く（2回アクセスする）。
 
@@ -331,13 +332,13 @@ flowchart TD
 
 ### 3.10 横断基盤（F-013）
 
-| 機能               | 契約                                                                                                                                                                 |
-| :----------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `setup_logger`     | ロガー名ごとに1度だけハンドラーを構成する。標準出力はINFO以上（色付き可）、ファイルはDEBUG以上で10MB・5世代。`level` 引数は現状反映されない（ロガー自体はDEBUG固定） |
-| `util_handle_path` | 拡張子があればファイル、無ければディレクトリを無ければ作成する。作成後に権限を0o755にし、作成不可の場合は `None`                                                     |
-| `get_domain`       | URLのネットロケーション部を返す                                                                                                                                      |
-| `utils.save_json`  | `<directory>/<ドメイン>.json` に整形JSON（UTF-8、日本語はそのまま）で保存する。既定ディレクトリは `data`                                                             |
-| `create_shortcut`  | 仮想環境の有無を確認して `web-cheackerV3.py` を起動するバッチ `cheack.bat` を生成する                                                                                |
+| 機能                           | 契約                                                                                                                                                                 |
+| :----------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `setup_logger`                 | ロガー名ごとに1度だけハンドラーを構成する。標準出力はINFO以上（色付き可）、ファイルはDEBUG以上で10MB・5世代。`level` 引数は現状反映されない（ロガー自体はDEBUG固定） |
+| `util_handle_path`             | 拡張子があればファイル、無ければディレクトリを無ければ作成する。作成後に権限を0o755にし、作成不可の場合は `None`                                                     |
+| `get_domain`                   | URLのネットロケーション部を返す                                                                                                                                      |
+| `utils.file_handler.save_json` | `<directory>/<ドメイン>.json` に整形JSON（UTF-8、日本語はそのまま）で保存する。既定ディレクトリは `data`                                                             |
+| `create_shortcut`              | 仮想環境の有無を確認して `web-cheackerV3.py` （`src/web-cheackerV3.py`）を起動するバッチ `cheack.bat` を生成する                                                     |
 
 ---
 
@@ -463,6 +464,7 @@ stateDiagram-v2
 
 ## 9. 改訂履歴 (Change Log)
 
-| 版数    | 改訂日     | 変更者 | 変更内容・変更理由 (Why)                                                      |
-| :------ | :--------- | :----- | :---------------------------------------------------------------------------- |
-| Rev.0.1 | 2026-11-24 | xzyozi | 既存実装（develop 7f5d248）から逆起こしして新規作成。設計書が未整備だったため |
+| 版数    | 改訂日     | 変更者 | 変更内容・変更理由 (Why)                                                                                                                                       |
+| :------ | :--------- | :----- | :------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rev.0.1 | 2026-11-24 | xzyozi | 既存実装（develop 7f5d248）から逆起こしして新規作成。設計書が未整備だったため                                                                                  |
+| Rev.0.2 | 2026-11-24 | xzyozi | src 配下への移行、品質評価の分離（search_quality）、utils 集約に合わせてパスを更新。タイムゾーンなし日時の扱いと、本流で到達しない「結果なしページ」分岐を追記 |
