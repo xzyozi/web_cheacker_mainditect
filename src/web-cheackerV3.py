@@ -239,7 +239,10 @@ def safe_parse_datetime(date_str: str) -> datetime:
     try:
         if date_str.endswith("Z"):
             return datetime.fromisoformat(date_str[:-1] + "+00:00")
-        return datetime.fromisoformat(date_str)
+        parsed = datetime.fromisoformat(date_str)
+        # タイムゾーンなし（例: "2024-01-02 03:04:05"）は UTC として扱う。naive のままだと
+        # 呼び出し側の aware 同士の減算が TypeError になり、常にFullスキャンへ倒れてしまう。
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
     except ValueError:
         pass  # Not ISO format, fall through to legacy
 
