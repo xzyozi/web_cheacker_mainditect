@@ -368,6 +368,53 @@ async def test_extract_main_content_selector_generation(mocker, mock_browser):
     assert len(final_content.css_selector_list) == 1
 
 
+@pytest.mark.asyncio
+async def test_extract_main_content_max_loop_limits_candidates_to_final_descendants(mocker, mock_browser):
+    """#98 Q-011: 再評価ループ上限(5回)到達時、候補一覧に最終候補の兄弟ではなく子孫だけが入ること。"""
+    mocker.patch("content_extractor.core.is_url_allowed", new_callable=AsyncMock, return_value=True)
+    mock_page = AsyncMock()
+    mocker.patch("content_extractor.core.setup_page", new_callable=AsyncMock, return_value=mock_page)
+    mocker.patch(
+        "content_extractor.core.adjust_page_view", new_callable=AsyncMock, return_value={"width": 1920, "height": 1080}
+    )
+    mocker.patch("content_extractor.core.save_json")
+
+    nodes = [DOMTreeSt(tag="div", score=float(10 * (i + 1)), css_selector=f"div.n{i}") for i in range(6)]
+    sibling_of_n5 = DOMTreeSt(tag="aside", score=12.0, css_selector="aside.sibling-of-n5")
+    sibling2_of_n5 = DOMTreeSt(tag="footer", score=11.0, css_selector="footer.sibling-of-n5")
+    child_top = DOMTreeSt(tag="section", score=55.0, css_selector="section.child-top")
+    child_second = DOMTreeSt(tag="p", score=50.0, css_selector="p.child-second")
+    child_third = DOMTreeSt(tag="ul", score=45.0, css_selector="ul.child-third")
+
+    body_node = DOMTreeSt(tag="body", score=0, depth=0, children=[nodes[0]], css_selector="body")
+    mocker.patch("content_extractor.core.make_tree", new_callable=AsyncMock, return_value=body_node)
+
+    mock_scorer = MagicMock()
+    mock_scorer.find_candidates.return_value = [nodes[0]]
+    mocker.patch("content_extractor.core.MainContentScorer", return_value=mock_scorer)
+
+    mock_rescore = mocker.patch(
+        "content_extractor.core.rescore_main_content_with_children",
+        side_effect=[
+            [nodes[1]],
+            [nodes[2]],
+            [nodes[3]],
+            [nodes[4]],
+            [nodes[5], sibling_of_n5, sibling2_of_n5],  # 5回目: node[5] が選ばれる（同じ親の子＝兄弟を含む）
+            [child_top, child_second, child_third],  # 上限到達後: node[5] 自身の子孫を再取得
+        ],
+    )
+
+    final_content = await extract_main_content(url="http://mock.url", browser=mock_browser)
+
+    assert final_content is nodes[5]
+    assert mock_rescore.call_count == 6
+    assert mock_rescore.call_args_list[-1].args == (nodes[5],)
+    assert final_content.css_selector_list == ["div.n5", "p.child-second", "ul.child-third"]
+    assert "aside.sibling-of-n5" not in final_content.css_selector_list
+    assert "footer.sibling-of-n5" not in final_content.css_selector_list
+
+
 # -----------------------------------------------------------------
 # Test Case 3.9: `_escape_css_selector_colons` (ユニットテスト)
 # -----------------------------------------------------------------

@@ -64,12 +64,14 @@ def send_email(
     #     server.sendmail(config_file["gmail"]["account"], receiver_email, message.as_string())
 
     smtpobj = smtplib.SMTP("smtp.gmail.com", 587)
-    smtpobj.ehlo()
-    smtpobj.starttls()
-    smtpobj.ehlo()
-    smtpobj.login(config_file["gmail"]["account"], config_file["gmail"]["password"])
-    smtpobj.sendmail(config_file["gmail"]["account"], receiver_email, message.as_string())
-    smtpobj.close()
+    try:
+        smtpobj.ehlo()
+        smtpobj.starttls()
+        smtpobj.ehlo()
+        smtpobj.login(config_file["gmail"]["account"], config_file["gmail"]["password"])
+        smtpobj.sendmail(config_file["gmail"]["account"], receiver_email, message.as_string())
+    finally:
+        smtpobj.close()
 
     print("メールが送信されました。")
 

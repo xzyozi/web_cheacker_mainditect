@@ -687,6 +687,15 @@ def test_generate_filename_url_with_trailing_slash():
     assert filename.endswith(".png")
 
 
+def test_generate_filename_sanitizes_port_and_invalid_filename_chars():
+    """#98 Q-015: ポート番号のコロンなどファイル名禁止文字が置換される。"""
+    url = "https://example.com:8443/news/item:1"
+    filename = generate_filename(url)
+    assert ":" not in filename
+    assert filename.startswith("example_com_8443_item_1_")
+    assert filename.endswith(".png")
+
+
 # --- Tests for save_screenshot (complex, will need more specific mocks) ---
 
 

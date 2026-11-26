@@ -5,7 +5,7 @@ document_number: "WCM-DD-001"
 document_role: "normative"
 ssot_scope: "module_behavior"
 status: "draft"
-version: "0.4"
+version: "0.5"
 created_at: "2026-11-24"
 updated_at: "2026-11-26"
 author: "xzyozi"
@@ -153,6 +153,7 @@ sequenceDiagram
 | 生成                         | JSONを読み込む。ファイルが無い・不正な場合は、必須列を持つ空の表で開始する。`css_selector_list` と `image_filename` の列が不足していれば補う。欠損値は、`web_page_type`、`result_vl`、`full_scan_datetime`、`image_filename` について空文字へ置換し、`css_selector_list` がリストでなければ空リストにする。読込直後の複製を `before_df` に保持する |
 | `get_record_as_dict`         | 行を辞書で返す                                                                                                                                                                                                                                                                                                                                     |
 | `update_scan_result`         | `result_vl`（`links` のSHA-256）、`updated_datetime`、`css_selector_list`、`web_page_type` を更新し、URLが変わっていれば URL も更新する                                                                                                                                                                                                            |
+| `update_scan_metadata`       | ハッシュ未変化時に、`css_selector_list`、`web_page_type`、および変更された場合の URL のみを更新する（`result_vl` と `updated_datetime` は保持する）                                                                                                                                                                                                 |
 | `update_full_scan_timestamp` | `full_scan_datetime` のみ現在時刻にする                                                                                                                                                                                                                                                                                                            |
 | `clear_scan_data`            | `css_selector_list` を空にし、`full_scan_datetime` を空にする（次回Fullスキャンを促す）。`result_vl` と `updated_datetime` は変更しない                                                                                                                                                                                                            |
 | `update_image_filename`      | URLが一致する行の `image_filename` に、パスを除いたファイル名を設定する                                                                                                                                                                                                                                                                            |
@@ -201,7 +202,7 @@ flowchart TD
 2. Quickが `None` を返した場合は、同じ呼び出しの中でFullへ進む。
 3. Fullが `None` を返した場合は、`Full scan returned None` をエラー一覧へ追加し、`clear_scan_data` を呼んで終了する。
 4. 「結果なし」と判定された場合（`is_empty_result` が真）は `Empty result page detected` をエラー一覧へ追加し、`clear_scan_data` を呼んで終了する。
-5. 更新の判定は、ハッシュが前回の `result_vl` と異なる場合、または `web_page_type` が空（初回）の場合に状態を更新する。ハッシュが同じなら状態は変更しない。このため、Fullスキャンでリンク集合が変わらなかった場合、新しく選んだ `css_selector_list`・`web_page_type`・URLは保存されず、`full_scan_datetime` だけが更新される。Quickで成功したセレクタを先頭へ移した並びも、状態が更新されない場合は保存されない（#92 Q-008 で対応を検討中）。
+5. 更新の判定は、ハッシュが前回の `result_vl` と異なる場合、または `web_page_type` が空（初回）の場合に `update_scan_result` で状態全体を更新する。ハッシュが同じでも、`update_scan_metadata` により `css_selector_list`・`web_page_type`・URL は更新する（`result_vl` と `updated_datetime` は保持する）。これにより、4日ごとのFull再スキャン結果やQuickで先頭へ並べ替えたセレクタ順序も保存される。
 6. 所要時間が `scan.timeout_per_url`（既定60秒）を超えた場合、実行中の中断はせず、超過メッセージをエラー一覧へ追加する。
 7. 例外は、`Exception` を捕捉してスタックトレースを記録し、`[URL, 例外, 該当行, 行番号]` をエラー一覧へ追加する（`clear_scan_data` は呼ばない）。
 8. Quickスキャン経路で `page_changer` 種別によりFullスキャンへ切り替わった場合（3.5）、`full_scan_datetime` は更新されない。また、Quickの入口で実行したFullが `None` を返すと、規則2により続けてFullが再度実行されるため、同じURLへ2回アクセスする（性能への影響のみで、結果は変わらない）。
@@ -220,7 +221,7 @@ flowchart TD
 | 6    | `MainContentScorer.find_candidates` で候補を得る。無ければ `None`                                                                                                                                                                                                                               |
 | 7    | 再評価ループ（最大5回）: 最有力候補の子孫を再スコアリングし、先頭が自身であるか自身のスコア以下になるまで、先頭の子孫へ移る                                                                                                                                                                     |
 | 8    | `ensure_unique_selector` で、最終候補のセレクタがページ内で複数ヒットする場合に、位置が一致する要素の `nth-of-type` 付き絶対パスへ置換する                                                                                                                                                      |
-| 9    | セレクタ候補一覧を作る: 最終候補の子孫のうち再評価順位2〜4位のセレクタ（空を除く）に、最終候補自身のセレクタを先頭へ加える。再評価ループが上限（5回）で終わった場合、この一覧は最終候補の親を再評価した結果になり、最終候補の子孫でない要素（兄弟や親）が含まれうる（#92 Q-011 で対応を検討中） |
+| 9    | セレクタ候補一覧を作る: 最終候補の子孫のうち再評価順位2〜4位のセレクタ（空を除く）に、最終候補自身のセレクタを先頭へ加える。再評価ループが上限（5回）で終わった場合も、最終候補自身の子孫を再評価したうえで候補を作るため、最終候補の兄弟や親は含まれない |
 | 10   | `url` を設定し、`web_type` を決める。`arg_webtype` がある場合は、優先度が高い方（4章）を採用する。`is_empty_result` は偽                                                                                                                                                                        |
 | 11   | `DOMTreeSt.to_dict()` を `data/<ドメイン>.json` に保存する                                                                                                                                                                                                                                      |
 | 12   | `finally` でページとコンテキストを解放する（再帰呼び出し前に解放した場合は二重に閉じない）                                                                                                                                                                                                      |
@@ -299,7 +300,7 @@ flowchart TD
 - 入力URLごとに順次処理する。URLが不正または `robots.txt` が拒否している場合は `None` を結果に入れる。
 - 成功時は保存したファイルパス、失敗時は `None` を、入力と同じ順序で返す（呼び出し側は添字で対応付ける）。
 - 1920×1080のコンテキストで `load` を30秒待ち、フルページ画像を保存し、指定幅（高さは縦横比維持）へ縮小して上書きする。最大3回試行し、間隔は2秒。
-- ファイル名は `<ドメイン（. を _ に置換）>_<パス最終要素>_<パスのMD5先頭8桁>.png`。同じURLは同名で上書きされる。ポート番号の `:` は置換されない（#92 Q-015）。
+- ファイル名は `<ドメイン（. を _ に置換し禁止文字も _ に置換）>_<パス最終要素（禁止文字を _ に置換）>_<パスのMD5先頭8桁>.png`。同じURLは同名で上書きされる。ポート番号の `:` 等も `sanitize_filename_part` で `_` へ置換される。
 
 ### 3.8 品質評価と検索妥当性検証（F-010、F-011）
 
@@ -327,7 +328,7 @@ flowchart TD
 | 更新通知   | 差分URLが1件以上で、`notification.type` が `email`                                             | HTML本文（URL、安全なURLのみリンク、画像は `cid` 参照）。画像は撮影成功分だけ添付し、失敗分および `screenshot.enabled` が偽で画像一覧が空のときも各URLに「取得失敗」と表示される仕様 |
 | エラー通知 | エラー一覧が1件以上で、`notification.type` が `email` かつ `notification.notify_on_error` が真 | エラー一覧を箇条書きにしたHTML。各要素はエスケープする                                                                                                                                                                      |
 
-- `send_email`: Gmail の `smtp.gmail.com:587` に接続し、STARTTLS後にログインして1通送る。件名は空文字、受信者は `mail.yaml` の `gmail.receiver_mail`。画像の `Content-ID` は、画像一覧の添字による `image_<添字>`。タイムアウトと再試行は設定していない。例外が発生した場合、SMTP接続は閉じられない（#92 Q-016 で対応を検討中）。
+- `send_email`: Gmail の `smtp.gmail.com:587` に接続し、STARTTLS後にログインして1通送る。件名は空文字、受信者は `mail.yaml` の `gmail.receiver_mail`。画像の `Content-ID` は、画像一覧の添字による `image_<添字>`。タイムアウトと再試行は設定していない。`finally` により例外発生時も SMTP 接続を確実に閉じる。
 - HTML本文の `cid` は、画像一覧のうち `None` でないものの添字から `image_<添字>` として生成する。メール側の `Content-ID` と同じ規則で対応する。
 
 ### 3.10 横断基盤（F-013）
@@ -395,7 +396,7 @@ stateDiagram-v2
     Quick可能 --> 未取得: 結果なしページ検出（clear_scan_data）
 ```
 
-「未取得」は、セレクタ一覧と `full_scan_datetime` が空の状態であり、`result_vl` は直前の値を保持する。「Full再実施」からのFull成功でハッシュが変わらなかった場合は、`full_scan_datetime` だけが更新され、セレクタ・種別は更新されない（3.3 規則5、#92 Q-008）。
+「未取得」は、セレクタ一覧と `full_scan_datetime` が空の状態であり、`result_vl` は直前の値を保持する。「Full再実施」からのFull成功やQuick成功でハッシュが変わらなかった場合も、セレクタ一覧・種別・URLは最新の抽出結果へ更新される（3.3 規則5）。
 
 ---
 
@@ -470,4 +471,5 @@ stateDiagram-v2
 | Rev.0.1 | 2026-11-24 | xzyozi | 既存実装（develop 7f5d248）から逆起こしして新規作成。設計書が未整備だったため                                                                                      |
 | Rev.0.2 | 2026-11-24 | xzyozi | src 配下への移行、品質評価の分離（search_quality）、utils 集約に合わせてパスを更新。タイムゾーンなし日時の扱いと、本流で到達しない「結果なしページ」分岐を追記     |
 | Rev.0.3 | 2026-11-24 | xzyozi | レビュー指摘に基づき、状態が更新される条件、Fullの二重実行、セレクタ候補、ページ番号の判定、util の関数、通知の挙動などを現状の動作に修正。対応の検討は #92 で管理 |
-| Rev.0.4 | 2026-11-26 | xzyozi | #99（#92 グループB）に基づき、未使用・防御分岐の扱い、撮影無効時の通知表示仕様、`cheack.bat` の整合を反映して現行仕様として確定                                |
+| Rev.0.4 | 2026-11-26 | xzyozi | #99（#92 グループB）に基づき、未使用・防御分岐の扱い、撮影無効時の通知表示仕様、`cheack.bat` の整合を反映して現行仕様として確定                                                              |
+| Rev.0.5 | 2026-11-26 | xzyozi | #98（#92 グループA）の不具合修正に伴い、ハッシュ未変化時のメタデータ保存（`update_scan_metadata`）、ループ上限時のセレクタ候補、画像ファイル名サニタイズ、SMTP接続クローズの記述を更新 |
