@@ -83,7 +83,8 @@ async def extract_main_content(url: str, browser: Browser, count: int = 0, arg_w
         max_loop_count = 5
         dimensions = await adjust_page_view(page)
 
-        tree = await make_tree(page)
+        # setup_page と adjust_page_view で既に待機済みのため、重複の networkidle 待機は行わない
+        tree = await make_tree(page, wait_for_load=False)
         if not tree:
             logger.info("Error: Empty tree structure returned")
             return None
@@ -291,7 +292,8 @@ async def quick_extract_content(
                 # 短いタイムアウトでセレクタの存在を確認
                 await page.wait_for_selector(escaped_selector, state="attached", timeout=5000)
                 logger.info(f"Selector found, extracting content with: {escaped_selector}")
-                tree = await make_tree(page, selector=escaped_selector)
+                # page.wait_for_selector で要素を確認済みのため networkidle 再待機せず、ルート要素のみ収集する
+                tree = await make_tree(page, selector=escaped_selector, wait_for_load=False, include_children=False)
                 if tree:
                     found_tree = tree
                     # Quickスキャン成功時は、成功したセレクタをプライマリとし、リストの先頭に持ってくる

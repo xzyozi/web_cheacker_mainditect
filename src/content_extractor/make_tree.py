@@ -3,8 +3,8 @@ import logging
 import sys
 from typing import Any, Dict, Optional
 
-from playwright.async_api import ElementHandle, Page, async_playwright
 from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import Page, async_playwright
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from .dom_treeSt import BoundingBox, DOMTreeSt
@@ -12,75 +12,104 @@ from .dom_treeSt import BoundingBox, DOMTreeSt
 # Use standard logging practice; configuration should be at the application entry point.
 logger = logging.getLogger(__name__)
 
+# 1回の page.evaluate で可視要素のDOMツリー全体（または単一ノード）を収集するJS。
+# Playwright の el.bounding_box() と揃えるため、getBoundingClientRect()（ビューポート相対座標）と
+# getClientRects().length > 0 / 幅・高さ > 0 で非描画要素を除外する。
+_COLLECT_DOM_TREE_JS = """
+({ selector, includeChildren }) => {
+    const root = document.querySelector(selector);
+    if (!root) {
+        return null;
+    }
+
+    const collectNode = (el) => {
+        if (!el || !document.body || !document.body.contains(el)) {
+            return null;
+        }
+        const rect = el.getBoundingClientRect();
+        if (!rect || rect.width <= 0 || rect.height <= 0 || el.getClientRects().length === 0) {
+            return null;
+        }
+
+        const attributes = {};
+        for (const attr of el.attributes) {
+            attributes[attr.name] = attr.value;
+        }
+
+        const links = Array.from(el.getElementsByTagName("a"))
+            .map((a) => (typeof a.href === "string" ? a.href : ""))
+            .filter(Boolean)
+            .sort();
+
+        const children = [];
+        if (includeChildren) {
+            for (const child of el.children) {
+                const childNode = collectNode(child);
+                if (childNode !== null) {
+                    children.push(childNode);
+                }
+            }
+        }
+
+        return {
+            tag: (el.tagName || "").toLowerCase(),
+            id: el.id || "",
+            attributes,
+            rect: {
+                x: rect.x,
+                y: rect.y,
+                width: rect.width,
+                height: rect.height,
+            },
+            text: typeof el.innerText === "string" ? el.innerText : "",
+            links,
+            children,
+        };
+    };
+
+    return collectNode(root);
+}
+"""
+
+
+def _build_dom_tree(raw: Dict[str, Any], current_depth: int = 1) -> DOMTreeSt:
+    """JS から返された辞書ツリーを再帰的に DOMTreeSt へ変換する。"""
+    rect_data = raw.get("rect") or {}
+    css_selector = make_css_selector(raw)
+    node = DOMTreeSt(
+        tag=raw.get("tag", ""),
+        id=raw.get("id", ""),
+        attributes=raw.get("attributes") or {},
+        rect=BoundingBox(
+            x=rect_data.get("x", 0),
+            y=rect_data.get("y", 0),
+            width=rect_data.get("width", 0),
+            height=rect_data.get("height", 0),
+        ),
+        depth=current_depth,
+        text=(raw.get("text") or "").strip(),
+        css_selector=css_selector,
+        links=list(raw.get("links") or []),
+    )
+    for child_raw in raw.get("children") or []:
+        if isinstance(child_raw, dict):
+            node.add_child(_build_dom_tree(child_raw, current_depth + 1))
+    return node
+
 
 async def make_tree(
-    page: Page, selector: str = "body", wait_for_load: bool = True, timeout: int = 30000, debug: bool = True
+    page: Page,
+    selector: str = "body",
+    wait_for_load: bool = True,
+    timeout: int = 30000,
+    debug: bool = True,
+    include_children: bool = True,
 ) -> Optional[DOMTreeSt]:
     """
-    Get DOM tree starting from a specific selector or body.
-    Page.goto(url)後に使用
+    指定セレクタ（既定 `body`）を起点に DOM ツリーを一括 JS 実行で構築する。
+    `include_children=False` の場合はルート要素 1 ノード分のみ収集する（Quick スキャン向け）。
     """
-
-    async def parse_element(el: ElementHandle, current_depth: int = 1) -> Optional[DOMTreeSt]:
-        """
-        HTML 要素とその子要素を再帰的に解析し、関連する詳細を抽出します。
-        """
-        if not el:
-            return None
-
-        try:
-            # Element may be detached from the DOM, especially in dynamic pages.
-            if not await el.evaluate("el => document.body.contains(el)"):
-                return None
-
-            try:
-                bounding_box = await el.bounding_box()
-                if not bounding_box:
-                    # Skip elements that are not rendered (no bounding box)
-                    return None
-            except PlaywrightError as e:
-                logger.debug(f"Could not get bounding box for an element, skipping it: {str(e)}")
-                return None
-
-            properties = await el.evaluate("""el => ({
-                tag: el.tagName.toLowerCase(),
-                id: el.id,
-                attributes: Object.fromEntries(Array.from(el.attributes).map(attr => [attr.name, attr.value])),
-                text: el.innerText || "",
-                links: Array.from(el.getElementsByTagName('a')).map(a => a.href).filter(Boolean).sort()
-            })""")
-
-            css_selector = make_css_selector(properties)
-
-            tree = DOMTreeSt(
-                tag=properties["tag"],
-                id=properties["id"],
-                attributes=properties["attributes"],
-                # el.bounding_box() は getBoundingClientRect() と同じビューポート相対座標を返す
-                rect=BoundingBox(
-                    x=bounding_box["x"],
-                    y=bounding_box["y"],
-                    width=bounding_box["width"],
-                    height=bounding_box["height"],
-                ),
-                depth=current_depth,
-                text=properties["text"].strip(),
-                css_selector=css_selector,
-                links=properties["links"],
-            )
-
-            children = await el.query_selector_all(":scope > *")
-            for child in children:
-                child_node = await parse_element(child, current_depth + 1)
-                if child_node:  # Check for None
-                    tree.add_child(child_node)
-
-            return tree
-
-        except PlaywrightError as e:
-            logger.error(f"Error parsing element: {str(e)}")
-            return None
-
+    _ = debug  # 後方互換のため引数を維持
     try:
         if wait_for_load:
             try:
@@ -90,12 +119,15 @@ async def make_tree(
             except (PlaywrightTimeoutError, PlaywrightError) as e:
                 logger.warning(f"Network did not become idle within {timeout}ms: {str(e)}")
 
-        root_element = await page.query_selector(selector)
-        if not root_element:
+        raw_tree = await page.evaluate(
+            _COLLECT_DOM_TREE_JS,
+            {"selector": selector, "includeChildren": include_children},
+        )
+        if not isinstance(raw_tree, dict):
             logger.error(f"Root element not found with selector: {selector}")
             return None
 
-        return await parse_element(root_element)
+        return _build_dom_tree(raw_tree)
 
     except PlaywrightError as e:
         logger.critical(f"Failed to create DOM tree for selector '{selector}': {str(e)}")

@@ -70,7 +70,7 @@ async def test_extract_main_content_refinement_loop(mocker, mock_browser, dom_tr
     mocker.patch(
         "content_extractor.core.adjust_page_view", new_callable=AsyncMock, return_value={"width": 1920, "height": 1080}
     )
-    mocker.patch(
+    mock_make_tree = mocker.patch(
         "content_extractor.core.make_tree", new_callable=AsyncMock, return_value=dom_tree_fixture[0]
     )  # make_treeはリストではなく単一の木を返す
     mocker.patch("content_extractor.core.save_json")  # JSON保存は無効化
@@ -112,6 +112,7 @@ async def test_extract_main_content_refinement_loop(mocker, mock_browser, dom_tr
 
     # ループ後の最終スコアは `rescore` の結果に依存する
     assert final_content.score == 95
+    mock_make_tree.assert_awaited_once_with(mock_page, wait_for_load=False)
 
     # モックの呼び出し回数などを検証
     assert mock_rescore.call_count == 3
@@ -685,7 +686,9 @@ async def test_quick_extract_content_falls_back_on_invalid_selector_playwright_e
     assert result.url == "http://mock.url"
     assert result.web_type == "plane"
     assert mock_page.wait_for_selector.await_count == 2
-    mock_make_tree.assert_awaited_once_with(mock_page, selector="main.article")
+    mock_make_tree.assert_awaited_once_with(
+        mock_page, selector="main.article", wait_for_load=False, include_children=False
+    )
     mock_context.close.assert_awaited_once()
 
 
