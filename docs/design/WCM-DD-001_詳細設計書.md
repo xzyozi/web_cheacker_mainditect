@@ -5,7 +5,7 @@ document_number: "WCM-DD-001"
 document_role: "normative"
 ssot_scope: "module_behavior"
 status: "draft"
-version: "0.5"
+version: "0.6"
 created_at: "2026-11-24"
 updated_at: "2026-11-26"
 author: "xzyozi"
@@ -216,7 +216,7 @@ flowchart TD
 | 1    | `robots.txt` が拒否していれば `None`                                                                                                                                                                                                                                                            |
 | 2    | `setup_page` でページを準備する。失敗したら `None`                                                                                                                                                                                                                                              |
 | 3    | `adjust_page_view`: ページ全体のサイズを測り、ビューポートをそのサイズへ拡大し、最下部へスクロールして2秒待つ                                                                                                                                                                                   |
-| 4    | `make_tree` で `body` 以下のDOMツリーを作る。空なら `None`                                                                                                                                                                                                                                      |
+| 4    | `make_tree`（`wait_for_load=False`）で1回のJS評価により `body` 以下のDOMツリーを作る。空なら `None` |
 | 5    | `WebTypeCHK` でページ種別を判定する。次ページURLがあり再帰回数が3未満なら、ページを閉じて新URLで再帰呼び出しする                                                                                                                                                                                |
 | 6    | `MainContentScorer.find_candidates` で候補を得る。無ければ `None`                                                                                                                                                                                                                               |
 | 7    | 再評価ループ（最大5回）: 最有力候補の子孫を再スコアリングし、先頭が自身であるか自身のスコア以下になるまで、先頭の子孫へ移る                                                                                                                                                                     |
@@ -240,7 +240,7 @@ flowchart TD
 | 2    | セレクタ一覧が空なら、Fullスキャンを実行してその結果を返す                                                        |
 | 3    | `robots.txt` が拒否していれば `None`                                                                              |
 | 4    | 新しいコンテキストでページを開く（`domcontentloaded`、10秒）                                                      |
-| 5    | 各セレクタを順に試す。クラス名中のコロンはエスケープする。要素出現を5秒待ち、`make_tree` でその要素以下を取得する |
+| 5    | 各セレクタを順に試す。クラス名中のコロンはエスケープする。要素出現を5秒待ち、`make_tree`（`wait_for_load=False`, `include_children=False`）でその要素1ノード分を取得する |
 | 6    | 最初に成功したセレクタを一覧の先頭へ移し、`css_selector` と `css_selector_list` に設定する                        |
 | 7    | すべて失敗したら `None`                                                                                           |
 | 8    | 成功時は `url` と `web_type` を設定して返す                                                                       |
@@ -473,3 +473,4 @@ stateDiagram-v2
 | Rev.0.3 | 2026-11-24 | xzyozi | レビュー指摘に基づき、状態が更新される条件、Fullの二重実行、セレクタ候補、ページ番号の判定、util の関数、通知の挙動などを現状の動作に修正。対応の検討は #92 で管理 |
 | Rev.0.4 | 2026-11-26 | xzyozi | #99（#92 グループB）に基づき、未使用・防御分岐の扱い、撮影無効時の通知表示仕様、`cheack.bat` の整合を反映して現行仕様として確定                                                              |
 | Rev.0.5 | 2026-11-26 | xzyozi | #98（#92 グループA）の不具合修正に伴い、ハッシュ未変化時のメタデータ保存（`update_scan_metadata`）、ループ上限時のセレクタ候補、画像ファイル名サニタイズ、SMTP接続クローズの記述を更新 |
+| Rev.0.6 | 2026-11-26 | xzyozi | #89 に伴い、Full/Quick からの `make_tree` 呼び出し（`wait_for_load=False`・Quick は `include_children=False`・一括JS取得）を更新                                                           |
