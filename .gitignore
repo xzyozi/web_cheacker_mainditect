@@ -1,7 +1,6 @@
 **/__pycache__/
 /src/mail/mail.yaml
 /src/mail/my_gmail_account.py
-/src/mail/test_send_mail.py
 web_update_cheacker2.srctrlbm
 web_update_cheacker2.srctrldb
 web_update_cheacker2.srctrlprj
@@ -23,4 +22,3 @@ test/*.txt
 .coverage
 .venv
 venv
-cheack.bat

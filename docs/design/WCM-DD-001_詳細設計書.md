@@ -5,7 +5,7 @@ document_number: "WCM-DD-001"
 document_role: "normative"
 ssot_scope: "module_behavior"
 status: "draft"
-version: "0.4"
+version: "0.5"
 created_at: "2026-11-24"
 updated_at: "2026-11-26"
 author: "xzyozi"
@@ -160,7 +160,7 @@ sequenceDiagram
 | `save_data`                  | ロックを取り、全行の `run_code` を現在時刻にし、`<保存先>.tmp` へ書いてから置換する（WCM-DS-001 §4）                                                                                                                                                                                                                                               |
 | `chk_diff`                   | `result_vl` が `before_df` と異なる行のURLを返す。初回（`result_vl` が空）のURLは、ハッシュが設定されるため差分として扱う                                                                                                                                                                                                                          |
 
-注: `update_record_from_dom_tree` は `update_scan_result` とほぼ同じ内容を持つが、本流から呼ばれない。同様に、`web-cheackerV3.py` のローカルの `save_json`、`get_last_modified`、`remove_encoded_chars`、`CSV_COLUMN` と各種パス定数も本流から呼ばれない（#92 Q-005）。
+注: `update_record_from_dom_tree` は `update_scan_result` とほぼ同じ内容を持つが、互換・単体テスト維持のため保持しており、現行の本流からは呼ばれない。同様に、`web-cheackerV3.py` のローカルの `save_json`、`get_last_modified`、`remove_encoded_chars`、`CSV_COLUMN` と各種パス定数も補助・互換定義として保持し、本流からは呼ばれない。
 
 ### 3.3 スキャン方針決定（F-004）
 
@@ -281,7 +281,7 @@ flowchart TD
 | 種別               | `plane`（優先度1）、`page_changer`（優先度2）、`not_quickscan`（優先度3）。優先度の高い方を採用する                                                                                                                 |
 | 判定               | 監視URLに `page` + 区切り（`-`・`=`・`/` のいずれか、省略可）+ 数字を含み、`page` の直前が英数字でなければ（例: `homepage2` は対象外）`page_changer`、それ以外は `plane`。`not_quickscan` は自動判定されない        |
 | 最新ページ追従     | 同一ドメインのリンクのうち、`page` + 区切り（`-`・`=`・`/` のいずれか、省略可。`page` の直前が英数字でないもの）+ 数字の最大番号を持つものを探す。現在のURLの番号より大きい場合のみ、絶対URLに解決して次のURLとする |
-| 不明な文字列の扱い | `WebType.from_string` は未知の値、非文字列を `plane` として扱う。`PageMonitor.should_check_update` と `get_watch_url` は本流から呼ばれない（#92 Q-005）                                                             |
+| 不明な文字列の扱い | `WebType.from_string` は未知の値、非文字列を `plane` として扱う。`PageMonitor.should_check_update` と `get_watch_url` は単体テスト・互換維持のため保持しており、現行の本流からは呼ばれない |
 
 #### ページ準備（`setup_page`、`close_page`）
 
@@ -314,7 +314,7 @@ flowchart TD
 | 3    | 関連性スコア = 0.2×ジャカード + 0.3×TF-IDFコサイン + 0.5×埋め込みコサイン。平均・分散・最大を算出する                                                                                                |
 | 4    | SQS = 100 ×（ln(件数+1)×0.2 + 平均×0.4 − 分散×0.2 + 最大×0.2）。下限0。60以上は `Valid`、20以上は `Low Quality`、それ未満は `Invalid/Empty`（重みと閾値は `quality_config.json`）                    |
 
-- 現状、`is_empty_result` を真にするのは品質評価だけである。品質評価は本流から呼ばれないため、3.3 の「結果なしページ」の分岐は本流では到達しない。
+- 現状、`is_empty_result` を真にするのは品質評価だけである。品質評価は本流から呼ばれないため、3.3 の「結果なしページ」の分岐は通常到達しないが、`search_quality` 連携時および DTO 互換用の防御分岐として保持している。
 - 「結果なし」の判定語・セレクタは `src/search_quality/config/no_results_config.json`。設定ファイルが無い、またはJSONが不正な場合は、実装内の既定値を使う。
 - `RelevanceScorer` は `scikit-learn` と `sentence-transformers` が無ければ `ImportError` を送出する（埋め込みモデルは `all-MiniLM-L6-v2`）。
 - 品質評価は、メインコンテンツ抽出のためにページを開いた後、判定のために同じURLを再度開く（2回アクセスする）。2回目の `setup_page` が失敗した場合は、評価を行わず抽出結果をそのまま返す（`quality_category` は空のまま）。
@@ -325,7 +325,7 @@ flowchart TD
 
 | 通知種別   | 送信条件                                                                                       | 内容                                                                                                                                                                                                                        |
 | :--------- | :--------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 更新通知   | 差分URLが1件以上で、`notification.type` が `email`                                             | HTML本文（URL、安全なURLのみリンク、画像は `cid` 参照）。画像は撮影成功分だけ添付し、失敗分は「取得失敗」表示。`screenshot.enabled` が偽で画像一覧が空のときも、全URLに「取得失敗」と表示される（#92 Q-013 で対応を検討中） |
+| 更新通知   | 差分URLが1件以上で、`notification.type` が `email`                                             | HTML本文（URL、安全なURLのみリンク、画像は `cid` 参照）。画像は撮影成功分だけ添付し、失敗分および `screenshot.enabled` が偽で画像一覧が空のときも各URLに「取得失敗」と表示される仕様 |
 | エラー通知 | エラー一覧が1件以上で、`notification.type` が `email` かつ `notification.notify_on_error` が真 | エラー一覧を箇条書きにしたHTML。各要素はエスケープする                                                                                                                                                                      |
 
 - `send_email`: Gmail の `smtp.gmail.com:587` に接続し、STARTTLS後にログインして1通送る。件名は空文字、受信者は `mail.yaml` の `gmail.receiver_mail`。画像の `Content-ID` は、画像一覧の添字による `image_<添字>`。タイムアウトと再試行は設定していない。`finally` により例外発生時も SMTP 接続を確実に閉じる。
@@ -341,7 +341,7 @@ flowchart TD
 | `ensure_file`、`ensure_dir`    | 無ければ空ファイル・ディレクトリを作成する。失敗時は `None`。`util_handle_path` から呼ばれる                                                                                                            |
 | `get_domain`                   | URLのネットロケーション部を返す                                                                                                                                                                         |
 | `utils.file_handler.save_json` | `<directory>/<ドメイン（ファイル名に使えない文字は _ に置換）>.json` に整形JSON（UTF-8、日本語はそのまま）で保存する。既定ディレクトリは `data`                                                         |
-| `create_shortcut`              | 仮想環境の有無を確認して `src/web-cheackerV3.py` を起動するバッチ `cheack.bat` を生成する。リポジトリ内の `cheack.bat` は、この生成内容と異なる（#92 Q-009）                                            |
+| `create_shortcut`              | 仮想環境の有無を確認して `src/web-cheackerV3.py` を起動するバッチ `cheack.bat` を生成する（リポジトリ内の `cheack.bat` も同内容） |
 
 ---
 
@@ -471,4 +471,5 @@ stateDiagram-v2
 | Rev.0.1 | 2026-11-24 | xzyozi | 既存実装（develop 7f5d248）から逆起こしして新規作成。設計書が未整備だったため                                                                                      |
 | Rev.0.2 | 2026-11-24 | xzyozi | src 配下への移行、品質評価の分離（search_quality）、utils 集約に合わせてパスを更新。タイムゾーンなし日時の扱いと、本流で到達しない「結果なしページ」分岐を追記     |
 | Rev.0.3 | 2026-11-24 | xzyozi | レビュー指摘に基づき、状態が更新される条件、Fullの二重実行、セレクタ候補、ページ番号の判定、util の関数、通知の挙動などを現状の動作に修正。対応の検討は #92 で管理 |
-| Rev.0.4 | 2026-11-26 | xzyozi | #98（#92 グループA）の不具合修正に伴い、ハッシュ未変化時のメタデータ保存（`update_scan_metadata`）、ループ上限時のセレクタ候補、画像ファイル名サニタイズ、SMTP接続クローズの記述を更新 |
+| Rev.0.4 | 2026-11-26 | xzyozi | #99（#92 グループB）に基づき、未使用・防御分岐の扱い、撮影無効時の通知表示仕様、`cheack.bat` の整合を反映して現行仕様として確定                                                              |
+| Rev.0.5 | 2026-11-26 | xzyozi | #98（#92 グループA）の不具合修正に伴い、ハッシュ未変化時のメタデータ保存（`update_scan_metadata`）、ループ上限時のセレクタ候補、画像ファイル名サニタイズ、SMTP接続クローズの記述を更新 |

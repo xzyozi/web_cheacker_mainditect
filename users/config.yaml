@@ -4,7 +4,7 @@
 scan:
   # 同時に実行するワーカースレッドの数
   worker_threads: 2
-  # URLごとのタイムアウト秒数
+  # URLごとの処理時間監視の閾値秒数（超過時はエラー一覧に記録。実行中の強制中断は行わない）
   timeout_per_url: 60
 
 # 通知設定
@@ -17,10 +17,8 @@ notification:
   notify_on_error: false
 
 screenshot:
-  # 更新があった場合にスクリーンショットを撮るか (通知タイプが 'email' の場合のみ有効)
+  # 更新があった場合にスクリーンショットを撮るか (notification.type に関わらず有効)
   enabled: true
-  # 永続的に保存するディレクトリ
-  permanent_dir: "data/view"
   # メール送信用に一時的に保存するディレクトリ
   temporary_dir: "temp_image"
   # 永続保存する画像の幅 (ピクセル)
