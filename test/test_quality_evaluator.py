@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from content_extractor.dom_treeSt import DOMTreeSt
-from content_extractor.quality_evaluator import _find_result_container, is_no_results_page, quantify_search_results
+from search_quality.quality_evaluator import _find_result_container, is_no_results_page, quantify_search_results
 
 # =================================================================
 # quality_evaluator.py のテスト

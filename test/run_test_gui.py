@@ -25,6 +25,14 @@ def build_command(case: dict[str, Any]) -> list[str]:
     return command
 
 
+def build_env(project_root: str) -> dict[str, str]:
+    """子プロセス用の環境変数。src/ を PYTHONPATH に加え、`python -m content_extractor.core` を解決できるようにする。"""
+    env = os.environ.copy()
+    src_dir = os.path.join(project_root, "src")
+    env["PYTHONPATH"] = src_dir + os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else src_dir
+    return env
+
+
 class TestRunnerApp:
     def __init__(self, root):
         self.root = root
@@ -39,9 +47,10 @@ class TestRunnerApp:
         # 読み込むテストケースファイルへの絶対パス
         self.test_cases_path = os.path.join(self.script_dir, "test_cases..json")
 
-        # これにより、content_extractor.core が依存する他のモジュールを正しく見つけられるようになります。
-        if self.project_root not in sys.path:
-            sys.path.insert(0, self.project_root)
+        # ソースコードは src/ 配下にある。content_extractor.core とその依存モジュールを見つけられるようにする。
+        self.src_dir = os.path.join(self.project_root, "src")
+        if self.src_dir not in sys.path:
+            sys.path.insert(0, self.src_dir)
 
         # スタイル
         self.style = ttk.Style()
@@ -113,6 +122,7 @@ class TestRunnerApp:
             encoding="utf-8",
             errors="replace",
             cwd=self.project_root,
+            env=build_env(self.project_root),
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
 

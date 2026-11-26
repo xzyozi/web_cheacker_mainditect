@@ -11,7 +11,8 @@ from playwright.async_api import Browser, BrowserContext, Page
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
-from setup_logger import setup_logger
+from utils.setup_logger import setup_logger
+from utils.util_str import sanitize_filename_part
 
 logger = setup_logger("playwright_helpers")
 
@@ -325,9 +326,10 @@ async def save_screenshot(
 def generate_filename(url: str) -> str:
     """URL から一意なファイル名を生成"""
     parsed_url = urlparse(url)
-    domain = parsed_url.netloc.replace(".", "_")
+    domain = sanitize_filename_part(parsed_url.netloc.replace(".", "_"))
     path = parsed_url.path.rstrip("/")
     last_part = path.rsplit("/", 1)[-1] if "/" in path else "index"
+    last_part = sanitize_filename_part(last_part)
     # ファイル名が長くなりすぎるのを防ぐためにハッシュを追加
     path_hash = hashlib.md5(path.encode()).hexdigest()[:8]
     return f"{domain}_{last_part}_{path_hash}.png"

@@ -4,115 +4,105 @@ from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 import pytest
 
-from content_extractor.make_tree import escape_css_identifier, make_css_selector, make_tree
+from content_extractor.make_tree import _COLLECT_DOM_TREE_JS, escape_css_identifier, make_css_selector, make_tree
 
 
-# Fixtures for Playwright mocks
+def _raw_node(
+    tag="div",
+    node_id="",
+    attributes=None,
+    rect=None,
+    text="",
+    links=None,
+    children=None,
+):
+    return {
+        "tag": tag,
+        "id": node_id,
+        "attributes": attributes if attributes is not None else {},
+        "rect": rect if rect is not None else {"x": 0, "y": 0, "width": 100, "height": 100},
+        "text": text,
+        "links": links if links is not None else [],
+        "children": children if children is not None else [],
+    }
+
+
 @pytest.fixture
 def mock_page():
     page = AsyncMock()
-    # Mock wait_for_load_state to prevent it from hanging during tests
     page.wait_for_load_state.return_value = None
     return page
-
-
-@pytest.fixture
-def mock_element_handle():
-    handle = AsyncMock()
-    # Default return for evaluate to prevent errors if not specifically mocked
-    handle.evaluate.return_value = True  # Assume document.body.contains(el) is true by default
-    handle.bounding_box.return_value = {"x": 0, "y": 0, "width": 100, "height": 100}
-    handle.query_selector_all.return_value = []
-    return handle
-
-
-@pytest.fixture
-def mock_bounding_box_data():
-    return {"x": 0, "y": 0, "width": 100, "height": 100}
 
 
 # --- Tests for make_tree ---
 
 
 @pytest.mark.asyncio
-async def test_make_tree_basic_dom_structure(mock_page, mock_bounding_box_data):
-    # Create mock ElementHandles for a simple DOM: body -> div -> p
-    mock_body_handle = AsyncMock()
-    mock_div_handle = AsyncMock()
-    mock_p_handle = AsyncMock()
-
-    # Configure mock_page to return the body handle
-    mock_page.query_selector.return_value = mock_body_handle
-
-    # Configure the body handle
-    mock_body_handle.evaluate.side_effect = [
-        True,  # document.body.contains(el) for body
-        {"tag": "body", "id": "", "attributes": {}, "text": "Body text", "links": []},  # properties for body
-    ]
-    mock_body_handle.bounding_box.return_value = mock_bounding_box_data
-    mock_body_handle.query_selector_all.return_value = [mock_div_handle]  # children of body
-
-    # Configure the div handle
-    mock_div_handle.evaluate.side_effect = [
-        True,  # document.body.contains(el) for div
-        {
-            "tag": "div",
-            "id": "my-div",
-            "attributes": {"id": "my-div", "class": "container"},
-            "text": "Div text",
-            "links": [],
-        },  # properties for div
-    ]
-    mock_div_handle.bounding_box.return_value = mock_bounding_box_data
-    mock_div_handle.query_selector_all.return_value = [mock_p_handle]  # children of div
-
-    # Configure the p handle
-    mock_p_handle.evaluate.side_effect = [
-        True,  # document.body.contains(el) for p
-        {"tag": "p", "id": "", "attributes": {}, "text": "Paragraph text", "links": []},  # properties for p
-    ]
-    mock_p_handle.bounding_box.return_value = mock_bounding_box_data
-    mock_p_handle.query_selector_all.return_value = []  # children of p
+async def test_make_tree_basic_dom_structure_single_evaluate(mock_page):
+    """#89: page.evaluate を1回だけ呼び出して階層構造・座標・深さ・セレクタを復元する。"""
+    mock_page.evaluate.return_value = _raw_node(
+        tag="body",
+        rect={"x": 0, "y": 0, "width": 1920, "height": 1080},
+        text="  Body text  ",
+        children=[
+            _raw_node(
+                tag="div",
+                node_id="my-div",
+                attributes={"id": "my-div", "class": "container"},
+                rect={"x": 10, "y": 20, "width": 800, "height": 400},
+                text="Div text",
+                children=[
+                    _raw_node(
+                        tag="p",
+                        rect={"x": 15, "y": 30, "width": 700, "height": 50},
+                        text="Paragraph text",
+                    )
+                ],
+            )
+        ],
+    )
 
     tree = await make_tree(mock_page, selector="body", wait_for_load=False)
 
+    mock_page.evaluate.assert_awaited_once_with(
+        _COLLECT_DOM_TREE_JS,
+        {"selector": "body", "includeChildren": True},
+    )
+    mock_page.query_selector.assert_not_called()
+
     assert tree is not None
     assert tree.tag == "body"
+    assert tree.depth == 1
+    assert tree.text == "Body text"
     assert tree.css_selector == "body"
+    assert tree.rect.to_dict() == {"x": 0, "y": 0, "width": 1920, "height": 1080}
     assert len(tree.children) == 1
 
     div_node = tree.children[0]
     assert div_node.tag == "div"
+    assert div_node.depth == 2
     assert div_node.id == "my-div"
     assert div_node.attributes == {"id": "my-div", "class": "container"}
     assert div_node.text == "Div text"
     assert div_node.css_selector == "div#my-div"
+    assert div_node.rect.to_dict() == {"x": 10, "y": 20, "width": 800, "height": 400}
     assert len(div_node.children) == 1
 
     p_node = div_node.children[0]
     assert p_node.tag == "p"
+    assert p_node.depth == 3
     assert p_node.text == "Paragraph text"
     assert p_node.css_selector == "p"
     assert len(p_node.children) == 0
 
 
 @pytest.mark.asyncio
-async def test_make_tree_extracts_links(mock_page, mock_bounding_box_data):
-    mock_body_handle = AsyncMock()
-    mock_page.query_selector.return_value = mock_body_handle
-
-    mock_body_handle.evaluate.side_effect = [
-        True,
-        {
-            "tag": "body",
-            "id": "",
-            "attributes": {},
-            "text": "Body text",
-            "links": ["http://example.com/link1", "http://example.com/link2"],
-        },
-    ]
-    mock_body_handle.bounding_box.return_value = mock_bounding_box_data
-    mock_body_handle.query_selector_all.return_value = []
+async def test_make_tree_extracts_links(mock_page):
+    mock_page.evaluate.return_value = _raw_node(
+        tag="body",
+        text="Body text",
+        links=["http://example.com/link1", "http://example.com/link2"],
+    )
 
     tree = await make_tree(mock_page, selector="body", wait_for_load=False)
     assert tree is not None
@@ -120,49 +110,41 @@ async def test_make_tree_extracts_links(mock_page, mock_bounding_box_data):
 
 
 @pytest.mark.asyncio
-async def test_make_tree_skips_elements_without_bounding_box(mock_page, mock_bounding_box_data):
-    mock_body_handle = AsyncMock()
-    mock_child_handle = AsyncMock()
+async def test_make_tree_include_children_false_passes_flag(mock_page):
+    """#89: Quickスキャン向けに include_children=False を JS 側へ渡せること。"""
+    mock_page.evaluate.return_value = _raw_node(
+        tag="main",
+        text="Quick target",
+        links=["http://example.com/a"],
+        children=[],
+    )
 
-    mock_page.query_selector.return_value = mock_body_handle
-    mock_body_handle.evaluate.side_effect = [
-        True,
-        {"tag": "body", "id": "", "attributes": {}, "text": "Body text", "links": []},
-    ]
-    mock_body_handle.bounding_box.return_value = mock_bounding_box_data
-    mock_body_handle.query_selector_all.return_value = [mock_child_handle]
+    tree = await make_tree(mock_page, selector="main.content", wait_for_load=False, include_children=False)
 
-    mock_child_handle.evaluate.side_effect = [
-        True,
-        {"tag": "div", "id": "", "attributes": {}, "text": "Hidden Div", "links": []},
-    ]
-    mock_child_handle.bounding_box.return_value = None  # Child has no bounding box
-
-    tree = await make_tree(mock_page, selector="body", wait_for_load=False)
+    mock_page.evaluate.assert_awaited_once_with(
+        _COLLECT_DOM_TREE_JS,
+        {"selector": "main.content", "includeChildren": False},
+    )
     assert tree is not None
-    assert tree.tag == "body"
-    assert len(tree.children) == 0  # Child with no bounding box should be skipped
+    assert tree.tag == "main"
+    assert tree.links == ["http://example.com/a"]
+    assert tree.children == []
 
 
 @pytest.mark.asyncio
-async def test_make_tree_selector_parameter(mock_page, mock_bounding_box_data):
-    mock_target_handle = AsyncMock()
-    mock_page.query_selector.return_value = mock_target_handle
-
-    mock_target_handle.evaluate.side_effect = [
-        True,
-        {
-            "tag": "section",
-            "id": "specific-section",
-            "attributes": {"id": "specific-section"},
-            "text": "Specific Content",
-            "links": [],
-        },
-    ]
-    mock_target_handle.bounding_box.return_value = mock_bounding_box_data
-    mock_target_handle.query_selector_all.return_value = []
+async def test_make_tree_selector_parameter(mock_page):
+    mock_page.evaluate.return_value = _raw_node(
+        tag="section",
+        node_id="specific-section",
+        attributes={"id": "specific-section"},
+        text="Specific Content",
+    )
 
     tree = await make_tree(mock_page, selector="#specific-section", wait_for_load=False)
+    mock_page.evaluate.assert_awaited_once_with(
+        _COLLECT_DOM_TREE_JS,
+        {"selector": "#specific-section", "includeChildren": True},
+    )
     assert tree is not None
     assert tree.tag == "section"
     assert tree.id == "specific-section"
@@ -171,23 +153,15 @@ async def test_make_tree_selector_parameter(mock_page, mock_bounding_box_data):
 
 
 @pytest.mark.asyncio
-async def test_make_tree_root_element_not_found(mock_page):
-    mock_page.query_selector.return_value = None
+async def test_make_tree_root_element_not_found_returns_none(mock_page):
+    mock_page.evaluate.return_value = None
     tree = await make_tree(mock_page, selector="#non-existent", wait_for_load=False)
     assert tree is None
 
 
 @pytest.mark.asyncio
 async def test_make_tree_wait_for_load_true(mock_page):
-    # Ensure query_selector returns a mock handle so make_tree proceeds
-    mock_handle = AsyncMock()
-    mock_handle.evaluate.side_effect = [
-        True,
-        {"tag": "body", "id": "", "attributes": {}, "text": "", "links": []},
-    ]
-    mock_handle.bounding_box.return_value = {"x": 0, "y": 0, "width": 100, "height": 100}
-    mock_handle.query_selector_all.return_value = []
-    mock_page.query_selector.return_value = mock_handle
+    mock_page.evaluate.return_value = _raw_node(tag="body")
 
     tree = await make_tree(mock_page, selector="body", wait_for_load=True)
     assert tree is not None
@@ -196,15 +170,7 @@ async def test_make_tree_wait_for_load_true(mock_page):
 
 @pytest.mark.asyncio
 async def test_make_tree_wait_for_load_false(mock_page):
-    # Ensure query_selector returns a mock handle so make_tree proceeds
-    mock_handle = AsyncMock()
-    mock_handle.evaluate.side_effect = [
-        True,
-        {"tag": "body", "id": "", "attributes": {}, "text": "", "links": []},
-    ]
-    mock_handle.bounding_box.return_value = {"x": 0, "y": 0, "width": 100, "height": 100}
-    mock_handle.query_selector_all.return_value = []
-    mock_page.query_selector.return_value = mock_handle
+    mock_page.evaluate.return_value = _raw_node(tag="body")
 
     tree = await make_tree(mock_page, selector="body", wait_for_load=False)
     assert tree is not None
@@ -215,14 +181,7 @@ async def test_make_tree_wait_for_load_false(mock_page):
 async def test_make_tree_networkidle_timeout_continues(mock_page):
     """networkidle 待機でタイムアウトしても警告のみで DOM 構築を続行する。"""
     mock_page.wait_for_load_state.side_effect = PlaywrightTimeoutError("timeout")
-    mock_handle = AsyncMock()
-    mock_handle.evaluate.side_effect = [
-        True,
-        {"tag": "body", "id": "", "attributes": {}, "text": "Content", "links": []},
-    ]
-    mock_handle.bounding_box.return_value = {"x": 0, "y": 0, "width": 100, "height": 100}
-    mock_handle.query_selector_all.return_value = []
-    mock_page.query_selector.return_value = mock_handle
+    mock_page.evaluate.return_value = _raw_node(tag="body", text="Content")
 
     tree = await make_tree(mock_page, selector="body", wait_for_load=True)
     assert tree is not None
@@ -232,7 +191,7 @@ async def test_make_tree_networkidle_timeout_continues(mock_page):
 @pytest.mark.asyncio
 async def test_make_tree_playwright_error_returns_none(mock_page):
     """PlaywrightError 発生時はログ出力して None を返す。"""
-    mock_page.query_selector.side_effect = PlaywrightError("invalid selector")
+    mock_page.evaluate.side_effect = PlaywrightError("invalid selector")
     tree = await make_tree(mock_page, selector="div[", wait_for_load=False)
     assert tree is None
 
@@ -240,7 +199,7 @@ async def test_make_tree_playwright_error_returns_none(mock_page):
 @pytest.mark.asyncio
 async def test_make_tree_reraises_unexpected_exception(mock_page):
     """PlaywrightError 以外の予期せぬ例外は握りつぶさず再送出する。"""
-    mock_page.query_selector.side_effect = RuntimeError("unexpected bug")
+    mock_page.evaluate.side_effect = RuntimeError("unexpected bug")
     with pytest.raises(RuntimeError, match="unexpected bug"):
         await make_tree(mock_page, selector="body", wait_for_load=False)
 

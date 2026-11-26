@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from content_extractor.dom_treeSt import DOMTreeSt
-from content_extractor.relevance_scorer import RelevanceScorer
+from search_quality.relevance_scorer import RelevanceScorer
 
 # =================================================================
 # relevance_scorer.py のテスト
@@ -17,8 +17,8 @@ def mock_relevance_scorer():
     A fixture that provides a RelevanceScorer instance with mocked heavy dependencies.
     """
     with (
-        patch("content_extractor.relevance_scorer.SentenceTransformer") as mock_sentence_transformer,
-        patch("content_extractor.relevance_scorer.TfidfVectorizer") as mock_tfidf_vectorizer,
+        patch("search_quality.relevance_scorer.SentenceTransformer") as mock_sentence_transformer,
+        patch("search_quality.relevance_scorer.TfidfVectorizer") as mock_tfidf_vectorizer,
     ):
         mock_model_instance = MagicMock()
         # The order of embeddings matters: query is encoded first, then items.
@@ -63,10 +63,8 @@ def test_score_relevance_calculation(mock_relevance_scorer, sample_items):
     mock_relevance_scorer.tfidf_vectorizer.fit_transform.return_value = "dummy_matrix"
 
     with (
-        patch(
-            "content_extractor.relevance_scorer.cosine_similarity", return_value=np.array([0.8, 0.2])
-        ) as mock_tfidf_sim,
-        patch("content_extractor.relevance_scorer.cos_sim", return_value=np.array([[0.9, 0.1]])) as mock_semantic_sim,
+        patch("search_quality.relevance_scorer.cosine_similarity", return_value=np.array([0.8, 0.2])) as mock_tfidf_sim,
+        patch("search_quality.relevance_scorer.cos_sim", return_value=np.array([[0.9, 0.1]])) as mock_semantic_sim,
     ):
         updated_items = mock_relevance_scorer.score_relevance(query, sample_items)
 
@@ -113,7 +111,7 @@ def test_calculate_sqs_no_results(mock_relevance_scorer):
 def test_calculate_sqs_valid_score(mock_relevance_scorer):
     """Test SQS calculation resulting in a 'Valid' score."""
     with patch.dict(
-        "content_extractor.relevance_scorer.QUALITY_SCORING_CONFIG",
+        "search_quality.relevance_scorer.QUALITY_SCORING_CONFIG",
         {
             "sqs_thresholds": {"valid": 60, "low_quality": 20},
             "sqs_weights": {"result_count": 0.2, "avg_relevance": 0.4, "relevance_variance": 0.2, "max_relevance": 0.2},
@@ -129,7 +127,7 @@ def test_calculate_sqs_valid_score(mock_relevance_scorer):
 def test_calculate_sqs_low_quality_score(mock_relevance_scorer):
     """Test SQS calculation resulting in a 'Low Quality' score."""
     with patch.dict(
-        "content_extractor.relevance_scorer.QUALITY_SCORING_CONFIG",
+        "search_quality.relevance_scorer.QUALITY_SCORING_CONFIG",
         {
             "sqs_thresholds": {"valid": 60, "low_quality": 20},
             "sqs_weights": {"result_count": 0.2, "avg_relevance": 0.4, "relevance_variance": 0.2, "max_relevance": 0.2},
@@ -145,7 +143,7 @@ def test_calculate_sqs_low_quality_score(mock_relevance_scorer):
 def test_calculate_sqs_invalid_score(mock_relevance_scorer):
     """Test SQS calculation resulting in an 'Invalid/Empty' score."""
     with patch.dict(
-        "content_extractor.relevance_scorer.QUALITY_SCORING_CONFIG",
+        "search_quality.relevance_scorer.QUALITY_SCORING_CONFIG",
         {
             "sqs_thresholds": {"valid": 60, "low_quality": 20},
             "sqs_weights": {"result_count": 0.2, "avg_relevance": 0.4, "relevance_variance": 0.2, "max_relevance": 0.2},
@@ -178,8 +176,8 @@ def test_calculate_sqs_negative_score_becomes_zero(mock_relevance_scorer):
 def test_init_raises_import_error_when_sentence_transformers_missing():
     """sentence-transformers 未導入時は RelevanceScorer.__init__ が明確な ImportError を送出する。"""
     with (
-        patch("content_extractor.relevance_scorer.SentenceTransformer", None),
-        patch("content_extractor.relevance_scorer.TfidfVectorizer", MagicMock()),
+        patch("search_quality.relevance_scorer.SentenceTransformer", None),
+        patch("search_quality.relevance_scorer.TfidfVectorizer", MagicMock()),
         pytest.raises(ImportError, match="sentence-transformers"),
     ):
         RelevanceScorer()
@@ -188,8 +186,8 @@ def test_init_raises_import_error_when_sentence_transformers_missing():
 def test_init_raises_import_error_when_sklearn_missing():
     """scikit-learn 未導入時は RelevanceScorer.__init__ が明確な ImportError を送出する。"""
     with (
-        patch("content_extractor.relevance_scorer.SentenceTransformer", MagicMock()),
-        patch("content_extractor.relevance_scorer.TfidfVectorizer", None),
+        patch("search_quality.relevance_scorer.SentenceTransformer", MagicMock()),
+        patch("search_quality.relevance_scorer.TfidfVectorizer", None),
         pytest.raises(ImportError, match="scikit-learn"),
     ):
         RelevanceScorer()
@@ -198,8 +196,8 @@ def test_init_raises_import_error_when_sklearn_missing():
 def test_score_relevance_raises_import_error_when_cosine_similarity_missing(mock_relevance_scorer, sample_items):
     """scikit-learn (cosine_similarity) 未導入時は score_relevance が明確な ImportError を送出する。"""
     with (
-        patch("content_extractor.relevance_scorer.cosine_similarity", None),
-        patch("content_extractor.relevance_scorer.cos_sim", MagicMock()),
+        patch("search_quality.relevance_scorer.cosine_similarity", None),
+        patch("search_quality.relevance_scorer.cos_sim", MagicMock()),
         pytest.raises(ImportError, match="scikit-learn"),
     ):
         mock_relevance_scorer.score_relevance("python", sample_items)
@@ -208,8 +206,8 @@ def test_score_relevance_raises_import_error_when_cosine_similarity_missing(mock
 def test_score_relevance_raises_import_error_when_cos_sim_missing(mock_relevance_scorer, sample_items):
     """sentence-transformers (cos_sim) 未導入時は score_relevance が明確な ImportError を送出する。"""
     with (
-        patch("content_extractor.relevance_scorer.cosine_similarity", MagicMock()),
-        patch("content_extractor.relevance_scorer.cos_sim", None),
+        patch("search_quality.relevance_scorer.cosine_similarity", MagicMock()),
+        patch("search_quality.relevance_scorer.cos_sim", None),
         pytest.raises(ImportError, match="sentence-transformers"),
     ):
         mock_relevance_scorer.score_relevance("python", sample_items)

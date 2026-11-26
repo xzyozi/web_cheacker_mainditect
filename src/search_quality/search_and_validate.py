@@ -5,8 +5,8 @@ from playwright.async_api import Browser, async_playwright
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
-from content_extractor import run_search_quality_evaluation_standalone
-from setup_logger import setup_logger
+from search_quality.evaluate import run_search_quality_evaluation_standalone
+from utils.setup_logger import setup_logger
 
 logger = setup_logger("search_validator")
 

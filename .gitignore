@@ -1,7 +1,6 @@
 **/__pycache__/
-/mail/mail.yaml
-/mail/my_gmail_account.py
-/mail/test_send_mail.py
+/src/mail/mail.yaml
+/src/mail/my_gmail_account.py
 web_update_cheacker2.srctrlbm
 web_update_cheacker2.srctrldb
 web_update_cheacker2.srctrlprj
@@ -18,9 +17,8 @@ users/*/
 !users/sample/
 users/sample/*
 !users/sample/*.sample
-text_struct/__pycache__/text_struct.cpython-310.pyc
+src/text_struct/__pycache__/text_struct.cpython-310.pyc
 test/*.txt
 .coverage
 .venv
 venv
-cheack.bat

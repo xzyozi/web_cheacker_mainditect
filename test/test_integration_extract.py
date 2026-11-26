@@ -299,3 +299,36 @@ async def test_robots_txt_disallow_blocks_full_and_quick_scan(browser, site):
 
     assert await extract_main_content(url, browser) is None
     assert await quick_extract_content(url, browser, ["main"], "plane") is None
+
+
+@pytest.mark.asyncio
+async def test_make_tree_batch_js_skips_hidden_and_supports_single_node_mode(browser, site):
+    """#89: 一括 JS 取得で非表示要素を除外し、include_children=False でルート1ノードのみ収集する。"""
+    base_url, root = site
+    (root / "hidden.html").write_text(
+        """<!DOCTYPE html>
+<html lang="ja">
+<body>
+  <main id="target">
+    <p><a href="/visible.html">可視リンク</a></p>
+    <div style="display: none;"><a href="/hidden.html">非表示リンク</a></div>
+  </main>
+</body>
+</html>""",
+        encoding="utf-8",
+    )
+    url = f"{base_url}/hidden.html"
+
+    page = await browser.new_page(viewport={"width": 1920, "height": 1080})
+    try:
+        await page.goto(url, wait_until="domcontentloaded")
+        full_tree = await make_tree(page, selector="main#target", wait_for_load=False, include_children=True)
+        quick_tree = await make_tree(page, selector="main#target", wait_for_load=False, include_children=False)
+    finally:
+        await page.close()
+
+    assert full_tree is not None
+    assert [child.tag for child in full_tree.children] == ["p"]
+    assert quick_tree is not None
+    assert quick_tree.children == []
+    assert any(link.endswith("/visible.html") for link in quick_tree.links)

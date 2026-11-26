@@ -22,9 +22,9 @@ import yaml
 # +----------------------------------------------------------------
 from content_extractor import DOMTreeSt, extract_main_content, quick_extract_content, save_screenshot
 from mail import send_email
-from setup_logger import setup_logger
 from text_struct import text_struct
-import util_str
+from utils import util_str
+from utils.setup_logger import setup_logger
 
 # +----------------------------------------------------------------
 # + Constant definition
@@ -62,7 +62,7 @@ logger.debug(SCRIPT_PATH)
 # +----------------------------------------------------------------
 class User:
     def __init__(self, directory):
-        util_str.util_handle_path("./users/")
+        util_str.ensure_dir("./users/")
 
         self.directory = os.path.join("users", directory)
 
@@ -73,9 +73,9 @@ class User:
         self.json_dir_path = os.path.join(self.directory, "json/")
         self.image_dir_path = os.path.join(self.directory, "data", "images")
 
-        util_str.util_handle_path(self.data_file_path)
-        util_str.util_handle_path(self.json_dir_path)
-        util_str.util_handle_path(self.image_dir_path)
+        util_str.ensure_file(self.data_file_path)
+        util_str.ensure_dir(self.json_dir_path)
+        util_str.ensure_dir(self.image_dir_path)
 
         self.load_mail_settings()
         self.load_app_config()
@@ -194,9 +194,9 @@ def save_json(data: dict, url: str, directory=SAVE_JSON_DIR_PATH):
     Retrun:
         None
     """
-    domain = util_str.get_domain(url)
+    domain = util_str.sanitize_filename_part(util_str.get_domain(url)) or "unknown"
     file_path = os.path.join(directory, f"{domain}.json")
-    util_str.util_handle_path(file_path)  # ファイルを作成または取得する
+    util_str.ensure_file(file_path)  # ファイルを作成または取得する
 
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
@@ -239,7 +239,10 @@ def safe_parse_datetime(date_str: str) -> datetime:
     try:
         if date_str.endswith("Z"):
             return datetime.fromisoformat(date_str[:-1] + "+00:00")
-        return datetime.fromisoformat(date_str)
+        parsed = datetime.fromisoformat(date_str)
+        # タイムゾーンなし（例: "2024-01-02 03:04:05"）は UTC として扱う。naive のままだと
+        # 呼び出し側の aware 同士の減算が TypeError になり、常にFullスキャンへ倒れてしまう。
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
     except ValueError:
         pass  # Not ISO format, fall through to legacy
 
@@ -355,23 +358,32 @@ class DataManager:
             self.df.at[index, key] = value
         logger.info(f" ## update ## - index : {index}")
 
-    def update_scan_result(self, index: int, dom_tree: DOMTreeSt):
+    def update_scan_metadata(self, index: int, dom_tree: DOMTreeSt) -> None:
         """
-        スキャン成功時の結果をまとめてDataFrameに書き込むメソッド。
+        セレクタ一覧・ページ種別・URL（リダイレクトや最新ページ追従時の変更）のみを更新する。
+        ハッシュ未変化時のFullスキャンや、Quickスキャンでのセレクタ並び替えを保存するために使用する。
         """
-        new_hash = hashlib.sha256(str(dom_tree.links).encode()).hexdigest()
-
-        logger.info(f" ## UPDATE ## - index : {index} - {new_hash}")
         logger.debug(f"Updating with selectors: {dom_tree.css_selector_list}")
 
-        self.df.at[index, "result_vl"] = new_hash
-        self.df.at[index, "updated_datetime"] = get_Strdatetime()
         self.df.at[index, "css_selector_list"] = dom_tree.css_selector_list
         self.df.at[index, "web_page_type"] = dom_tree.web_type
 
-        # URLがリダイレクト等で変更された場合に対応
+        # URLがリダイレクトや最新ページ追従等で変更された場合に対応
         if dom_tree.url != self.df.at[index, "url"]:
             self.df.at[index, "url"] = dom_tree.url
+
+    def update_scan_result(self, index: int, dom_tree: DOMTreeSt, new_hash: str | None = None):
+        """
+        スキャン成功時の結果をまとめてDataFrameに書き込むメソッド。
+        """
+        if new_hash is None:
+            new_hash = hashlib.sha256(str(dom_tree.links).encode()).hexdigest()
+
+        logger.info(f" ## UPDATE ## - index : {index} - {new_hash}")
+
+        self.df.at[index, "result_vl"] = new_hash
+        self.df.at[index, "updated_datetime"] = get_Strdatetime()
+        self.update_scan_metadata(index, dom_tree)
 
     def update_full_scan_timestamp(self, index: int):
         """Fullスキャンのタイムスタンプのみを更新する"""
@@ -481,7 +493,9 @@ async def process_url_async(
                     data_manager.clear_scan_data(index_num)
                     return
                 if not web_page_type or record["result_vl"] != new_hash:
-                    data_manager.update_scan_result(index_num, rescored_candidate)
+                    data_manager.update_scan_result(index_num, rescored_candidate, new_hash=new_hash)
+                else:
+                    data_manager.update_scan_metadata(index_num, rescored_candidate)
             else:
                 logger.error(f"Scan process resulted in None for URL: {url}")
                 error_list.append([url, "Scan process resulted in None"])
@@ -519,7 +533,7 @@ async def main() -> None:
     _cleanup_temp_dir(temp_dir)
 
     try:
-        util_str.util_handle_path(user.data_file_path)
+        util_str.ensure_file(user.data_file_path)
 
         data_manager = DataManager(user.data_file_path)
         error_list: list[list[Any]] = []

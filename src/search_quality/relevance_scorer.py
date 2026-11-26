@@ -1,10 +1,10 @@
 import math
 from typing import Any, List
 
-from setup_logger import setup_logger
+from content_extractor.dom_treeSt import DOMTreeSt
+from utils.setup_logger import setup_logger
 
 from .config import QUALITY_SCORING_CONFIG
-from .dom_treeSt import DOMTreeSt
 
 SentenceTransformer: Any
 cos_sim: Any

@@ -20,7 +20,7 @@ if exist ".venv\Scripts\activate.bat" (
 
 echo "Starting the application (web-cheackerV3.py)..."
 rem Run the main python script.
-python web-cheackerV3.py
+python src\web-cheackerV3.py
 
 rem Pause the console to see any output/errors before it closes.
 pause
