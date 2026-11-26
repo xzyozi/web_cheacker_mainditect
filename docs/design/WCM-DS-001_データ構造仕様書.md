@@ -5,9 +5,9 @@ document_number: "WCM-DS-001"
 document_role: "normative"
 ssot_scope: "persistent_data"
 status: "draft"
-version: "0.3"
+version: "0.4"
 created_at: "2026-11-24"
-updated_at: "2026-11-24"
+updated_at: "2026-11-26"
 author: "xzyozi"
 owner: "xzyozi"
 purpose: "Web更新チェッカーが永続化・読込するファイルの構造、保存状態、原子置換、排他制御、設定の既定値を、現行実装から逆起こしして定義するため"
@@ -194,7 +194,7 @@ Fullスキャン成功のたびに、`DOMTreeSt.to_dict()` の結果をUTF-8の�
 | `screenshot.temporary_dir`     | 文字列 | `temp_image`     | メール用画像の一時フォルダ。実行前後に削除される。保存先に重要なファイルを置かない |
 | `screenshot.email_width`       | 整数   | 500              | メール用画像の幅（px）                                                             |
 | `screenshot.permanent_width`   | 整数   | 1920             | 永続画像の幅（px）                                                                 |
-| `screenshot.permanent_dir`     | 文字列 | （参照されない） | 雛形に存在するが、実装は参照しない。実際の保存先は `users/<名前>/data/images` 固定 |
+| `screenshot.permanent_dir`     | 文字列 | （廃止・参照されない） | 現行の共通設定・READMEからは削除済み。旧設定ファイルに残っていても実装は参照せず、実際の保存先は `users/<名前>/data/images` 固定 |
 
 共通設定 `users/config.yaml`（リポジトリ管理）は、通知種別 `email`、エラー通知 無効、撮影 有効を設定している。
 
@@ -218,7 +218,7 @@ Fullスキャン成功のたびに、`DOMTreeSt.to_dict()` の結果をUTF-8の�
 | 項目           | 内容                                                                                                                                                                                                                               |
 | :------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 配置・名前     | `log/web-chk_<YYYYMMDD_HHMMSS>.log`（プロセス起動時の時刻）。実行1回につき1ファイル                                                                                                                                                |
-| 出力レベル     | `web-cheacker` ロガー（`web-cheackerV3.py`、`content_extractor/core.py`）は、ファイルがDEBUG以上、標準出力がINFO以上。他のモジュールのロガーはファイルへ出力されない（標準出力のみ、または出力されない。#92 Q-010 で対応を検討中） |
+| 出力レベル     | `web-cheacker` ロガー（`web-cheackerV3.py`、`content_extractor/core.py`）は、ファイルがDEBUG以上、標準出力がINFO以上。他のモジュールのロガーはファイルへ出力せず、標準出力または標準loggingのみ |
 | ローテーション | 1ファイル10MBで切替、5世代保持                                                                                                                                                                                                     |
 | 文字コード     | UTF-8                                                                                                                                                                                                                              |
 | 保持・削除     | 古い実行のログを削除する仕組みは無い。運用者が整理する                                                                                                                                                                             |
@@ -265,3 +265,4 @@ Fullスキャン成功のたびに、`DOMTreeSt.to_dict()` の結果をUTF-8の�
 | Rev.0.1 | 2026-11-24 | xzyozi | 既存実装（develop 7f5d248）から逆起こしして新規作成。設計書が未整備だったため                                                                             |
 | Rev.0.2 | 2026-11-24 | xzyozi | 品質評価設定の配置（src/search_quality/config）、utils への集約に合わせてパスを更新。タイムゾーンなし日時の扱いを追記                                     |
 | Rev.0.3 | 2026-11-24 | xzyozi | レビュー指摘に基づき、セレクタの保存条件、ロックの実態、ログの出力対象、画像ファイル名、`mail.yaml` の雛形キーを現状の動作に修正。対応の検討は #92 で管理 |
+| Rev.0.4 | 2026-11-26 | xzyozi | #99（#92 グループB）に基づき、`screenshot.permanent_dir` の廃止扱いとログ出力範囲の仕様を確定                                                              |
