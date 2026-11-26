@@ -436,3 +436,55 @@ async def test_slow_scan_is_recorded_as_error_without_aborting(mod, tmp_path):
     assert len(errors) == 1
     assert "exceeded" in errors[0][1]
     assert manager.get_record_as_dict(0)["web_page_type"] == "plane"
+
+
+@pytest.mark.asyncio
+async def test_full_scan_with_unchanged_hash_updates_selectors_type_and_url_without_diff(mod, tmp_path):
+    """#98 Q-008: ハッシュ未変化のFullでも css_selector_list・種別・URL は保存し、更新日時は変えない。"""
+    links = ["https://example.com/a"]
+    old_row = _row(
+        url="https://example.com/news?page=1",
+        result_vl=_hash(links),
+        updated_datetime="before",
+        full_scan_datetime="2000-01-01T00:00:00Z",
+        css_selector_list=["old.sel"],
+        web_page_type="plane",
+    )
+    manager, errors, semaphore = _scan_env(mod, tmp_path, old_row)
+    new_tree = _tree(
+        links=links,
+        selectors=["new.sel", "alt.sel"],
+        web_type="page_changer",
+        url="https://example.com/news?page=2",
+    )
+
+    with patch.object(mod, "extract_main_content", new=AsyncMock(return_value=new_tree)):
+        await _run(mod, manager, errors, semaphore, url="https://example.com/news?page=1")
+
+    record = manager.get_record_as_dict(0)
+    assert errors == []
+    assert record["css_selector_list"] == ["new.sel", "alt.sel"]
+    assert record["web_page_type"] == "page_changer"
+    assert record["url"] == "https://example.com/news?page=2"
+    assert record["full_scan_datetime"] != "2000-01-01T00:00:00Z"
+    assert record["result_vl"] == _hash(links)
+    assert record["updated_datetime"] == "before"
+    assert manager.chk_diff() == []
+
+
+@pytest.mark.asyncio
+async def test_quick_scan_with_unchanged_hash_persists_reordered_selectors(mod, tmp_path):
+    """#98 Q-008: Quickスキャンでハッシュ未変化でも並び替えた css_selector_list は保存する。"""
+    links = ["https://example.com/a"]
+    row = _quick_ready_row(mod) | {"result_vl": _hash(links), "css_selector_list": ["broken.sel", "good.sel"]}
+    manager, errors, semaphore = _scan_env(mod, tmp_path, row)
+    reordered_tree = _tree(links=links, selectors=["good.sel", "broken.sel"])
+
+    with patch.object(mod, "quick_extract_content", new=AsyncMock(return_value=reordered_tree)):
+        await _run(mod, manager, errors, semaphore)
+
+    record = manager.get_record_as_dict(0)
+    assert errors == []
+    assert record["css_selector_list"] == ["good.sel", "broken.sel"]
+    assert record["updated_datetime"] == "before"
+    assert manager.chk_diff() == []

@@ -157,6 +157,8 @@ async def extract_main_content(url: str, browser: Browser, count: int = 0, arg_w
 
             if loop_count == max_loop_count:
                 logger.warning("再評価ループが上限に達しました。")
+                # 上限到達時は直前のcurrent_best（前ループの子）自身の子孫だけから候補を作る
+                current_best_children = rescore_main_content_with_children(current_best)
 
             final_content = current_best
 

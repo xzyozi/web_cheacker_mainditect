@@ -358,23 +358,32 @@ class DataManager:
             self.df.at[index, key] = value
         logger.info(f" ## update ## - index : {index}")
 
-    def update_scan_result(self, index: int, dom_tree: DOMTreeSt):
+    def update_scan_metadata(self, index: int, dom_tree: DOMTreeSt) -> None:
         """
-        スキャン成功時の結果をまとめてDataFrameに書き込むメソッド。
+        セレクタ一覧・ページ種別・URL（リダイレクトや最新ページ追従時の変更）のみを更新する。
+        ハッシュ未変化時のFullスキャンや、Quickスキャンでのセレクタ並び替えを保存するために使用する。
         """
-        new_hash = hashlib.sha256(str(dom_tree.links).encode()).hexdigest()
-
-        logger.info(f" ## UPDATE ## - index : {index} - {new_hash}")
         logger.debug(f"Updating with selectors: {dom_tree.css_selector_list}")
 
-        self.df.at[index, "result_vl"] = new_hash
-        self.df.at[index, "updated_datetime"] = get_Strdatetime()
         self.df.at[index, "css_selector_list"] = dom_tree.css_selector_list
         self.df.at[index, "web_page_type"] = dom_tree.web_type
 
-        # URLがリダイレクト等で変更された場合に対応
+        # URLがリダイレクトや最新ページ追従等で変更された場合に対応
         if dom_tree.url != self.df.at[index, "url"]:
             self.df.at[index, "url"] = dom_tree.url
+
+    def update_scan_result(self, index: int, dom_tree: DOMTreeSt, new_hash: str | None = None):
+        """
+        スキャン成功時の結果をまとめてDataFrameに書き込むメソッド。
+        """
+        if new_hash is None:
+            new_hash = hashlib.sha256(str(dom_tree.links).encode()).hexdigest()
+
+        logger.info(f" ## UPDATE ## - index : {index} - {new_hash}")
+
+        self.df.at[index, "result_vl"] = new_hash
+        self.df.at[index, "updated_datetime"] = get_Strdatetime()
+        self.update_scan_metadata(index, dom_tree)
 
     def update_full_scan_timestamp(self, index: int):
         """Fullスキャンのタイムスタンプのみを更新する"""
@@ -484,7 +493,9 @@ async def process_url_async(
                     data_manager.clear_scan_data(index_num)
                     return
                 if not web_page_type or record["result_vl"] != new_hash:
-                    data_manager.update_scan_result(index_num, rescored_candidate)
+                    data_manager.update_scan_result(index_num, rescored_candidate, new_hash=new_hash)
+                else:
+                    data_manager.update_scan_metadata(index_num, rescored_candidate)
             else:
                 logger.error(f"Scan process resulted in None for URL: {url}")
                 error_list.append([url, "Scan process resulted in None"])

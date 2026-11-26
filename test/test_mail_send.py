@@ -60,7 +60,7 @@ def test_no_images_attaches_only_the_body():
 
 
 def test_login_failure_propagates_and_nothing_is_sent():
-    """ログインに失敗した場合は例外が伝播し、メールは送られない（WCM-DD-001 §6）。"""
+    """ログインに失敗した場合は例外が伝播し、メールは送られず SMTP 接続は閉じられる（#98 Q-016）。"""
     with patch("mail.test_send_mail.smtplib.SMTP") as smtp_cls:
         smtp = smtp_cls.return_value
         smtp.login.side_effect = RuntimeError("auth failed")
@@ -68,3 +68,15 @@ def test_login_failure_propagates_and_nothing_is_sent():
             send_email(CONFIG, "receiver@example.com", body="b")
 
     smtp.sendmail.assert_not_called()
+    smtp.close.assert_called_once()
+
+
+def test_sendmail_failure_closes_smtp_connection():
+    """#98 Q-016: sendmail で例外が発生しても SMTP 接続が必ず閉じられる。"""
+    with patch("mail.test_send_mail.smtplib.SMTP") as smtp_cls:
+        smtp = smtp_cls.return_value
+        smtp.sendmail.side_effect = RuntimeError("send failed")
+        with pytest.raises(RuntimeError, match="send failed"):
+            send_email(CONFIG, "receiver@example.com", body="b")
+
+    smtp.close.assert_called_once()
